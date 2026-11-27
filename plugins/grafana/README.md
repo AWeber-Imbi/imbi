@@ -2,7 +2,7 @@
 
 The Grafana plugin for the [Imbi](https://github.com/AWeber-Imbi)
 platform, distributed as a single Python package (`imbi.plugins.grafana`)
-exposing one Integration (`grafana`) with three capabilities:
+exposing one Integration (`grafana`) with four capabilities:
 
 - **`lifecycle`** — writes the project's `EXISTS_IN` edge, whose
   identifier (`{slug}-{id}` by default) the project's alert rules
@@ -15,7 +15,15 @@ exposing one Integration (`grafana`) with three capabilities:
   signature only when the webhook has a secret.
   The capability advertises no custom actions.
 - **`analysis`** — Project Doctor checks that the edge and link exist
-  and match the integration options, with a one-click repair.
+  and match the integration options, with a one-click repair. With the
+  `api_token`, it also checks that Grafana accepts the token, that alert
+  rules carry the label, and that a dashboard has the
+  `<label>:<value>` tag (for example `service:my-api-V1StGXR8_Z5jdHi6B-myT`).
+- **`workflow-steps`** — `gather_metrics` and `metric_threshold` run
+  PromQL through a Prometheus data source. When the workflow gives the
+  step a project, `$project` in the query is the project identifier,
+  for example `sum(rate(http_requests_total{service="$project"}[5m]))`.
+  The metric label name can differ from the alert rule label.
 
 Options: `service_url` (the Grafana URL, required) and `label` (the
 alert rule label that names the project, default `service`).
@@ -80,10 +88,13 @@ moon run grafana:test   # coverage (fails under 85%)
 moon run grafana:lint grafana:typecheck grafana:format   # ruff + basedpyright + format check
 ```
 
-Only the workflow steps call Grafana. They need the optional
-`api_token` credential (a service account token with the `Viewer`
-role) and send requests only to `service_url`. They use these Grafana
-APIs:
+Only the workflow steps and the live doctor checks call Grafana. They
+need the optional `api_token` credential (a service account token with
+the `Viewer` role) and send requests only to `service_url`. They use
+these Grafana APIs:
+
+- `GET /api/prometheus/grafana/api/v1/rules` (doctor, alert rules) and
+  `GET /api/search` (doctor, dashboards by tag)
 
 - `GET /api/datasources`, `GET /api/datasources/uid/:uid`, and
   `POST /api/ds/query`:

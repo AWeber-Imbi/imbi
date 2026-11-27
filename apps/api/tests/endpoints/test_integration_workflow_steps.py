@@ -17,6 +17,7 @@ import httpx
 from apps.api.tests import support
 from imbi.api import models, workflows
 from imbi.api.auth import organizations, permissions
+from imbi.api.endpoints import _helpers
 from imbi.api.endpoints import integration_workflow_steps as endpoint
 from imbi.api.maintenance import operations
 from imbi.api.plugins import assignments, lifecycle
@@ -234,6 +235,65 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
         ctx = handler.await_args.args[0]
         self.assertEqual(ctx.project_slug, self.project)
         self.assertEqual(ctx.team_slug, self.team)
+        self.assertEqual(ctx.service_connections, [])
+
+    async def test_optional_project_loads_its_edges(self) -> None:
+        handler = self._plugin(
+            return_value=base.StepResult(output={'value': 1})
+        )
+        edges = [
+            base.ServiceConnection(
+                integration_slug='grafana-prod', identifier='x'
+            )
+        ]
+        with mock.patch.object(
+            _helpers,
+            'lookup_project_exists_in',
+            mock.AsyncMock(return_value=edges),
+        ) as lookup:
+            response = await self._run(project_id=self.project)
+        self.assertEqual(response.status_code, 200, response.text)
+        lookup.assert_awaited_once()
+        ctx = handler.await_args.args[0]
+        self.assertEqual(ctx.project_id, self.project)
+        self.assertEqual(ctx.service_connections, edges)
+
+    async def test_failed_project_lookup_is_retried(self) -> None:
+        handler = self._plugin()
+        with mock.patch.object(
+            _helpers,
+            'lookup_project_slugs',
+            mock.AsyncMock(return_value=('', None)),
+        ):
+            response = await self._run(project_id=self.project)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(
+            response.json()['detail'],
+            {'error': 'project_lookup_failed', 'retry': True},
+        )
+        handler.assert_not_awaited()
+        again = await self._run(project_id=self.project)
+        self.assertEqual(again.status_code, 503, again.text)
+        self.assertEqual(
+            again.json()['detail']['error'], 'project_lookup_failed'
+        )
+        handler.assert_not_awaited()
+
+    async def test_repeat_of_a_key_skips_a_failed_project_lookup(self) -> None:
+        handler = self._plugin(
+            return_value=base.StepResult(output={'value': 2.5})
+        )
+        first = await self._run(project_id=self.project)
+        self.assertEqual(first.status_code, 200, first.text)
+        with mock.patch.object(
+            _helpers,
+            'lookup_project_slugs',
+            mock.AsyncMock(return_value=('', None)),
+        ):
+            again = await self._run(project_id=self.project)
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json(), first.json())
+        handler.assert_awaited_once()
 
     async def test_invalid_params(self) -> None:
         handler = self._plugin()

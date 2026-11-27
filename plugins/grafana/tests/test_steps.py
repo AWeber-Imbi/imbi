@@ -297,3 +297,49 @@ async def test_missing_config() -> None:
     ctx = CTX.model_copy(update={'integration_options': {}})
     with pytest.raises(errors.PluginCredentialsMissing):
         await steps.datasources(ctx, CREDS, 'datasource', {})
+
+
+def _project_ctx(*, connected: bool) -> base.PluginContext:
+    return base.PluginContext(
+        project_id='p1',
+        project_slug='demo',
+        org_slug='org',
+        integration_slug='grafana',
+        integration_options={'service_url': URL},
+        service_connections=[
+            base.ServiceConnection(
+                integration_slug='grafana', identifier='old-p1'
+            )
+        ]
+        if connected
+        else [],
+    )
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ('connected', 'value'), [(False, 'demo-p1'), (True, 'old-p1')]
+)
+async def test_project_variable_is_the_identifier(
+    connected: bool, value: str
+) -> None:
+    route = _ds_query().mock(return_value=httpx.Response(200, json=_results()))
+    params = steps.GatherMetricsParams(
+        datasource='prom', expr='up{app="$project"} + $projects'
+    )
+    await steps.gather_metrics(
+        _project_ctx(connected=connected), CREDS, params, CALL
+    )
+    body = json.loads(route.calls.last.request.content)
+    assert body['queries'][0]['expr'] == f'up{{app="{value}"}} + $projects'
+
+
+@respx.mock
+async def test_project_variable_needs_a_project() -> None:
+    route = _ds_query()
+    params = steps.GatherMetricsParams(
+        datasource='prom', expr='up{a="$project"}'
+    )
+    with pytest.raises(ValueError, match='no project_id'):
+        await steps.gather_metrics(CTX, CREDS, params, CALL)
+    assert not route.called

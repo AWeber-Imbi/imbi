@@ -20,8 +20,8 @@ webhook rules that act on the events, for example start a workflow.
 
 ## Configuration
 
-Only the workflow steps call Grafana. The other capabilities use no
-credential.
+Only the workflow steps and the live doctor checks call Grafana. The
+other capabilities use no credential.
 
 | Option | Required | Default | What it is |
 |---|---|---|---|
@@ -30,7 +30,7 @@ credential.
 
 | Credential | Required | What it is |
 |---|---|---|
-| Service Account Token (`api_token`) | No | A Grafana service account token with the `Viewer` role. The workflow steps need it |
+| Service Account Token (`api_token`) | No | A Grafana service account token with the `Viewer` role. The workflow steps and the live doctor checks need it |
 
 ## How a project is linked
 
@@ -65,8 +65,20 @@ label so each delivery carries one value.
 | `identifier` | `pass` | The identifier is `{slug}-{id}` | |
 | `identifier` | `warn` | The identifier differs from `{slug}-{id}`, for example after a rename or a manual edit. The old value still works | **Use the current project value as the identifier** rewrites the edge. Update the labels in Grafana first: alert rules labelled with the old value stop matching |
 
-The doctor cannot confirm that alert rules with the label exist, because
-the doctor does not call Grafana. Neither fix is sweepable.
+When the integration has an `api_token`, the doctor also calls
+Grafana. Without a token, it skips these checks.
+
+| Slug | Status | What it means |
+|---|---|---|
+| `api-token` | `pass` | Grafana accepted the token |
+| `api-token` | `fail` | Grafana refused the token (401 or 403). The other live checks do not run |
+| `api-token` | `warn` | Grafana could not be reached, or it returned a response that is not valid. The other live checks do not run |
+| `alert-rules` | `pass` / `warn` | One or more alert rules carry `<label>=<identifier>` / no alert rule carries it, so Grafana sends no alerts for the project |
+| `dashboards` | `pass` / `warn` | One or more dashboards have the tag `<label>:<identifier>` (for example `service:webform-V1StGXR8_Z5jdHi6B-myT`) / no dashboard has it |
+
+The doctor counts only the rules that carry the label, so a Grafana
+that ignores the `rule_matcher` filter gives the correct count. No fix
+is sweepable.
 
 ## The delivery
 
@@ -171,6 +183,13 @@ to the **Grafana URL** of the integration.
 | `grafana.metric_threshold` | Gate | Runs an instant PromQL query that gives one value. When `value <operator> threshold` is true (`lt`, `lte`, `gt`, or `gte`), it takes the `Pass` port. Otherwise it polls each 60 seconds. After 30 minutes it takes the `Failed` port |
 
 The **Data source** field lists the Prometheus data sources of Grafana. A data source of another type fails the step.
+
+A query can use `$project`. When the step has a project (its optional
+**Project** field, for example `{{ trigger.project }}`), the plugin
+replaces `$project` with the project identifier, for example
+`sum(rate(http_requests_total{service="$project"}[5m]))`. The metric
+label name can differ from the **Project label** of the alert rules. A
+query that uses `$project` in a step with no project fails the step.
 For the gate, reduce the query to one series, for example with `sum()`
 or `max()`. A query that gives more than one series fails the step. A
 query that gives no value, or `NaN`, polls again.
@@ -187,5 +206,5 @@ See [Workflow Steps Capability](../common/plugins/workflow-steps.md).
 - One delivery can carry many alerts. The identifier selector reads one
   value, so group the notification policy by the label that names the
   project.
-- The plugin cannot create alert rules, add the label to them, or
-  confirm that labelled rules exist.
+- The plugin cannot create alert rules or add the label to them. With
+  no `api_token`, it cannot confirm that labelled rules exist.

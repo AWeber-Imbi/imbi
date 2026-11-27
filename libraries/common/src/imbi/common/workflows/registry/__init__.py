@@ -121,8 +121,13 @@ def _plugin_type(
             ),
         )
     }
-    if descriptor.project_scoped:
-        fields['project_id'] = (str, pydantic.Field(min_length=1))
+    # Optional unless project-scoped: the plugin gets the project when
+    # the workflow has one.
+    fields['project_id'] = (
+        (str, pydantic.Field(min_length=1))
+        if descriptor.project_scoped
+        else (str | None, pydantic.Field(default=None))
+    )
     params = pydantic.create_model(
         f'{descriptor.params_model.__name__}WithIntegration',
         __base__=descriptor.params_model,

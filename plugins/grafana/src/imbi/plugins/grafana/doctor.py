@@ -6,12 +6,18 @@ integration, that the plugin verified it, and that the edge and the
 identifier differs from ``{slug}-{id}`` (for example after a rename),
 because the alert rules must carry that value in the label.
 
-The plugin has no Grafana credentials, so the doctor cannot confirm
-that alert rules with the label exist.
+With the optional ``api_token``, the doctor also asks Grafana whether
+the token works, whether alert rules carry the label, and whether a
+dashboard has the ``<label>:<value>`` tag. Without it, it skips these
+checks.
 """
 
 from __future__ import annotations
 
+import typing
+import urllib.parse
+
+from imbi.common.plugins import errors
 from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
@@ -21,7 +27,7 @@ from imbi.common.plugins.base import (
     RemediationResult,
     ServiceWriteback,
 )
-from imbi.plugins.grafana import links
+from imbi.plugins.grafana import links, steps
 
 #: Write the edge and link for the current identifier.
 _LINK = 'link-project'
@@ -65,13 +71,28 @@ def _item(
     )
 
 
+def _count_rules(data: object, name: str, value: str) -> int:
+    """Count the rules with the label. The filter is also applied here,
+    because a Grafana without ``rule_matcher`` returns every rule."""
+    groups = typing.cast(
+        'list[dict[str, list[dict[str, typing.Any]]]]',
+        typing.cast('dict[str, typing.Any]', data)['data']['groups'],
+    )
+    return sum(
+        1
+        for group in groups
+        for rule in group.get('rules', [])
+        if typing.cast('dict[str, str]', rule.get('labels') or {}).get(name)
+        == value
+    )
+
+
 class GrafanaDoctor(AnalysisCapability):
     """Validate and repair the project's Grafana edge and link."""
 
     async def analyze(
         self, ctx: PluginContext, credentials: dict[str, str]
     ) -> list[AnalysisResultItem]:
-        del credentials
         if not ctx.integration_slug:
             return [
                 _item(
@@ -86,9 +107,82 @@ class GrafanaDoctor(AnalysisCapability):
             expected = links.writeback(ctx, value)
         except links.GrafanaConfigError as exc:
             return [_item('exists-in', 'Grafana link', 'warn', str(exc))]
-        return [
+        items = [
             self._check_link(ctx, expected),
             self._check_identifier(ctx, value),
+        ]
+        if credentials.get('api_token', '').strip():
+            items.extend(await self._check_grafana(ctx, credentials, value))
+        return items
+
+    @staticmethod
+    async def _check_grafana(
+        ctx: PluginContext, credentials: dict[str, str], value: str
+    ) -> list[AnalysisResultItem]:
+        """Ask Grafana for the alert rules and dashboards of the project."""
+        name = links.label(ctx)
+        tag = f'{name}:{value}'
+        try:
+            rules = await steps.request(
+                ctx, credentials, 'GET', links.rules_path(name, value)
+            )
+            dashboards = await steps.request(
+                ctx,
+                credentials,
+                'GET',
+                '/api/search?'
+                + urllib.parse.urlencode({'type': 'dash-db', 'tag': tag}),
+            )
+            count = _count_rules(rules, name, value)
+            found = (
+                len(typing.cast('list[object]', dashboards))
+                if isinstance(dashboards, list)
+                else None
+            )
+        except errors.PluginAuthenticationFailed as exc:
+            return [_item('api-token', 'Grafana token', 'fail', str(exc))]
+        except Exception as exc:  # noqa: BLE001 - report, do not fail the run
+            return [
+                _item(
+                    'api-token',
+                    'Grafana token',
+                    'warn',
+                    f'Could not reach Grafana: {exc}',
+                )
+            ]
+        return [
+            _item(
+                'api-token',
+                'Grafana token',
+                'pass',
+                'Grafana accepted the service account token.',
+            ),
+            _item(
+                'alert-rules',
+                'Grafana alert rules',
+                'pass' if count else 'warn',
+                f'{count} alert rule(s) carry `{name}={value}`.'
+                if count
+                else f'No alert rule carries `{name}={value}`, so Grafana '
+                'sends no alerts for this project. Add the label to its '
+                'rules.',
+            ),
+            _item(
+                'dashboards',
+                'Grafana dashboards',
+                'warn',
+                'Grafana returned an invalid search response.',
+            )
+            if found is None
+            else _item(
+                'dashboards',
+                'Grafana dashboards',
+                'pass' if found else 'warn',
+                f'{found} dashboard(s) have the tag `{tag}`.'
+                if found
+                else f'No dashboard has the tag `{tag}`. Add the tag to the '
+                'dashboards of this project.',
+            ),
         ]
 
     @staticmethod

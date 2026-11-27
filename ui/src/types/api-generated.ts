@@ -3921,6 +3921,7 @@ export interface paths {
          *         422: The params are not valid, or a project-scoped step has no
          *             ``project_id``.
          *         502: The plugin failed or returned a result that is not valid.
+         *         503: The project lookup failed (``project_lookup_failed``).
          *         504: The plugin did not answer in time.
          */
         post: operations["run_workflow_step_api_organizations__org_slug__integrations__integration_slug__workflow_steps__step_type__run_post"];

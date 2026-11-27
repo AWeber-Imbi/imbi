@@ -52,6 +52,7 @@ CALL_ERRORS: dict[str, tuple[int, bool]] = {
     'plugin_error': (502, True),
     'plugin_timeout': (504, True),
     'plugin_result_invalid': (502, False),
+    'project_lookup_failed': (503, True),
 }
 
 
@@ -145,6 +146,7 @@ def plugin_args(
     project_id: str = '',
     project_slug: str = '',
     team_slug: str | None = None,
+    service_connections: list[base.ServiceConnection] | None = None,
 ) -> tuple[base.PluginContext, dict[str, str]]:
     """Return the context and the decrypted credentials of a call."""
     options: dict[str, typing.Any] = (
@@ -160,6 +162,7 @@ def plugin_args(
         integration_options=integration.get('options') or {},
         capability_options=options,
         assignment_options=options,
+        service_connections=service_connections or [],
     )
     return ctx, common_plugins.decrypt_integration_credentials(
         integration.get('encrypted_credentials') or {}
@@ -236,6 +239,7 @@ async def run_workflow_step(
         422: The params are not valid, or a project-scoped step has no
             ``project_id``.
         502: The plugin failed or returned a result that is not valid.
+        503: The project lookup failed (``project_lookup_failed``).
         504: The plugin did not answer in time.
 
     """
@@ -246,14 +250,16 @@ async def run_workflow_step(
     integration, descriptor = await load_step(
         db, org_slug, integration_slug, step_type
     )
-    project_slug, team_slug = '', None
+    project_slug, team_slug, edges = '', None, None
     if data.project_id is not None:
         await org_auth.member_project_org_id(
             org_slug, data.project_id, db, org_id
         )
-        project_slug, team_slug = await _helpers.lookup_project_slugs(
-            db, data.project_id
+        slugs, edges = await asyncio.gather(
+            _helpers.lookup_project_slugs(db, data.project_id),
+            _helpers.lookup_project_exists_in(db, data.project_id),
         )
+        project_slug, team_slug = slugs
     elif descriptor.project_scoped:
         raise fastapi.HTTPException(
             status_code=422, detail='The step needs a project_id'
@@ -278,8 +284,18 @@ async def run_workflow_step(
     )
     if not new:
         return _repeat(row)
+    if data.project_id is not None and not project_slug:
+        # The project exists (checked above), so the lookup failed. Record
+        # the error so that a repeat of the key gets the same answer.
+        await calls.finish(row['id'], error='project_lookup_failed')
+        raise _call_error('project_lookup_failed')
     ctx, credentials = plugin_args(
-        integration, org_slug, data.project_id or '', project_slug, team_slug
+        integration,
+        org_slug,
+        data.project_id or '',
+        project_slug,
+        team_slug,
+        edges,
     )
     limit = min(CALL_TIMEOUT, data.time_limit_seconds or CALL_TIMEOUT)
     try:

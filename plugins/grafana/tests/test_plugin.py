@@ -2,6 +2,9 @@
 
 import unittest
 
+import httpx
+import respx
+
 import imbi.plugins.grafana
 from imbi.common.plugins.base import PluginContext, ServiceConnection
 from imbi.plugins.grafana import doctor, lifecycle, links, plugin
@@ -325,3 +328,105 @@ class DoctorTestCase(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(PluginRemediationNotSupported):
             await doctor.GrafanaDoctor().remediate(_ctx(), {}, 'nope')
+
+
+_TOKEN = {'api_token': 'glsa_token'}
+_SEARCH = f'{_BASE}/api/search'
+
+
+def _rules(*labels: dict[str, str]) -> dict[str, object]:
+    return {
+        'status': 'success',
+        'data': {'groups': [{'rules': [{'labels': lb} for lb in labels]}]},
+    }
+
+
+class LiveDoctorTestCase(unittest.IsolatedAsyncioTestCase):
+    async def _analyze(self) -> dict[str, object]:
+        items = await doctor.GrafanaDoctor().analyze(
+            _ctx(connected=True), _TOKEN
+        )
+        return {i.slug: i for i in items}
+
+    @respx.mock
+    async def test_rules_and_dashboards_pass(self) -> None:
+        rules = respx.get(_RULES).mock(
+            return_value=httpx.Response(
+                200,
+                json=_rules({'service': 'demo-p1'}, {'service': 'other'}),
+            )
+        )
+        search = respx.get(_SEARCH).mock(
+            return_value=httpx.Response(200, json=[{'uid': 'd1'}])
+        )
+        items = await self._analyze()
+        self.assertEqual(
+            {k: i.status for k, i in items.items()},
+            {
+                'exists-in': 'pass',
+                'identifier': 'pass',
+                'api-token': 'pass',
+                'alert-rules': 'pass',
+                'dashboards': 'pass',
+            },
+        )
+        # A Grafana without rule_matcher returns every rule: only the
+        # rules with the label count.
+        self.assertIn('1 alert rule', items['alert-rules'].description)
+        self.assertEqual(
+            'Bearer glsa_token',
+            rules.calls.last.request.headers['Authorization'],
+        )
+        self.assertEqual(
+            {'type': 'dash-db', 'tag': 'service:demo-p1'},
+            dict(search.calls.last.request.url.params),
+        )
+
+    @respx.mock
+    async def test_none_found_warns(self) -> None:
+        respx.get(_RULES).mock(
+            return_value=httpx.Response(200, json=_rules({'service': 'x'}))
+        )
+        respx.get(_SEARCH).mock(return_value=httpx.Response(200, json=[]))
+        items = await self._analyze()
+        self.assertEqual('warn', items['alert-rules'].status)
+        self.assertEqual('warn', items['dashboards'].status)
+
+    @respx.mock
+    async def test_rejected_token_fails(self) -> None:
+        respx.get(_RULES).mock(return_value=httpx.Response(401))
+        items = await self._analyze()
+        self.assertEqual('fail', items['api-token'].status)
+        self.assertNotIn('alert-rules', items)
+
+    @respx.mock
+    async def test_unreachable_warns(self) -> None:
+        respx.get(_RULES).mock(side_effect=httpx.ConnectError('down'))
+        items = await self._analyze()
+        self.assertEqual('warn', items['api-token'].status)
+
+    @respx.mock
+    async def test_bad_response_warns(self) -> None:
+        respx.get(_RULES).mock(return_value=httpx.Response(200, json={}))
+        respx.get(_SEARCH).mock(return_value=httpx.Response(200, json=[]))
+        items = await self._analyze()
+        self.assertEqual('warn', items['api-token'].status)
+
+    @respx.mock
+    async def test_search_that_is_not_a_list_warns(self) -> None:
+        respx.get(_RULES).mock(
+            return_value=httpx.Response(200, json=_rules({'service': 'x'}))
+        )
+        respx.get(_SEARCH).mock(
+            return_value=httpx.Response(200, json={'message': 'unexpected'})
+        )
+        items = await self._analyze()
+        self.assertEqual('pass', items['api-token'].status)
+        self.assertEqual('warn', items['dashboards'].status)
+        self.assertIn('invalid search', items['dashboards'].description)
+
+    async def test_no_token_skips(self) -> None:
+        items = await doctor.GrafanaDoctor().analyze(
+            _ctx(connected=True), {'api_token': ' '}
+        )
+        self.assertEqual(['exists-in', 'identifier'], [i.slug for i in items])
