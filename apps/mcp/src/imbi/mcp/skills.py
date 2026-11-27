@@ -105,8 +105,9 @@ class PromptSkills(provider.SkillCatalogProvider):
                 response.raise_for_status()
                 system = response.json()['system']
                 self._bodies.set((prompt['id'], version), system)
-            description = ' '.join(
-                (prompt.get('description') or prompt['name']).split()
+            description = (
+                ' '.join((prompt.get('description') or '').split())
+                or prompt['name']
             )
             return fastmcp.skills.Skill(
                 name=slug,

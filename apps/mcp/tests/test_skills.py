@@ -29,6 +29,7 @@ PROMPTS = [
     _prompt('draft', {}),
     _prompt('decide', {'stable': 1}, kind='decision'),
     _prompt('Not_Valid', {'stable': 1}),
+    _prompt('blank', {'stable': 1}, description=' \n '),
 ]
 
 
@@ -59,10 +60,13 @@ class PromptSkillsTestCase(unittest.IsolatedAsyncioTestCase):
         async with self._client() as client:
             listed = await client.list_skills()
             skill = await client.read_skill('skill://review/SKILL.md')
+            blank = await client.read_skill('skill://blank/SKILL.md')
         self.assertEqual(
-            sorted(s.frontmatter.name for s in listed), ['deploy', 'review']
+            sorted(s.frontmatter.name for s in listed),
+            ['blank', 'deploy', 'review'],
         )
         self.assertEqual(skill.description, 'Use review when asked.')
+        self.assertEqual(blank.description, 'Blank')
         text = skill.files['SKILL.md'].decode()
         self.assertTrue(text.startswith('---\n'))
         self.assertIn('# review v2', text)
