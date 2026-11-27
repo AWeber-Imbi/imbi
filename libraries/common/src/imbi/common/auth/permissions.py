@@ -975,6 +975,14 @@ async def get_current_user_cookie_fallback(
             headers={'WWW-Authenticate': 'Bearer'},
         )
     ctx = await _authenticate_token(db, token, auth_settings())
+    if not credentials and ctx.organization_slug:
+        # agent_api.guard reads only the header, so a token that works
+        # in only one organization must come as a header.
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Missing authentication credentials',
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
     return await narrow_to_accountable(
         db, ctx, request.headers.get(SCHEDULED_TASK_ACCOUNTABLE)
     )
