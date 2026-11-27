@@ -119,6 +119,13 @@ MATCH (p:Project {{id: {project_id}}})
 RETURN p.id AS id
 LIMIT 1
 """
+_PROJECT_IN_ORG_ID: typing.LiteralString = """
+MATCH (p:Project {{id: {project_id}}})
+      -[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN p.id AS id
+LIMIT 1
+"""
 
 
 def refused(module: str, method: str, key: str | None = None) -> bool:
@@ -224,11 +231,21 @@ async def require_own_project(
             if auth.auth_method == 'agent_api'
             else 'organization_forbidden',
         )
-    await _project_in(
-        db,
-        _PROJECT_IN_ORG,
-        {'project_id': project_id, 'org_slug': auth.organization_slug},
-    )
+    # An agent API token carries the organization ID: use it, so that a
+    # slug that another organization takes after a rename does not
+    # match. A user token carries only the slug.
+    if auth.organization_id:
+        await _project_in(
+            db,
+            _PROJECT_IN_ORG_ID,
+            {'project_id': project_id, 'org_id': auth.organization_id},
+        )
+    else:
+        await _project_in(
+            db,
+            _PROJECT_IN_ORG,
+            {'project_id': project_id, 'org_slug': auth.organization_slug},
+        )
 
 
 def _org_scoped(key: str | None) -> bool:
