@@ -2602,3 +2602,32 @@ class DescribeTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(n, 3)
         self.assertEqual(target.description, 'Sorts tickets with Fixer.')
+
+    async def test_apply_no_answer_skips_write(self) -> None:
+        # No description and no other change: nothing is written, so a
+        # concurrent disable is not overwritten with a stale enabled.
+        self.answer('', degraded=True)
+        existing = {
+            'id': 'agent-1',
+            'name': 'Triage',
+            'slug': 'triage',
+            'team': {'slug': 'ops'},
+            'prompt_ref': 'agents/engineering.triage@stable',
+            'prompt_version': 2,
+            'enabled': True,
+            '_latest': 2,
+        }
+        with mock.patch.object(agents, '_execute') as execute:
+            result = await agents._apply(
+                self.db,
+                'org-1',
+                'engineering',
+                existing,
+                agents._snapshot_of(existing),
+                True,
+                None,
+                self.auth,
+                anthropic=self.anthropic,
+            )
+        self.assertIs(result, existing)
+        execute.assert_not_awaited()

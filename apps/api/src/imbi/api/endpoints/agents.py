@@ -1293,6 +1293,12 @@ async def _apply(
             }
         )
         config_changed = target != current
+    if not config_changed and not enabled_changed:
+        if label_move is not None:
+            await _execute(
+                db, org_id, org_slug, [label_move], None, target, current
+            )
+        return existing
     if config_changed:
         n = int(existing['_latest']) + 1
         # The version is written first. Its unique index stops a

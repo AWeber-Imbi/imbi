@@ -72,7 +72,8 @@ and choose its model, on **Agents > Platform**. Without a model,
 imbi-api uses its default Anthropic model. When no model answers, or the
 agent has no system prompt, tools, or subagents, the save keeps the
 description that the agent had. An agent with an empty description gets
-one on its next save.
+one on its next save, if a model answers and the agent has a system
+prompt, tools, or subagents.
 
 ### System prompt and model
 
