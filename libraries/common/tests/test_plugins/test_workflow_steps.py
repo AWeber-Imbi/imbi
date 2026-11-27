@@ -186,7 +186,9 @@ class StepTypesTestCase(unittest.TestCase):
             schema['properties']['integration']['x-imbi-plugin'], 'stepper'
         )
         self.assertTrue(schema['properties']['datasource']['x-imbi-choices'])
-        self.assertNotIn('project_id', schema['properties'])
+        # Not project-scoped: the project is optional.
+        self.assertIn('project_id', schema['properties'])
+        self.assertNotIn('project_id', schema['required'])
         params = action.params.model_validate(
             {'integration': 'grafana', 'datasource': 'prom', 'query': 'up'}
         )

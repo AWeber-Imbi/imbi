@@ -86,8 +86,11 @@ The workflow type is `<plugin_slug>.<name>`, for example
 `<plugin name> · <label>`, with the plugin icon.
 
 The host adds an `integration` param: the slug of the organization
-Integration that the step uses. A step with `project_scoped=True` also
-gets `project_id`. Do not declare these fields in `params_model`.
+Integration that the step uses. It also adds `project_id`: required
+for a step with `project_scoped=True`, optional for other steps. Do not
+declare these fields in `params_model`. When a call has a project, the
+`PluginContext` has its slugs and its `EXISTS_IN` edges
+(`service_connections`).
 
 ## Descriptor rules
 

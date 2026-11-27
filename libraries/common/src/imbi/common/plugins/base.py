@@ -2449,9 +2449,11 @@ class WorkflowStepDescriptor(pydantic.BaseModel):
     """One workflow step type of a ``workflow-steps`` capability.
 
     The workflow type is ``<plugin_slug>.<name>``. The step gets an
-    ``integration`` param (and ``project_id`` when
-    :attr:`project_scoped`) from the host, so :attr:`params_model` must
-    not declare ``integration`` or ``project_id``. imbi-api calls
+    ``integration`` param and a ``project_id`` param (required when
+    :attr:`project_scoped`, else optional) from the host, so
+    :attr:`params_model` must not declare ``integration`` or
+    ``project_id``. When the call has a project, the context carries
+    its slugs and its ``EXISTS_IN`` edges. imbi-api calls
     :attr:`callable` with the credentials of the Integration that the
     node selects.
     """
