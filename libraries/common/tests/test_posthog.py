@@ -157,6 +157,10 @@ class PostHogTestCase(unittest.TestCase):
             'Retry with api_key=s3cr3t and password: hunter2': (
                 'Retry with api_key=[redacted] and password: [redacted]'
             ),
+            'Retry with {"password": "hunter 2"}': (
+                'Retry with {"password": [redacted]}'
+            ),
+            'Use password="hunter 2" now': 'Use password=[redacted] now',
             'Look up the owner of 4155550123': (
                 'Look up the owner of [number]'
             ),
