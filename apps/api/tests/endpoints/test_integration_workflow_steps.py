@@ -272,6 +272,28 @@ class RunStepTestCase(support.SharedAppAsyncTestCase):
             {'error': 'project_lookup_failed', 'retry': True},
         )
         handler.assert_not_awaited()
+        again = await self._run(project_id=self.project)
+        self.assertEqual(again.status_code, 503, again.text)
+        self.assertEqual(
+            again.json()['detail']['error'], 'project_lookup_failed'
+        )
+        handler.assert_not_awaited()
+
+    async def test_repeat_of_a_key_skips_a_failed_project_lookup(self) -> None:
+        handler = self._plugin(
+            return_value=base.StepResult(output={'value': 2.5})
+        )
+        first = await self._run(project_id=self.project)
+        self.assertEqual(first.status_code, 200, first.text)
+        with mock.patch.object(
+            _helpers,
+            'lookup_project_slugs',
+            mock.AsyncMock(return_value=('', None)),
+        ):
+            again = await self._run(project_id=self.project)
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json(), first.json())
+        handler.assert_awaited_once()
 
     async def test_invalid_params(self) -> None:
         handler = self._plugin()

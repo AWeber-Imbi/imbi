@@ -260,9 +260,6 @@ async def run_workflow_step(
             _helpers.lookup_project_exists_in(db, data.project_id),
         )
         project_slug, team_slug = slugs
-        if not project_slug:
-            # The project exists (checked above), so the lookup failed.
-            raise _call_error('project_lookup_failed')
     elif descriptor.project_scoped:
         raise fastapi.HTTPException(
             status_code=422, detail='The step needs a project_id'
@@ -287,6 +284,11 @@ async def run_workflow_step(
     )
     if not new:
         return _repeat(row)
+    if data.project_id is not None and not project_slug:
+        # The project exists (checked above), so the lookup failed. Record
+        # the error so that a repeat of the key gets the same answer.
+        await calls.finish(row['id'], error='project_lookup_failed')
+        raise _call_error('project_lookup_failed')
     ctx, credentials = plugin_args(
         integration,
         org_slug,
