@@ -39,8 +39,9 @@ def org_id(ctx: PluginContext) -> int:
     """The Grafana organization ID from the ``org_id`` option, or raise."""
     value = str(ctx.integration_options.get('org_id') or '').strip()
     # Grafana reads the ID as an int64. ``isdigit`` alone accepts
-    # characters such as '²' that ``int`` cannot parse.
-    if not (value.isascii() and value.isdigit()) or not (
+    # characters such as '²' that ``int`` cannot parse. The length
+    # check stops ``int`` from raising ValueError on very long strings.
+    if not (value.isascii() and value.isdigit() and len(value) <= 19) or not (
         0 < int(value) < 2**63
     ):
         raise GrafanaConfigError(
