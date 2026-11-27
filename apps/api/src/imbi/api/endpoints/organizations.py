@@ -604,6 +604,8 @@ async def _persist_organization(
     org: models.Organization,
     request: fastapi.Request,
     db: graph.Pool,
+    *,
+    keep_team_id: bool,
 ) -> dict[str, typing.Any]:
     """Execute the Cypher SET + count queries to update an organization.
 
@@ -614,6 +616,9 @@ async def _persist_organization(
             taken ``original_slug`` since is not changed.
         org: Validated organization model with updated fields.
         db: Graph database connection.
+        keep_team_id: Keep the stored ``slack_team_id``. Set for a
+            caller who cannot change it, so a write from an older read
+            cannot restore a value that an install admin changed.
 
     Returns:
         Organization dict with relationship counts.
@@ -643,7 +648,8 @@ async def _persist_organization(
             ' n.description = {description},'
             ' n.icon = {icon},'
             ' n.tag_formats = {tag_formats},'
-            ' n.slack_team_id = {slack_team_id},'
+            ' n.slack_team_id = CASE WHEN {keep_team_id}'
+            ' THEN n.slack_team_id ELSE {slack_team_id} END,'
             ' n.updated_at = {updated_at},'
             ' n.previous_slugs = {previous_slugs}'
             ' RETURN n'
@@ -656,7 +662,8 @@ async def _persist_organization(
             ' n.description = {description},'
             ' n.icon = {icon},'
             ' n.tag_formats = {tag_formats},'
-            ' n.slack_team_id = {slack_team_id},'
+            ' n.slack_team_id = CASE WHEN {keep_team_id}'
+            ' THEN n.slack_team_id ELSE {slack_team_id} END,'
             ' n.updated_at = {updated_at}'
             ' RETURN n'
         )
@@ -669,6 +676,7 @@ async def _persist_organization(
         'icon': props.get('icon'),
         'tag_formats': props.get('tag_formats', []),
         'slack_team_id': props.get('slack_team_id'),
+        'keep_team_id': keep_team_id,
         'updated_at': props['updated_at'],
         'org_id': org_id,
     }
@@ -805,7 +813,9 @@ async def patch_organization(
     _check_slack_team_id(auth, existing.slack_team_id, org.slack_team_id)
     org.created_at = existing.created_at
     org.updated_at = datetime.datetime.now(datetime.UTC)
-    return await _persist_organization(slug, existing.id, org, request, db)
+    return await _persist_organization(
+        slug, existing.id, org, request, db, keep_team_id=not auth.is_admin
+    )
 
 
 @organizations_router.get('/{slug}/members', name='list_organization_members')

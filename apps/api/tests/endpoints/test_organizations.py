@@ -465,7 +465,8 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['slack_team_id'], 'T012AB3CD')
         query, params = self.mock_db.execute.call_args_list[0].args[:2]
-        self.assertIn('n.slack_team_id = {slack_team_id}', query)
+        self.assertIn('ELSE {slack_team_id} END', query)
+        self.assertFalse(params['keep_team_id'])
         self.assertEqual(params['slack_team_id'], 'T012AB3CD')
 
         self.mock_db.execute.side_effect = [
