@@ -8948,6 +8948,9 @@ export interface paths {
         /**
          * Remediate Project Finding
          * @description Apply one finding's fix, then return the refreshed report.
+         *
+         *     If the refresh cannot look up the project, the result is returned
+         *     with the previous report. With no previous report, the 503 stays.
          */
         post: operations["remediate_project_finding_api_organizations__org_slug__projects__project_id__analysis_remediate_post"];
         delete?: never;
