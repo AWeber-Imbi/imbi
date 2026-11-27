@@ -1045,6 +1045,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
             text='*Done*\n\n*<https://imbi.example.com/tickets/'
             f'{self.org}/{short_id}|{short_id}: &lt;!channel&gt; &amp; fix>*'
             f'\nStatus: queued | Outcome: none | Project: {self.project}',
+            thread_ts=None,
             unfurl_links=False,
         )
 
@@ -1084,7 +1085,10 @@ class EngineSlackTestCase(WorkflowRunTestCase):
             token='xoxb-test', timeout=20, retry_handlers=[]
         )
         self.slack.chat_postMessage.assert_awaited_once_with(
-            channel='C0123456789', text='*Shipped* 1', unfurl_links=False
+            channel='C0123456789',
+            text='*Shipped* 1',
+            thread_ts=None,
+            unfurl_links=False,
         )
         self.slack.chat_getPermalink.assert_awaited_once_with(
             channel='C0123456789', message_ts='1700000000.000100'
@@ -1229,6 +1233,55 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.assertEqual(response.status_code, 422, response.text)
         self.assertEqual(
             response.json()['detail'], {'error': 'invalid_channel'}
+        )
+        self.slack.chat_postMessage.assert_not_awaited()
+
+    async def _post_with_thread_ts(
+        self, thread_ts: str | None
+    ) -> httpx.Response:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET input = %s'
+                " WHERE run_id = %s AND node_id = 'post'",
+                (
+                    workflows.runs.pg_json.Jsonb(
+                        {
+                            'channel': 'C0123456789',
+                            'text': 'Hi',
+                            'thread_ts': thread_ts,
+                        }
+                    ),
+                    self.run_id,
+                ),
+            )
+        return await self.client.post(self.post_url, headers=self.headers)
+
+    async def test_thread_ts_posts_a_reply(self) -> None:
+        response = await self._post_with_thread_ts('1699999999.000200')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.slack.chat_postMessage.assert_awaited_once_with(
+            channel='C0123456789',
+            text='Hi',
+            thread_ts='1699999999.000200',
+            unfurl_links=False,
+        )
+
+    async def test_empty_thread_ts_posts_to_the_channel(self) -> None:
+        """The engine stores ``None`` for a reference with no value."""
+        response = await self._post_with_thread_ts(None)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.slack.chat_postMessage.assert_awaited_once_with(
+            channel='C0123456789',
+            text='Hi',
+            thread_ts=None,
+            unfurl_links=False,
+        )
+
+    async def test_invalid_thread_ts(self) -> None:
+        response = await self._post_with_thread_ts('{{ trigger.thread_ts }}')
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(
+            response.json()['detail'], {'error': 'invalid_thread_ts'}
         )
         self.slack.chat_postMessage.assert_not_awaited()
 

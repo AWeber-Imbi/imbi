@@ -554,6 +554,7 @@ Posts a message to a Slack channel as the Imbi bot.
 | `channel` | The channel ID, for example `C0123456789`, or one plain reference such as `{{ trigger.channel }}`. Not the channel name |
 | `text` | The message, in Slack mrkdwn, up to 40,000 characters. Templates are allowed |
 | `ticket` | Optional. An agent task (a ticket) to show below the message: a short id such as `T-12`, or one plain reference such as `{{ trigger.task_id }}` or `{{ ask.task_id }}` |
+| `thread_ts` | Optional. A message of the channel to reply to in its thread: the timestamp of the message, for example `1700000000.000100`, or one plain reference such as `{{ tell.ts }}` |
 
 To find a channel ID in Slack, open the channel details. The ID is at the
 bottom of the **About** tab.
@@ -581,7 +582,7 @@ Errors:
 | `slack_failed: <code>` | Slack refused the message with another [error code](https://docs.slack.dev/reference/methods/chat.postMessage#errors) |
 | `slack_ratelimited` | Slack rate-limited the post after every retry |
 | `outcome_unknown` | The call to Slack failed, Slack answered with a 5xx, or Slack answered `internal_error`, `fatal_error`, `request_timeout`, or `service_unavailable`. Slack may have posted the message. See [unknown outcome](#calls-with-an-unknown-outcome) |
-| `invalid_params`, `invalid_channel` | The rendered channel is not a channel ID, or the rendered ticket is not a short id |
+| `invalid_params`, `invalid_channel`, `invalid_thread_ts` | The rendered channel is not a channel ID, the rendered ticket is not a short id, or the rendered `thread_ts` is not a message timestamp |
 | `ticket_not_found` | The organization has no task with this short id |
 
 When Slack refuses a message, it posts nothing, and Imbi does not retry
@@ -602,6 +603,12 @@ task. Each value from the task is escaped like a template value, so a
 task title cannot add a mention. If the message and the block are longer
 than 40,000 characters, Imbi cuts the end of the message. A workflow
 with a `ticket` needs `ticket:read` to activate.
+
+With `thread_ts`, the message is a reply in the thread of the message
+that has this timestamp. To reply to the message of an earlier Slack
+step, use its `ts` output, such as `{{ tell.ts }}`. Use the timestamp of
+the first message of a thread, not the timestamp of a reply. A reference
+with no value is empty, and the step posts the message to the channel.
 
 **Output:** `channel`, `ts` (the message timestamp), and `permalink` (a
 link to the message, or empty when Slack did not return one).
@@ -845,7 +852,9 @@ A literal id must exist in the organization. Otherwise validation shows
 The Slack `channel` takes a literal channel ID or one plain reference, but
 a channel is not a resource of an organization, so Imbi does not check it.
 The bot can post only to the channels that it was invited to. Invite it
-only to the channels that workflows may post to.
+only to the channels that workflows may post to. The Slack `thread_ts`
+takes a literal message timestamp or one plain reference, and Imbi does
+not check it either: Slack reads it in the channel of the step only.
 
 The `duration` of a Wait step also takes one plain reference. See
 [Wait](#wait).

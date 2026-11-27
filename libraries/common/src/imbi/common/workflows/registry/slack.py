@@ -20,6 +20,14 @@ _CHANNEL = rf'^(?:[CG][A-Z0-9]{{8,}}|{graph.REFERENCE})$'
 #: is not a short id fails the step with ``invalid_params``.
 TICKET = rf'^(?:T-[0-9]+|{graph.REFERENCE})$'
 
+#: The timestamp of a Slack message, which is its id in the channel.
+MESSAGE_TS = re.compile(r'^[0-9]{10}\.[0-9]{6}$')
+
+#: A message timestamp, or one plain reference. A rendered reference
+#: that is not a message timestamp fails the step with
+#: ``invalid_params``.
+_THREAD_TS = rf'^(?:[0-9]{{10}}\.[0-9]{{6}}|{graph.REFERENCE})$'
+
 
 def escape(value: str) -> str:
     """Escape the control characters of Slack mrkdwn in ``value``.
@@ -55,6 +63,13 @@ class Params(pydantic.BaseModel):
         description='A ticket to show below the message: its title as a '
         'link, status, outcome, and project. A short id, for example '
         'T-12, or a reference such as {{ trigger.task_id }}.',
+    )
+    thread_ts: str | None = pydantic.Field(
+        default=None,
+        pattern=_THREAD_TS,
+        description='A message of the channel to reply to in a thread. '
+        'Its timestamp, for example 1700000000.000100, or a reference '
+        'such as {{ tell.ts }}.',
     )
 
 

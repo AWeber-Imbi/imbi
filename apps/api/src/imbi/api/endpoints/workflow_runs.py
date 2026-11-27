@@ -615,8 +615,13 @@ def _slack_refusal(error: slack_errors.SlackApiError) -> str | None:
     return str(code)
 
 
-async def _post_slack(token: str, channel: str, text: str) -> SlackResult:
+async def _post_slack(
+    token: str, channel: str, text: str, thread_ts: str | None = None
+) -> SlackResult:
     """Post ``text`` to ``channel``, then ask for its permalink.
+
+    With ``thread_ts``, the message is a reply in the thread of the
+    message that has this timestamp.
 
     The client does not retry: a retry after a lost response could post
     the message two times. A refusal from Slack posted nothing, so it is
@@ -630,7 +635,10 @@ async def _post_slack(token: str, channel: str, text: str) -> SlackResult:
     )
     try:
         posted = await client.chat_postMessage(
-            channel=channel, text=text, unfurl_links=False
+            channel=channel,
+            text=text,
+            thread_ts=thread_ts,
+            unfurl_links=False,
         )
     except slack_errors.SlackApiError as e:
         refusal = _slack_refusal(e)
@@ -1597,8 +1605,9 @@ async def send_step_slack(
         409: The step is not a running slack step, or
             ``outcome_unknown``: a call with the key did not finish.
         422: ``invalid_channel``: the channel is not a Slack channel id,
-            or ``ticket_not_found``: the ticket is not a task of the
-            organization.
+            or ``invalid_thread_ts``: the thread is not a Slack message
+            timestamp, or ``ticket_not_found``: the ticket is not a
+            task of the organization.
         502: ``slack_unreachable``: the call to Slack failed, and Slack
             may have posted the message.
         503: ``slack_not_configured``: imbi-api has no bot token.
@@ -1627,6 +1636,12 @@ async def send_step_slack(
         raise fastapi.HTTPException(
             status_code=422, detail={'error': 'invalid_channel'}
         )
+    if params.thread_ts and not slack_step.MESSAGE_TS.fullmatch(
+        params.thread_ts
+    ):
+        raise fastapi.HTTPException(
+            status_code=422, detail={'error': 'invalid_thread_ts'}
+        )
     # Read before the key is taken too: a failed read posted nothing.
     text = params.text
     if params.ticket:
@@ -1638,7 +1653,9 @@ async def send_step_slack(
         text = workflow_tickets.with_ticket_block(text, task, org_slug)
 
     async def call() -> dict[str, typing.Any]:
-        posted = await _post_slack(token, params.channel, text)
+        posted = await _post_slack(
+            token, params.channel, text, params.thread_ts
+        )
         return posted.model_dump()
 
     return await runs.once(
