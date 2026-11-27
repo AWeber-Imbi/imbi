@@ -42,7 +42,8 @@ cannot read it. The assistant shows only the conversations of the
 selected organization, and you must be a member of it.
 
 Conversations made before conversations had an organization go to your
-organization when imbi-api starts. If you are in more than one, they go
+organization when an admin runs **Put Assistant Conversations in an
+Organization** after the upgrade. If you are in more than one, they go
 to the first by slug.
 
 Each user has one current conversation in each organization. Every

@@ -39,6 +39,8 @@ MaintenanceSlug = typing.Literal[
     'cve-sync',
     'ai-model-calls-prune',
     'plugin-step-calls-prune',
+    'mcp-server-org-backfill',
+    'conversation-org-backfill',
 ]
 
 
@@ -339,6 +341,36 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_ai_model_calls_prune,
             execute=operations.execute_plugin_step_calls_prune,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='mcp-server-org-backfill',
+            label='Link MCP Servers to an Organization',
+            description=(
+                'Link each MCP server that has no organization (one made '
+                'before MCP servers had an organization) to the '
+                'organization, when the install has exactly one. With more '
+                'than one organization it links none and logs each server. '
+                'Run it one time after the upgrade. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_one_run,
+            execute=operations.execute_mcp_server_org_backfill,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='conversation-org-backfill',
+            label='Put Assistant Conversations in an Organization',
+            description=(
+                'Put each assistant conversation that has no organization '
+                "in its owner's organization: the only one, else the first "
+                'by slug. A conversation of a user in no organization stays '
+                'without one and is logged. Run it one time after the '
+                'upgrade. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_one_run,
+            execute=operations.execute_conversation_org_backfill,
             items_are_projects=False,
         ),
     )

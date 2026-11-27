@@ -47,3 +47,32 @@ class BackfillTestCase(unittest.IsolatedAsyncioTestCase):
         db = graph([], ['org-1'])
         self.assertEqual(await mcp_server_orgs.backfill(db), 0)
         self.assertEqual(db.execute.await_count, 1)
+
+
+class MaintenanceOperationTestCase(unittest.IsolatedAsyncioTestCase):
+    """The backfills run one time, as maintenance operations."""
+
+    async def test_operations_call_the_backfills(self) -> None:
+        from imbi.api import conversation_orgs
+        from imbi.api.maintenance import registry
+
+        cases = (
+            ('mcp-server-org-backfill', mcp_server_orgs, 'linked'),
+            ('conversation-org-backfill', conversation_orgs, 'changed'),
+        )
+        for slug, module, key in cases:
+            with self.subTest(slug=slug):
+                definition = registry.OPERATIONS[slug]
+                self.assertFalse(definition.items_are_projects)
+                db, ctx = mock.AsyncMock(), mock.Mock()
+                with mock.patch.object(
+                    module, 'backfill', mock.AsyncMock(return_value=2)
+                ) as backfill:
+                    items = await definition.enumerate(db)
+                    outcome = await definition.execute(
+                        db, mock.AsyncMock(), items[0], ctx=ctx
+                    )
+                self.assertEqual(items, ['all'])
+                self.assertEqual(outcome, 'succeeded')
+                backfill.assert_awaited_once_with(db)
+                self.assertEqual(ctx.log.record.call_args.kwargs[key], 2)

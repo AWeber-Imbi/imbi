@@ -3,8 +3,9 @@
 A ``Conversation`` now has the ``org_id`` of the organization it is in,
 and the assistant shows only the conversations of the selected
 organization. Conversations made before that change have no ``org_id``.
-imbi-api runs :func:`backfill` when its graph pool opens; a
-conversation that has ``org_id`` is never read again.
+The ``conversation-org-backfill`` maintenance operation runs
+:func:`backfill` one time after the upgrade; a conversation that has
+``org_id`` is never read again.
 
 Each user's conversations go to the user's organization. A user in more
 than one organization gets the first by slug: memberships have no date,

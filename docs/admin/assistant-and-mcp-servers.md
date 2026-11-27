@@ -133,10 +133,11 @@ The **With issues** filter shows the servers that are `degraded` or
 
 ### Servers made before organizations
 
-Before servers belonged to an organization, they were global. When
-imbi-api starts and the install has one organization, it moves each of
-these servers to that organization. When the install has more than one
-organization, imbi-api does not move them and logs a warning for each.
+Before servers belonged to an organization, they were global. Run
+**Link MCP Servers to an Organization** (`mcp-server-org-backfill`) one
+time after the upgrade. When the install has one organization, it moves
+each of these servers to that organization. When the install has more
+than one organization, it moves none and logs a warning for each.
 No organization shows such a server. Create it again in the correct
 organization.
 

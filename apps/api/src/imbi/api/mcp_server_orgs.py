@@ -2,8 +2,9 @@
 
 An ``MCPServer`` now ``BELONGS_TO`` one organization and has a copy of
 its id in ``org_id``. Servers made before that change have neither.
-imbi-api runs :func:`backfill` when its graph pool opens; a server that
-has ``org_id`` is never read again.
+The ``mcp-server-org-backfill`` maintenance operation runs
+:func:`backfill` one time after the upgrade; a server that has
+``org_id`` is never read again.
 
 When the install has exactly one organization, each unlinked server
 goes to it. Otherwise each one stays unlinked and is logged: no

@@ -180,7 +180,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    The bot now serves only the members of that organization. Until an
    organization has the team ID, the bot answers no one.
 7. MCP servers and assistant conversations now belong to an
-   organization. imbi-api moves them at startup:
+   organization. After you deploy imbi-api, run **Link MCP Servers to an
+   Organization** (`mcp-server-org-backfill`) and **Put Assistant
+   Conversations in an Organization** (`conversation-org-backfill`) one
+   time each. Until then, no organization shows the older servers and
+   conversations.
     - When the install has one organization, each MCP server goes to
       it. Otherwise imbi-api logs each server and moves none: create
       them again in the correct organization (**Admin > &lt;Org&gt;
