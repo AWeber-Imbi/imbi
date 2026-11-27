@@ -114,7 +114,56 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    `deployment-sweep` system task, which runs **Close Out Stuck
    Deployments** every 6 hours. Until you run the command, the task
    fails with a 403.
-4. Run `imbi-api setup-prompts`. It adds the `imbi-api/agent-description`
+4. **Before you deploy**, upgrade Iggy to `ghcr.io/aweber-imbi/iggy:0.10.0-0`
+   (Apache Iggy 0.10.0). This release uses `apache-iggy` 0.10.0, which
+   speaks wire protocol 0.12.0. It cannot connect to an older Iggy server,
+   and an older client cannot connect to the new server. Iggy 0.10.0 also
+   changes its storage format and has no migration, so you must remove the
+   Iggy data directory:
+    1. Stop the services that publish to Iggy (imbi-api, imbi-gateway,
+       imbi-scheduler, imbi-workflows).
+    2. Let iggy-connect write the remaining messages to ClickHouse. A
+       message that is still in Iggy when you remove the data directory is
+       lost. A topic is drained when the stored offset of its consumer
+       group is the same as the current offset of partition 0. In the Iggy
+       server container, for each stream and topic:
+
+        ```bash
+        iggy --credentials-username <user> --credentials-password <password> \
+          consumer-offset get <stream> <stream> <topic> 0 --kind consumer-group
+        ```
+
+        The consumer group has the name of the stream. The output shows
+        the two offsets: the stored offset is the offset of the consumer
+        group, and the current offset is the offset of the last message of
+        partition 0. Use these CLI offsets for the comparison. Do not use
+        the **Iggy topics** card or the `imbi_iggy_topic_current_offset`
+        metric: imbi-api samples them every 30 seconds and is stopped, so
+        they can show an old current offset.
+
+        The same offsets do not prove that the rows are in ClickHouse.
+        When an insert fails, the sink can store the new offset without
+        the rows (see the warning in
+        [Read a stream again](operations.md#read-a-stream-again-replay)).
+        Before you continue, examine the iggy-connect log for failed
+        inserts. If a stream has one, replay it. A replay restarts
+        iggy-connect, and iggy-connect gets its sink configuration from
+        imbi-api when it starts. Thus start the publishers again, do the
+        replay, and then go back to step 1. A
+        replay reads the stream again from the start, so do the offset
+        check and the log check again. Continue only when the offsets are
+        the same and the log shows no new failed inserts.
+    3. Back up the Iggy data directory. Keep the backup until you have
+       validated that the rows are in ClickHouse.
+    4. Stop iggy-connect and the Iggy server, and delete the Iggy data
+       directory (on Kubernetes, the PersistentVolumeClaim).
+    5. Start the Iggy server with the new image. Iggy 0.10.0 does not
+       generate a root password, so `IGGY_ROOT_USERNAME` and
+       `IGGY_ROOT_PASSWORD` must be set (see
+       [Run the Iggy server](operations.md#run-the-iggy-server)).
+    6. Deploy this release, then start iggy-connect with the new image.
+       imbi-api creates the streams and topics again at startup.
+5. Run `imbi-api setup-prompts`. It adds the `imbi-api/agent-description`
    prompt to the prompt CMS. A model now writes the description of an
    agent when a save changes its name, system prompt, tools, or
    subagents, or when the description is empty; edit the prompt and

@@ -18,7 +18,12 @@ import urllib.parse
 import orjson
 import prometheus_client
 import pydantic
-from apache_iggy import IggyClient, SendMessage
+from apache_iggy import (
+    IggyClient,
+    PendingOperationError,
+    SendMessage,
+    TopicOptions,
+)
 
 from imbi.common import clickhouse, posthog, settings
 
@@ -163,7 +168,17 @@ def _translate_errors(
 
 
 def _connection_lost(err: RuntimeError) -> bool:
-    """Whether `err` means the client's connection is unusable."""
+    """Whether `err` means the client's connection is unusable.
+
+    A `PendingOperationError` also counts. The SDK keeps an operation
+    with an unknown outcome, such as a send whose reply was lost, and
+    refuses later sends on its partition with `lane_blocked` until the
+    operation is resolved or abandoned. A new client has a new session
+    without that operation. The publish already failed, so its outcome
+    stays unknown either way, and nothing sends it again.
+    """
+    if isinstance(err, PendingOperationError):
+        return True
     message = str(err).lower()
     return any(fragment in message for fragment in _CONNECTION_LOST)
 
@@ -262,7 +277,9 @@ class Iggy:
                 LOGGER.debug('Creating Iggy topic %s/%s', stream, topic)
                 await _tolerate_exists(
                     client.create_topic(
-                        stream, topic, partitions_count=PARTITIONS_COUNT
+                        stream,
+                        topic,
+                        TopicOptions(partitions_count=PARTITIONS_COUNT),
                     )
                 )
         # Only when this client is still the cached one. A concurrent
@@ -553,7 +570,7 @@ def _payload(
     return {column: dumped[column] for column in columns}
 
 
-async def _tolerate_exists(awaitable: typing.Awaitable[None]) -> None:
+async def _tolerate_exists(awaitable: typing.Awaitable[object]) -> None:
     """Await a create call, treating "already exists" as success.
 
     Nothing else creates these streams and topics, so the only way to

@@ -90,6 +90,19 @@ class TranslateErrorsTestCase(unittest.TestCase):
                         raise RuntimeError(message)
                 owner.discard.assert_called_once_with(failed)
 
+    def test_a_pending_operation_discards_the_owner_client(self) -> None:
+        # The SDK cannot construct its own PendingOperationError, so a
+        # stand-in takes its place. The message matches no fragment.
+        class Pending(RuntimeError):
+            pass
+
+        owner, failed = mock.Mock(), mock.Mock()
+        with mock.patch.object(client, 'PendingOperationError', Pending):
+            with self.assertRaises(client.PublishError):
+                with client._translate_errors('publish', owner, failed):
+                    raise Pending('Operation 7 has an uncertain outcome')
+        owner.discard.assert_called_once_with(failed)
+
     def test_a_refused_request_keeps_the_owner_client(self) -> None:
         owner = mock.Mock()
         with self.assertRaises(client.PublishError):
@@ -266,13 +279,19 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
                 common_iggy.TOPICS, {'events': ('gateway',)}, clear=True
             )
         )
+        topic_options = self.enterContext(
+            mock.patch.object(client, 'TopicOptions')
+        )
         iggy = client.Iggy.get_instance()
         self.mock_client.get_stream.return_value = None
         self.mock_client.get_topic.return_value = None
         await iggy.ensure_topic('events', 'gateway')
         self.mock_client.create_stream.assert_awaited_once_with('events')
+        topic_options.assert_called_once_with(
+            partitions_count=client.PARTITIONS_COUNT
+        )
         self.mock_client.create_topic.assert_awaited_once_with(
-            'events', 'gateway', partitions_count=client.PARTITIONS_COUNT
+            'events', 'gateway', topic_options.return_value
         )
 
     async def test_ensure_topic_skips_what_exists(self) -> None:

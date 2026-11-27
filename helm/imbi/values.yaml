@@ -239,7 +239,7 @@ iggyConnect:
   enabled: true
   image:
     repository: ghcr.io/aweber-imbi/iggy
-    tag: 0.9.0-edge.6-0
+    tag: 0.10.0-0
     pullPolicy: IfNotPresent
   replicas: 1
   # Bearer key the runtime sends to imbi-api, and the key imbi-api checks.

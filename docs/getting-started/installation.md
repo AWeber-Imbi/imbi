@@ -79,7 +79,7 @@ topics, and imbi-api exits at startup (see
             condition: service_healthy
 
       iggy-connect:
-        image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+        image: ghcr.io/aweber-imbi/iggy:0.10.0-0
         environment:
           IGGY_MODE: connectors
           IGGY_CONNECTORS_CONNECTORS_BASE_URL: http://imbi:8000/api/iggy/connectors
@@ -107,7 +107,7 @@ topics, and imbi-api exits at startup (see
           retries: 10
 
       iggy:
-        image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+        image: ghcr.io/aweber-imbi/iggy:0.10.0-0
         environment:
           IGGY_ROOT_USERNAME: iggy
           IGGY_ROOT_PASSWORD: iggy
