@@ -44,7 +44,7 @@ PLUGIN_PATH = '/opt/iggy/connectors/libiggy_connector_clickhouse_sink'
 
 #: Sink settings pinned by ADR 0019 §3.
 BATCH_LENGTH = 1000
-POLL_INTERVAL = '250ms'
+MAX_WAIT = '250ms'
 MAX_RETRIES = 3
 RETRY_DELAY = 1
 TIMEOUT_SECONDS = 30
@@ -77,7 +77,7 @@ class StreamConsumerConfig(pydantic.BaseModel):
     avro_schema_json: str | None = None
     avro_schema_path: str | None = None
     batch_length: int = BATCH_LENGTH
-    poll_interval: str = POLL_INTERVAL
+    max_wait: str = MAX_WAIT
     consumer_group: str
 
 
