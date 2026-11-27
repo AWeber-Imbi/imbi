@@ -62,9 +62,7 @@ describe('EditRelationshipsDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(endpoints.getProjects).mockResolvedValue(LISTED_PROJECTS)
-    vi.mocked(endpoints.removeProjectRelationship).mockResolvedValue(
-      undefined,
-    )
+    vi.mocked(endpoints.removeProjectRelationship).mockResolvedValue(undefined)
     vi.mocked(endpoints.addProjectRelationship).mockResolvedValue(undefined)
   })
 
