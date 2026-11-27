@@ -282,7 +282,7 @@ that you want.
 | `POSTHOG_API_KEY` | The project key. Unset: every service sends nothing to PostHog |
 | `POSTHOG_HOST` | The ingestion host. The default is `https://us.i.posthog.com`. For the EU region, use `https://eu.i.posthog.com` |
 | `POSTHOG_ERROR_TRACKING` | The default is `true`: with a key, every Python service sends its exceptions. `false` stops them |
-| `POSTHOG_MCP_ANALYTICS` | `true` makes imbi-mcp send a `$mcp_tool_call` event for each tool call. The default is `false` |
+| `POSTHOG_MCP_ANALYTICS` | `true` makes imbi-mcp send a `$mcp_tool_call` event for each tool call, and a `$mcp_missing_capability` event when an agent reports a missing tool. The default is `false` |
 | `POSTHOG_AI_OBSERVABILITY` | `true` makes imbi-assistant and imbi-slackbot send a `$ai_generation` event for each LLM call, with the model, tokens, cost, and latency. The default is `false` |
 | `POSTHOG_AI_PRIVACY_MODE` | The default is `true`: AI events have no prompt or output text. `false` sends the text |
 | `SERVICE` | The `service` property of each event |
@@ -293,8 +293,18 @@ has a request body, cookies, request headers, the client IP address, or
 the values of local variables.
 
 An MCP event has the tool name, the names of the arguments, the duration,
-and whether the call failed. It never has argument values, results, or
-error text. The tool schemas do not change.
+whether the call failed, and the intent (`$mcp_intent`). It never has
+argument values, results, or error text.
+
+The switch changes the tool list. Each tool gets a `context` argument,
+where the agent writes in one sentence why it calls the tool. The schema
+marks it as required, but a call without it still runs.
+The SDK removes `context` before the call goes to the API, and replaces
+emails, phone numbers, IP addresses, and card numbers in it with
+`[redacted]`. Project names and other free text are sent as written. A
+`get_more_tools` tool lets the agent describe a task that no tool can
+do. PostHog shows these reports on the MCP analytics **Missing
+capabilities** tab.
 
 The user of an MCP or AI event is the SHA-256 hash of the email in the
 token. An MCP call with an API key has no user.

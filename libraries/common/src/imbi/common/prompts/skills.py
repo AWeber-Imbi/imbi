@@ -14,11 +14,11 @@ import logging
 import typing
 
 from imbi.common import graph, models
-from imbi.common.prompts import rendering, resolve
+from imbi.common.prompts import namespaces, rendering, resolve
 
 LOGGER = logging.getLogger(__name__)
 
-NAMESPACE = 'imbi-skills'
+NAMESPACE = namespaces.SKILLS
 
 LABEL = 'stable'
 

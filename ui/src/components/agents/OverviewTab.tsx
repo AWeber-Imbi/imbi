@@ -10,7 +10,6 @@ import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
-import { Textarea } from '@/components/ui/textarea'
 import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { queryKeys } from '@/lib/queryKeys'
 
@@ -84,19 +83,6 @@ export function OverviewTab({
           onChange={(e) => onNameChange(e.target.value)}
           placeholder="Mender"
           value={draft.name}
-        />
-      </Field>
-      <Field
-        help="Shown in the task inbox and the workflow picker."
-        htmlFor="agent-description"
-        label="Description"
-      >
-        <Textarea
-          id="agent-description"
-          onChange={(e) => onChange({ description: e.target.value })}
-          placeholder="One sentence on what this agent does."
-          rows={3}
-          value={draft.description}
         />
       </Field>
       <div className="grid grid-cols-2 gap-4">

@@ -39,7 +39,9 @@ from imbi.common.mcp import (
     copy_permissions_to_meta,
     exclude_non_ai_tools,
     excluded_route_maps,
+    mount_prefix,
 )
+from imbi.mcp import skills
 
 if typing.TYPE_CHECKING:
     from collections import abc
@@ -129,16 +131,14 @@ def _mcp_identity(*_args: typing.Any) -> typing.Any:
 
 
 def _instrument(server: fastmcp.FastMCP) -> None:
-    """Send ``$mcp_tool_call`` events when MCP analytics is on.
-
-    Tool schemas stay as the API defines them: no injected ``context``
-    or model arguments, and no conversation ids. The shared PostHog
-    scrubber removes tool arguments, results, and error text.
+    """Send MCP analytics events, with the agent intent and missing
+    capabilities. See ``docs/deployment/operations.md``.
     """
     if not (posthog.mcp_analytics() and posthog.init()):
         return
     # Optional dependency: import only when the switch is on.
     from posthog.mcp import (  # noqa: PLC0415
+        MCPAnalyticsContextOptions,
         MCPAnalyticsOptions,
         instrument,
     )
@@ -146,7 +146,14 @@ def _instrument(server: fastmcp.FastMCP) -> None:
     instrument(
         server,
         options=MCPAnalyticsOptions(
-            context=False,
+            # Short: the description is in every tool of tools/list.
+            context=MCPAnalyticsContextOptions(
+                description=(
+                    'Why you call this tool, in one short sentence. '
+                    'No names, emails, or IDs.'
+                )
+            ),
+            report_missing=True,
             capture_model=False,
             enable_conversation_id=False,
             enable_exception_autocapture=False,
@@ -241,6 +248,11 @@ def create_server(
     # principal making the request rather than a fixed identity. The
     # spec supplies the API's mount prefix, which ``base_url`` lacks.
     mcp.add_middleware(PermissionFilterMiddleware(client, spec))
+
+    # The prompts of the mcp-skills namespace, as MCP skills. The
+    # client sends the caller's token, so each caller gets the skills
+    # it can read.
+    mcp.add_provider(skills.PromptSkills(client, mount_prefix(spec)))
 
     # Every tool call is a ``POST /mcp``; this names the tool in the
     # access log line so the log distinguishes them.

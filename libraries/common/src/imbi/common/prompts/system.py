@@ -104,11 +104,21 @@ WORKFLOW_DESCRIPTION = DefaultPrompt(
     variables=(),
 )
 
+AGENT_DESCRIPTION = DefaultPrompt(
+    namespace='imbi-api',
+    slug='agent-description',
+    name='Agent description',
+    description='Writes the description of an agent when it is saved.',
+    template='imbi-api-agent-description.md',
+    variables=(),
+)
+
 DEFAULT_PROMPTS: tuple[DefaultPrompt, ...] = (
     ASSISTANT,
     SLACKBOT,
     TICKET_SUBJECT,
     WORKFLOW_DESCRIPTION,
+    AGENT_DESCRIPTION,
 )
 
 

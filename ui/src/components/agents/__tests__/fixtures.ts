@@ -98,6 +98,7 @@ export function promptVersion(
       temperature: 0.5,
       top_k: 40,
     },
+    prompt_id: 'prm-1',
     questions: {},
     ref: 'agents/mender@2',
     state: '',

@@ -18,7 +18,6 @@ import type {
 // stored only in the prompt CMS; the agent keeps a `prompt_ref`.
 
 export interface AgentDraft {
-  description: string
   icon: string
   name: string
   prompt: PromptDraft
@@ -185,7 +184,6 @@ export function draftFromAgent(
 ): AgentDraft {
   const settings: Partial<AgentSettings> = agent.settings ?? {}
   return {
-    description: agent.description ?? '',
     icon: agent.icon ?? '',
     name: agent.name,
     prompt: promptDraftFromVersion(prompt),
@@ -244,7 +242,6 @@ export function duplicateDraft(
 
 export function emptyDraft(): AgentDraft {
   return {
-    description: '',
     icon: '',
     name: '',
     prompt: promptDraftFromVersion(null),
@@ -535,7 +532,6 @@ export function versionSummary(
   const before = draftFromAgent(existing, null)
   const changed: string[] = []
   if (before.name !== draft.name) changed.push('name')
-  if (before.description !== draft.description) changed.push('description')
   if (before.icon !== draft.icon) changed.push('icon')
   if (before.slackChannel !== draft.slackChannel) changed.push('Slack channel')
   if (before.team !== draft.team) changed.push('owner team')
