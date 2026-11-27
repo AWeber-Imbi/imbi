@@ -13,6 +13,9 @@
     "cssVars": {
       "cssFile": "src/index.css",
       "ignorePrefixes": ["--radix-", "--assistant-", "--tw-"]
+    },
+    "tailwindcss": {
+      "entryPoint": "src/index.css"
     }
   },
   "jsPlugins": ["eslint-plugin-react-refresh", "eslint-plugin-perfectionist", "oxlint-tailwindcss", "./tools/oxlint-plugin-css-vars.ts"],

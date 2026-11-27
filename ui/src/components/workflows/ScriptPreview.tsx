@@ -127,7 +127,7 @@ export function ScriptPreview({
           {run.data.message && (
             <>
               <dt className="text-tertiary">Message</dt>
-              <dd className="font-mono text-xs break-words">
+              <dd className="font-mono text-xs wrap-break-word">
                 {run.data.message}
               </dd>
             </>
