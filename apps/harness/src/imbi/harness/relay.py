@@ -129,8 +129,10 @@ class Relay:
                     safeguards.CALL_TIMEOUT + 10, connect=10
                 ),
             ) as client,
+            # No SSE event cap, as with mcp 1: the SDK default of 1 MiB
+            # fails a large result.
             streamable_http.streamable_http_client(
-                self.url, http_client=client
+                self.url, http_client=client, max_sse_event_size=None
             ) as (read, write),
             mcp_session.ClientSession(read, write) as session,
         ):

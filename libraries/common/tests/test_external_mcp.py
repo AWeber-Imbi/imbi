@@ -512,7 +512,7 @@ class SessionIsolationTestCase(unittest.IsolatedAsyncioTestCase):
         @contextlib.asynccontextmanager
         async def fake_transport(
             *_args: object, **_kwargs: object
-        ) -> collections.abc.AsyncGenerator[tuple[object, object, object]]:
+        ) -> collections.abc.AsyncGenerator[tuple[object, object]]:
             # Mirrors streamable_http_client: a task group whose child
             # raises from handle_request_async on a 502.
             async with anyio.create_task_group() as tg:

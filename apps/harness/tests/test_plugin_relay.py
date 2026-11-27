@@ -8,6 +8,8 @@ each request and can misbehave on request (:data:`BEHAVIOR`).
 
 import asyncio
 import base64
+import collections.abc
+import contextlib
 import datetime
 import ipaddress
 import json
@@ -43,6 +45,13 @@ from imbi.harness import (
 
 TOKEN = 'plugin-token-0123456789abcdef'
 BIG = 1024 * 1024
+FORGOTTEN = json.dumps(
+    {
+        'jsonrpc': '2.0',
+        'id': None,
+        'error': {'code': -32600, 'message': 'Session not found'},
+    }
+).encode()
 PICTURE = base64.b64encode(b'not really a png').decode()
 #: The Authorization header and the method of each request.
 SEEN: list[str] = []
@@ -283,6 +292,11 @@ class _Recorder:
             BEHAVIOR.discard('drop')
             await self.respond(send, 404)
             return
+        if b'mcp-session-id' in headers and 'forget' in BEHAVIOR:
+            # The body of an SDK server that restarted.
+            BEHAVIOR.discard('forget')
+            await self.respond(send, 404, FORGOTTEN)
+            return
         if path == '/messages/' and 'fail post' in BEHAVIOR:
             BEHAVIOR.discard('fail post')
             await self.respond(send, 500)
@@ -385,11 +399,28 @@ class _ServerTestCase(unittest.IsolatedAsyncioTestCase):
         mcp = _server()
         app = mcp.streamable_http_app(json_response=True)
         sse_app = mcp.sse_app()
+        # Streamable HTTP that answers with SSE, not JSON.
+        stream_app = mcp.streamable_http_app(streamable_http_path='/stream')
+        own_lifespan = app.router.lifespan_context
+
+        @contextlib.asynccontextmanager
+        async def lifespan(
+            starlette: typing.Any,
+        ) -> collections.abc.AsyncIterator[None]:
+            async with (
+                own_lifespan(starlette),
+                stream_app.router.lifespan_context(stream_app),
+            ):
+                yield
+
+        app.router.lifespan_context = lifespan
 
         async def route(
             scope: typing.Any, receive: typing.Any, send: typing.Any
         ) -> None:
-            if scope['type'] == 'http' and scope['path'] in (
+            if scope['type'] == 'http' and scope['path'] == '/stream':
+                await stream_app(scope, receive, send)
+            elif scope['type'] == 'http' and scope['path'] in (
                 '/sse',
                 '/messages/',
             ):
@@ -848,8 +879,22 @@ class CallTestCase(_ServerTestCase):
         self.assertEqual([r.get('is_error') for r in results], [None, None])
         self.assertEqual(len(INITIALIZED), 2)
 
+    async def test_a_session_the_server_forgot_is_replaced(self) -> None:
+        BEHAVIOR.add('forget')
+        failed = await self.relayed.call('change', {'name': 'a'})
+        self.assertTrue(failed['is_error'])
+        again = await self.relayed.call('change', {'name': 'b'})
+        self.assertNotIn('is_error', again)
+        self.assertEqual(len(INITIALIZED), 2)
+
     async def test_a_large_result_is_not_cut(self) -> None:
         text = self.text(await self.relayed.call('big', {}))
+        self.assertEqual(text, 'x' * BIG)
+
+    async def test_a_large_sse_result_is_not_cut(self) -> None:
+        relayed = self.server_for(path='/stream')
+        await relayed.start()
+        text = self.text(await relayed.call('big', {}))
         self.assertEqual(text, 'x' * BIG)
 
     async def test_timeout(self) -> None:

@@ -51,7 +51,9 @@ CLOSE_TIMEOUT = 10.0
 #: The server types that the relay can connect to.
 TYPES = frozenset({'http', 'sse'})
 _NOT_NAME = re.compile(r'[^A-Za-z0-9_-]')
-_SESSION_TERMINATED = 'Session terminated'
+#: The SDK's message for a 404 on a session, and the message of an SDK
+#: server's own 404 body, which the SDK client forwards in its place.
+_SESSION_GONE = frozenset({'Session terminated', 'Session not found'})
 type Body = dict[str, typing.Any]
 #: The write side of a session: ``mcp.shared._context_streams`` wraps
 #: an anyio memory stream, and the SDK exports no public type for it.
@@ -102,7 +104,7 @@ def _lost(error: BaseException) -> bool:
         # a server's own error, so the message tells them apart.
         return error.code == types.CONNECTION_CLOSED or (
             error.code == types.INVALID_REQUEST
-            and error.message == _SESSION_TERMINATED
+            and error.message in _SESSION_GONE
         )
     return isinstance(
         error,
@@ -307,8 +309,10 @@ class Server:
             else:
                 client = await stack.enter_async_context(self._client())
                 read, write = await stack.enter_async_context(
+                    # No SSE event cap, as with mcp 1: the SDK default
+                    # of 1 MiB fails a large result.
                     streamable_http.streamable_http_client(
-                        self.url, http_client=client
+                        self.url, http_client=client, max_sse_event_size=None
                     )
                 )
             session = await stack.enter_async_context(
