@@ -362,11 +362,19 @@ class ShadowStateReadTestCase(unittest.IsolatedAsyncioTestCase):
         self,
         stored: list[deployment_nodes.EnvironmentReleaseState],
         result: str,
+        *,
+        reread: list[deployment_nodes.EnvironmentReleaseState] | None = None,
     ) -> float:
         before = self._count(result)
-        with mock.patch(
-            'imbi.common.deployments.current_and_latest_from_state',
-            mock.AsyncMock(return_value=stored),
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_from_state',
+                mock.AsyncMock(side_effect=[stored, reread or stored]),
+            ),
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[_PROD]),
+            ),
         ):
             projects._shadow_state_read(mock.AsyncMock(), ['p1'], [_PROD])
             await asyncio.gather(*projects._SHADOW_TASKS)
@@ -375,8 +383,19 @@ class ShadowStateReadTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_counts_and_logs_a_difference(self) -> None:
         with self.assertLogs(projects.LOGGER, 'WARNING') as logs:
             self.assertEqual(1, await self._run([], 'differ'))
-        self.assertIn('differs for 1 of 1', logs.output[0])
+        self.assertIn('differs for 1 environments', logs.output[0])
         self.assertIn('p1/prod', logs.output[0])
+
+    async def test_a_difference_gone_on_reread_is_a_match(self) -> None:
+        # A deployment written between the two reads.
+        self.assertEqual(1, await self._run([], 'match', reread=[_PROD]))
+
+    async def test_a_different_release_is_a_difference(self) -> None:
+        assert _PROD.current is not None
+        other = _PROD._replace(
+            current=_PROD.current._replace(release={'id': 'r-other'})
+        )
+        self.assertEqual(1, await self._run([other], 'differ'))
 
     async def test_counts_a_match(self) -> None:
         self.assertEqual(1, await self._run([_PROD], 'match'))

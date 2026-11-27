@@ -826,7 +826,14 @@ async def current_and_latest_from_state(
         else asyncio.sleep(0, []),
         current_and_latest_by_project(db, missing),
     )
-    nodes = {node.id: node for node in _to_project_deployments(rows)}
+    # A node with two ``HAS_DEPLOYMENT`` edges comes back as two rows;
+    # keep the highest release id, as :func:`_newest_per_environment`
+    # does for the reader.
+    nodes: dict[str | None, ProjectDeployment] = {}
+    for node in _to_project_deployments(rows):
+        kept = nodes.get(node.id)
+        if kept is None or _release_id(node) > _release_id(kept):
+            nodes[node.id] = node
     out: list[EnvironmentReleaseState] = []
     for project_id, state in stored.items():
         for pair in state.values():
@@ -841,6 +848,10 @@ async def current_and_latest_from_state(
                     )
                 )
     return out + fallback
+
+
+def _release_id(node: ProjectDeployment) -> str:
+    return str((node.release or {}).get('id') or '')
 
 
 def state_ids(entry: EnvironmentReleaseState) -> dict[str, str | None]:

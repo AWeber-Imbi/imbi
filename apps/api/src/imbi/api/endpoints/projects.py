@@ -808,41 +808,59 @@ def _shadow_state_read(
         return
     _shadow_last = now
 
-    def ids(
-        found: list[deployment_nodes.EnvironmentReleaseState],
-    ) -> dict[str, dict[str, str | None]]:
-        return {
-            f'{s.project_id}/{s.environment.get("slug") or ""}': (
-                deployment_nodes.state_ids(s)
-            )
-            for s in found
-        }
+    def differences(
+        old: list[deployment_nodes.EnvironmentReleaseState],
+        new: list[deployment_nodes.EnvironmentReleaseState],
+    ) -> list[str]:
+        """The ``project/environment`` keys whose two answers differ in
+        the deployment or the release of either attempt."""
+
+        def ids(
+            found: list[deployment_nodes.EnvironmentReleaseState],
+        ) -> dict[str, tuple[object, ...]]:
+            return {
+                f'{s.project_id}/{s.environment.get("slug") or ""}': (
+                    deployment_nodes.state_ids(s),
+                    (s.current.release or {}).get('id') if s.current else None,
+                    (s.latest.release or {}).get('id'),
+                )
+                for s in found
+            }
+
+        a, b = ids(old), ids(new)
+        return sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
 
     async def run() -> None:
         try:
-            stored = await deployment_nodes.current_and_latest_from_state(
-                db, project_ids
+            found = differences(
+                states,
+                await deployment_nodes.current_and_latest_from_state(
+                    db, project_ids
+                ),
             )
+            if found:
+                # The two reads do not share a snapshot, so a deployment
+                # written between them shows as a difference.  Read the
+                # projects concerned again, both ways, and count only a
+                # difference that remains.
+                again = sorted({key.split('/', 1)[0] for key in found})
+                old, new = await asyncio.gather(
+                    deployment_nodes.current_and_latest_by_project(db, again),
+                    deployment_nodes.current_and_latest_from_state(db, again),
+                )
+                found = differences(old, new)
         except Exception:  # noqa: BLE001
             _SHADOW_READS.labels('error').inc()
             LOGGER.warning(
                 'Deployment state shadow read failed', exc_info=True
             )
             return
-        old, new = ids(states), ids(stored)
-        differences = sorted(
-            key
-            for key in old.keys() | new.keys()
-            if old.get(key) != new.get(key)
-        )
-        _SHADOW_READS.labels('differ' if differences else 'match').inc()
-        if differences:
+        _SHADOW_READS.labels('differ' if found else 'match').inc()
+        if found:
             LOGGER.warning(
-                'Deployment state shadow read differs for %d of %d '
-                'environments: %s',
-                len(differences),
-                len(old),
-                ', '.join(differences[:10]),
+                'Deployment state shadow read differs for %d environments: %s',
+                len(found),
+                ', '.join(found[:10]),
             )
 
     task = asyncio.create_task(run())

@@ -1245,6 +1245,25 @@ class StateReaderTests(DeploymentNodeTestCase):
             {'tag': '1.0.0', 'committish': 'abc1234'}, new[0].latest.release
         )
 
+    async def test_two_releases_keep_the_highest_release_id(self) -> None:
+        await self.add_release(OTHER_RELEASE_ID, tag='2.0.0')
+        await self.upsert(status='success', external_run_id='1')
+        # The single-release rule stops writers doing this; build it raw
+        # to check the tie-break both readers share.
+        await self.graph.execute(
+            'MATCH (r:Release), (d:Deployment)'
+            ' WHERE r.id = {release_id} AND d.external_run_id = {run}'
+            ' MERGE (r)-[:HAS_DEPLOYMENT]->(d) RETURN d.id AS id',
+            {'release_id': OTHER_RELEASE_ID, 'run': '1'},
+            ['id'],
+        )
+        old, new = await self.both()
+        self.assertEqual(old, new)
+        assert new[0].current is not None and new[0].current.release
+        self.assertEqual(
+            max(RELEASE_ID, OTHER_RELEASE_ID), new[0].current.release['id']
+        )
+
     async def test_deleted_environment_does_not_show(self) -> None:
         await self.upsert(status='success', external_run_id='1')
         await self.graph.execute(
