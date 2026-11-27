@@ -191,3 +191,39 @@ class MigrateTestCase(unittest.IsolatedAsyncioTestCase):
         )
         assert info is not None
         self.assertEqual(info.model_id, 'off')
+
+    async def test_a_workload_identity_stays_only_in_its_org(self) -> None:
+        """Org A keeps the identity; org B sets up its own. An identity
+        of an organization that is gone is dropped everywhere."""
+        for slug, org in (('wif', self.orgs[0]), ('gone', 'no-such-org')):
+            await self.graph.execute(
+                'CREATE (p:AIProvider {{id: {id}, name: {name},'
+                " slug: {slug}, driver: 'anthropic', enabled: true,"
+                ' workload_identity: {wif}}})',
+                {
+                    'id': f'prv-{slug}-{self.suffix}',
+                    'name': self.name,
+                    'slug': slug,
+                    'wif': {'organization_id': org, 'target': {}},
+                },
+            )
+        await ai_catalog_orgs.migrate(self.graph)
+        records = await self.graph.execute(
+            'MATCH (p:AIProvider {{name: {name}}})'
+            ' WHERE p.org_id IN {orgs} AND p.slug <> {skip}'
+            ' RETURN p.slug AS slug, p.org_id AS org,'
+            ' p.workload_identity AS wif',
+            {'name': self.name, 'orgs': self.orgs, 'skip': 'anthropic'},
+            ['slug', 'org', 'wif'],
+        )
+        kept = {
+            (graph.parse_agtype(r['slug']), graph.parse_agtype(r['org'])): (
+                graph.parse_agtype(r['wif'])
+            )
+            for r in records
+        }
+        self.assertEqual(len(kept), 4)
+        self.assertIsNotNone(kept['wif', self.orgs[0]])
+        self.assertIsNone(kept['wif', self.orgs[1]])
+        self.assertIsNone(kept['gone', self.orgs[0]])
+        self.assertIsNone(kept['gone', self.orgs[1]])

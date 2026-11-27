@@ -133,7 +133,9 @@ the vendor can track cost for each provider. Model discovery uses the
 token. To stop, click **Stop using workload identity**.
 
 You need `ai_model:credentials`, membership of the organization, and
-`secret_provider:write` in that organization.
+`secret_provider:write` in that organization. The identity must be the
+identity of the organization of the provider. Another organization gives
+`422`: each organization sets up its own.
 
 ### Imbi services
 

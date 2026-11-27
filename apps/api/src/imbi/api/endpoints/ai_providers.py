@@ -885,7 +885,8 @@ async def set_ai_provider_workload_identity(
 ) -> AIProviderResponse:
     """Use workload identity for a provider (WIF plan 4.6, O7).
 
-    The caller must be a member of the organization with
+    ``organization`` must be the organization of the provider: each
+    organization sets up its own identity. The caller must have
     ``secret_provider:write`` there: the provider then uses the identity
     source of that organization. No token is minted here.
 
@@ -893,7 +894,8 @@ async def set_ai_provider_workload_identity(
         403: Not a member, or no ``secret_provider:write`` there.
         404: No such provider or organization.
         409: The provider has a stored key.
-        422: The driver cannot use workload identity, the provider has a
+        422: ``organization`` is not the organization of the provider,
+            the driver cannot use workload identity, the provider has a
             ``base_url``, no exchanger is installed for the vendor, or
             the target is not valid.
 
@@ -910,6 +912,14 @@ async def set_ai_provider_workload_identity(
     identity_org_id = await organizations.check_member(
         data.organization, db, auth
     )
+    if identity_org_id != org_id:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=(
+                'The workload identity must use the organization of the '
+                'AI provider'
+            ),
+        )
     # As require_permission: an admin passes, but must be a member.
     if not auth.is_admin and 'secret_provider:write' not in auth.permissions:
         raise fastapi.HTTPException(

@@ -921,6 +921,13 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
         ):
             self.assertEqual(self.put().status_code, 403)
 
+    def test_put_refuses_the_identity_of_another_org(self) -> None:
+        self.check_member.return_value = 'org-2'
+        router = self.route((GET_PROVIDER, [{'p': provider_props()}]))
+        response = self.put(organization='other')
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertFalse(any(UPDATE in q for q, _ in router.calls))
+
     def test_put_refuses_a_provider_with_a_key(self) -> None:
         self.route(
             (GET_PROVIDER, [{'p': provider_props(credentials_encrypted='e')}])

@@ -5,13 +5,16 @@ one belongs to one organization. :func:`migrate` copies each global
 provider (with its encrypted key, hint, and timestamps) and each global
 model to every organization, as new nodes with new ids, then deletes
 the global nodes. A copy of a model keeps only the ``ALLOWED_FOR``
-edges to the teams of its organization. Slugs do not change.
+edges to the teams of its organization. Only the copy in the
+organization of a workload identity keeps it: each other organization
+sets up its own. Slugs do not change.
 
 It runs at API start in one transaction, under an advisory lock, so
 replicas that start together do not copy twice. When no global node is
 left, it does nothing. With no organization, it keeps the global nodes.
 """
 
+import json
 import logging
 import typing
 
@@ -104,7 +107,7 @@ async def _copy(execute: graph.CypherExecute) -> int:
     for props in providers:
         for org_id in org_ids:
             copies[props['id'], org_id] = await _create(
-                execute, 'AIProvider', props, org_id
+                execute, 'AIProvider', _identity_in(props, org_id), org_id
             )
     for record in found:
         props = _value(record, 'm')
@@ -141,6 +144,19 @@ async def _copy(execute: graph.CypherExecute) -> int:
         len(org_ids),
     )
     return total
+
+
+def _identity_in(
+    props: dict[str, typing.Any], org_id: str
+) -> dict[str, typing.Any]:
+    """Keep a workload identity only on the copy in its organization."""
+    raw = props.get('workload_identity')
+    if not raw:
+        return props
+    wif = json.loads(raw) if isinstance(raw, str) else raw
+    if wif.get('organization_id') == org_id:
+        return props
+    return {**props, 'workload_identity': None}
 
 
 async def _create(

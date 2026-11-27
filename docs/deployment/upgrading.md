@@ -117,7 +117,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    ids then do not exist. The slugs do not change. A copy of a restricted
    model keeps only the teams of its organization: in an organization
    where no team was allowed, nobody can use the copy until you allow a
-   team or delete it. The AI Models page is now at
+   team or delete it. A provider with workload identity keeps it only in
+   the organization of the identity. In each other organization, the
+   copy has no credentials (unless the original had a stored key): set
+   up workload identity or a key there. If the organization of the
+   identity no longer exists, no copy keeps the identity. The AI Models page is now at
    **Admin > &lt;Org&gt; Admin > AI Models**. If the startup log shows
    `Failed to move the AI catalog into organizations`, start imbi-api
    again: the copy is one transaction.

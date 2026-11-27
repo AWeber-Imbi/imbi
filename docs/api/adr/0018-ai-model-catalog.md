@@ -218,7 +218,10 @@ decision above:
 Migration: at start, imbi-api copies each global provider (with its encrypted
 key, hint, workload identity, and timestamps) and each global model to every
 organization, as new nodes with new ids. A copy of a model keeps the
-`ALLOWED_FOR` edges only to the teams of its organization. Then imbi-api
+`ALLOWED_FOR` edges only to the teams of its organization. Only the copy in
+the organization of a workload identity keeps it; each other organization
+sets up its own, and the API refuses the identity of another organization
+(`422`). Then imbi-api
 deletes the global nodes. Slugs do not change. The copy runs in one
 transaction under an advisory lock, and does nothing when no global node is
 left. With no organization, the global nodes stay.
