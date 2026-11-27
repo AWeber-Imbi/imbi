@@ -138,11 +138,18 @@ jobs:
     name: "Harness isolation"
     needs: "changes"
     if: needs.changes.outputs.harness == 'true'
-    runs-on: "ubuntu-latest"
+    runs-on: "blacksmith-4vcpu-ubuntu-2404"
     steps:
       - uses: "actions/checkout@v7"
         with:
           persist-credentials: false
+      # Keeps the BuildKit state between runs, including the cargo cache
+      # mounts of proxy/Dockerfile. The type=gha cache of the Image job
+      # does not keep cache mounts, so it cannot do this. Without it,
+      # every run compiles the proxy from scratch.
+      - uses: "useblacksmith/setup-docker-builder@v2"
+        with:
+          cache-key: "harness-isolation"
       - uses: "helm/kind-action@v1"
         with:
           version: "v0.30.0"
@@ -151,7 +158,7 @@ jobs:
       # setgid file (P5a). The kind run below reuses these layers.
       - name: "Check the runtime image has no setuid or setgid files"
         run: |
-          docker build -f apps/harness/Dockerfile --target runtime \
+          docker build --load -f apps/harness/Dockerfile --target runtime \
             -t imbi-harness:runtime .
           found=$(docker run --rm --entrypoint find imbi-harness:runtime \
             / -xdev -perm /6000 -type f)
