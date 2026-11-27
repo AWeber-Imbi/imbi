@@ -164,8 +164,9 @@ async def workspace_org_slug(
     *, now: datetime.datetime | None = None
 ) -> str | None:
     """Return the slug of the organization of the Slack workspace, or
-    ``None`` when no organization has its team id. The answer is kept
-    for the identity cache TTL."""
+    ``None`` when no organization has its team id. A found slug is kept
+    for the identity cache TTL; ``None`` is not kept, so a workspace
+    linked later takes effect at the next request."""
     global _workspace_org
     now = now or datetime.datetime.now(datetime.UTC)
     if _workspace_org is not None and _workspace_org[1] > now:
@@ -181,6 +182,7 @@ async def workspace_org_slug(
             'Slack workspace %s is not linked to an Imbi organization',
             _team_id,
         )
+        return None
     ttl = settings.get_slackbot_settings().identity_cache_ttl
     _workspace_org = (slug, now + datetime.timedelta(seconds=ttl))
     return slug

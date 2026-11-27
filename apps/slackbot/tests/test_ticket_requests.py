@@ -812,6 +812,29 @@ class ConsumeTests(FlowTestCase):
         self.assertEqual([], self.slack.posts)
         client.xack.assert_awaited_once()
 
+    async def test_failed_org_lookup_is_not_acked(self) -> None:
+        client = mock.AsyncMock()
+        client.xautoclaim.return_value = ['0-0', [], []]
+        message = (b'1-0', {b'request': orjson.dumps(entry())})
+        client.xreadgroup.side_effect = [
+            [[b'imbi:ticket-requests', [message]]],
+            asyncio.CancelledError(),
+        ]
+        with (
+            mock.patch.object(
+                ticket_requests.valkey, 'get_client', return_value=client
+            ),
+            mock.patch.object(
+                ticket_requests.identity,
+                'workspace_org_slug',
+                mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await ticket_requests.consume(self.slack, self.runtime)
+        self.assertEqual([], self.slack.posts)
+        client.xack.assert_not_awaited()
+
     async def test_retry_is_not_acked(self) -> None:
         client = mock.AsyncMock()
         client.xautoclaim.return_value = ['0-0', [], []]

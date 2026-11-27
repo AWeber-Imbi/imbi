@@ -97,8 +97,18 @@ _GONE = frozenset(
 
 
 class _Retry(Exception):
-    """Some messages of a resolved request were not updated. Do not ack
-    the entry, so that it is claimed again after ``_CLAIM_IDLE_MS``."""
+    """Some messages of a resolved request were not updated, or the
+    organization of the workspace was not found. Do not ack the entry,
+    so that it is claimed again after ``_CLAIM_IDLE_MS``."""
+
+
+async def _workspace_org_slug() -> str | None:
+    """Return the organization of the workspace; a failed lookup is
+    tried again later."""
+    try:
+        return await identity.workspace_org_slug()
+    except Exception as err:
+        raise _Retry(f'workspace organization lookup failed: {err}') from err
 
 
 #: Channel ids by name. ponytail: a found channel never expires; a
@@ -145,7 +155,7 @@ async def consume(slack: SlackClient, runtime: forms.Runtime) -> None:
                     # slackbot for another workspace needs a group of
                     # its own.
                     elif value.get('org_slug') != (
-                        await identity.workspace_org_slug()
+                        await _workspace_org_slug()
                     ):
                         LOGGER.info(
                             'Skipping a request of organization %s',

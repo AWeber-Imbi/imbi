@@ -163,8 +163,12 @@ whose **Slack team ID** is the workspace's ID. See
 5. It calls imbi-api with that token. So each tool call has your
    permissions, and imbi-api records `slack` as the channel.
 
-Everything the bot does for you is in the organization of the workspace:
+These features use only the organization of the workspace:
 `/create-ticket`, the Home tab, link previews, and ticket requests.
+
+The API token of a conversation does not yet limit the bot's tool calls
+to that organization. The bot's prompt tells the model to stay in it, but
+a tool call can reach other organizations of which you are a member.
 
 When no active Imbi user has your email, the user is not a member of the
 organization, or no organization has the workspace's ID, the bot tells you

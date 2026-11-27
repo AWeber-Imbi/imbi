@@ -98,8 +98,12 @@ class IdentityTestCase(helpers.TestCase):
         self.assertEqual(2, graph.calls)
 
     async def test_unlinked_workspace_has_no_org(self) -> None:
-        identity.set_graph(FakeGraph([], workspace=[]))
+        graph = FakeGraph([], workspace=[])
+        identity.set_graph(graph)
         self.assertIsNone(await identity.workspace_org_slug())
+        # Not cached: a workspace linked later takes effect at once.
+        self.assertIsNone(await identity.workspace_org_slug())
+        self.assertEqual(2, graph.calls)
 
     async def test_resolve_is_cached(self) -> None:
         graph = FakeGraph(_user_records(is_active=True, display_name='Ada'))
