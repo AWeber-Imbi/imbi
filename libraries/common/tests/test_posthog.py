@@ -146,6 +146,32 @@ class PostHogTestCase(unittest.TestCase):
             },
         )
 
+    def test_scrub_redacts_credentials_and_numbers_in_intent(self) -> None:
+        cases = {
+            'Call with Authorization: Basic dXNlcjpwYXNz now': (
+                'Call with Authorization: Basic [redacted] now'
+            ),
+            'Use bearer abc.def for the call': (
+                'Use bearer [redacted] for the call'
+            ),
+            'Retry with api_key=s3cr3t and password: hunter2': (
+                'Retry with api_key=[redacted] and password: [redacted]'
+            ),
+            'Look up the owner of 4155550123': (
+                'Look up the owner of [number]'
+            ),
+            'Find basic facts about project 42': (
+                'Find basic facts about project 42'
+            ),
+        }
+        for intent, expected in cases.items():
+            message = {'properties': {'$mcp_intent': intent}}
+            self.assertEqual(
+                posthog._scrub(message)['properties']['$mcp_intent'],
+                expected,
+                intent,
+            )
+
     def test_scrub_redacts_emails_in_paths(self) -> None:
         message = {
             'event': '$exception',

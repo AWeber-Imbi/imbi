@@ -30,7 +30,7 @@ DEFAULT_HOST = 'https://us.i.posthog.com'
 #: Event properties never sent: the client IP address, and the MCP tool
 #: arguments, results, and error text, which can hold project data or
 #: secrets. The agent-written ``$mcp_intent`` is kept; the SDK redacts
-#: personal data in it.
+#: personal data in it, and ``_scrub`` redacts what the SDK does not.
 _DROPPED_PROPERTIES = (
     '$ip',
     '$mcp_parameters',
@@ -40,6 +40,21 @@ _DROPPED_PROPERTIES = (
 
 #: A path segment that holds an email, such as ``/users/{email}``.
 _EMAIL_SEGMENT = re.compile(r'[^/?#]*(?:@|%40)[^/?#]*', re.IGNORECASE)
+
+#: Text the SDK does not redact in ``$mcp_intent``: short credentials
+#: and bare phone numbers or IDs.
+_INTENT_REDACTIONS = (
+    (re.compile(r'\b((?i:bearer)|Basic)\s+\S+'), r'\1 [redacted]'),
+    (
+        re.compile(
+            r'\b([\w-]*(?:password|passwd|secret|token|api[_-]?key)\w*)'
+            r'(\s*[:=]\s*)\S+',
+            re.IGNORECASE,
+        ),
+        r'\1\2[redacted]',
+    ),
+    (re.compile(r'\d{7,}'), '[number]'),
+)
 
 _started = False
 
@@ -90,6 +105,11 @@ def _scrub(message: dict[str, typing.Any]) -> dict[str, typing.Any]:
         value = properties.get(name)
         if isinstance(value, str):
             properties[name] = _EMAIL_SEGMENT.sub('[email]', value)
+    intent = properties.get('$mcp_intent')
+    if isinstance(intent, str):
+        for pattern, replacement in _INTENT_REDACTIONS:
+            intent = pattern.sub(replacement, intent)
+        properties['$mcp_intent'] = intent
     return message
 
 
