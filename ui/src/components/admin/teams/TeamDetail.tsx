@@ -1,15 +1,7 @@
 import { useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  AlertCircle,
-  ArrowLeft,
-  Edit2,
-  Search,
-  UserPlus,
-  Users,
-  X,
-} from 'lucide-react'
+import { AlertCircle, ArrowLeft, Edit2, UserPlus, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -18,13 +10,13 @@ import {
   getTeamSchema,
   removeTeamMember,
 } from '@/api/endpoints'
+import { PersonPicker, usePeople } from '@/components/agents/ticketAttributes'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { EntityIcon } from '@/components/ui/entity-icon'
-import { Input } from '@/components/ui/input'
 import { Sk } from '@/components/ui/skeleton'
 import {
   Table,
@@ -56,6 +48,7 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
   const queryClient = useQueryClient()
   const [showAddMember, setShowAddMember] = useState(false)
   const [newMemberEmail, setNewMemberEmail] = useState('')
+  const { isError: peopleError, people } = usePeople(team.organization.slug)
   const [confirm, setConfirm] = useState<null | {
     action: 'remove'
     email: string
@@ -104,11 +97,6 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
       })
     },
   })
-
-  const handleAddMember = () => {
-    if (!newMemberEmail.trim()) return
-    addMemberMutation.mutate(newMemberEmail.trim())
-  }
 
   const handleRemoveMember = (email: string) => {
     setConfirm({ action: 'remove', email })
@@ -205,22 +193,20 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
           {showAddMember && (
             <div className="border-input bg-secondary mt-4 rounded-lg border p-4">
               <div className="flex items-center gap-3">
-                <div className="relative flex-1">
-                  <Search className="text-tertiary absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-                  <Input
-                    className="pl-10"
-                    onChange={(e) => setNewMemberEmail(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-                    placeholder="Enter user email address..."
-                    value={newMemberEmail}
-                  />
-                </div>
+                <PersonPicker
+                  ariaLabel="New member"
+                  className="flex-1"
+                  loadError={peopleError}
+                  onChange={setNewMemberEmail}
+                  people={people.filter(
+                    (p) => !members.some((m) => m.email === p.email),
+                  )}
+                  value={newMemberEmail}
+                />
                 <Button
                   className="bg-action text-action-foreground hover:bg-action-hover"
-                  disabled={
-                    !newMemberEmail.trim() || addMemberMutation.isPending
-                  }
-                  onClick={handleAddMember}
+                  disabled={!newMemberEmail || addMemberMutation.isPending}
+                  onClick={() => addMemberMutation.mutate(newMemberEmail)}
                 >
                   {addMemberMutation.isPending ? 'Adding...' : 'Add'}
                 </Button>
