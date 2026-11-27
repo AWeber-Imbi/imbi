@@ -38,9 +38,8 @@ RETURN o.id AS id, u IS NOT NULL AS member
 def organization_id(value: object, slug: str) -> str:
     """The id of an organization node, parsed.
 
-    An organization made before nodes had an ``id`` has none until the
-    startup backfill (:mod:`imbi.api.graph_ids`) gives it one. Its
-    data must never be keyed as ``"None"``, so this fails closed.
+    An organization made before nodes had an ``id`` has none. Its data
+    must never be keyed as ``"None"``, so this fails closed.
 
     Raises:
         500: The organization has no id.
@@ -48,7 +47,7 @@ def organization_id(value: object, slug: str) -> str:
     """
     if value is None or value == '':
         LOGGER.error(
-            'Organization %r has no id; the graph id backfill has not run',
+            'Organization %r has no id',
             slug,
         )
         raise fastapi.HTTPException(

@@ -901,3 +901,20 @@ class CreateAdminUserTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(user.email, 'admin@example.com')
         self.assertTrue(user.is_admin)
         self.assertEqual(db.execute.await_count, 2)
+
+    async def test_user_create_sets_an_id(self) -> None:
+        """The MERGE writes the model's id, but never changes one."""
+        db = self._make_db(
+            user_rows=[{'n': 'user-row'}],
+            membership_rows=[{'m': 'edge-row'}],
+        )
+        user = await entrypoint._create_admin_user(
+            db,
+            email='admin@example.com',
+            display_name='Admin',
+            password='s3cret',
+            org_slug='default',
+        )
+        query, params = db.execute.await_args_list[0].args
+        self.assertIn('n.id = coalesce(n.id, {id})', query)
+        self.assertEqual(user.id, params['id'])
