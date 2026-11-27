@@ -22,7 +22,7 @@ import orjson
 import psycopg
 from psycopg import rows
 
-from imbi.api import models, tickets, workflows
+from imbi.api import model_calls, models, tickets, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
@@ -1702,6 +1702,23 @@ class ModelDecisionTestCase(EngineTestCase):
         )
         run = await self._decide()
         self.assertEqual(run['steps']['decide']['error'], 'model_unavailable')
+
+    async def test_model_at_its_spend_cap_is_unavailable(self) -> None:
+        await tickets.initialize()
+        await model_calls.initialize()
+        # The spend of the month (zero) is at a cap of zero.
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}})
+            SET m.monthly_spend_cap = 0
+            """,
+            {'model': self.model},
+        )
+        with self.assertLogs('imbi.workflows.engine', 'WARNING') as logs:
+            run = await self._decide()
+        self.assertEqual(run['status'], 'failed', run)
+        self.assertEqual(run['steps']['decide']['error'], 'model_unavailable')
+        self.assertIn("'error': 'spend_cap'", '\n'.join(logs.output))
 
 
 class ConditionTestCase(EngineTestCase):

@@ -28,6 +28,7 @@ def _call(org: str, key: str | None) -> dict[str, typing.Any]:
         'content_sha256': 'abc',
         'model': 'default-chat',
         'model_id': 'claude-opus-5',
+        'ai_model_id': None,
         'driver': 'anthropic',
         'system': 'Be brief.',
         'messages': [{'role': 'user', 'content': 'Hi'}],

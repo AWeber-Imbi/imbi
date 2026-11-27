@@ -557,7 +557,11 @@ class CreateConversationEndpointTestCase(
     ) -> None:
         # No other model is used in its place (ADR 0018).
         client._client = mock.MagicMock()
-        for reason, status in (('disabled', 422), ('not_allowed', 403)):
+        for reason, status in (
+            ('disabled', 422),
+            ('spend_cap', 422),
+            ('not_allowed', 403),
+        ):
             error = llm_resolve.ModelUnusable(reason, 'opus', 'no')
             with (
                 self.subTest(reason=reason),

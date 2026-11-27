@@ -42,6 +42,7 @@ from imbi.common.labels import (
 from imbi.common.labels import (
     normalize_labels as normalize_labels,
 )
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.workflows.registry import agent as agent_step
 
 type Pool = psycopg_pool.AsyncConnectionPool[
@@ -3261,13 +3262,18 @@ class TicketStore:
         *,
         actor: Actor,
         system: Actor,
+        ai_model_id: str | None = None,
+        spend_cap: decimal.Decimal | None = None,
     ) -> tuple[Row, Row, bool]:
         """Record a usage report; return the task, the ledger row, and
         whether the row is new.
 
-        The ledger row keeps the prices used, and the task totals change
-        in the same transaction. When the cost total passes the budget,
-        the task closes with ``exceeded_ceiling``. A repeat with the same
+        The ledger row keeps the prices used and the AIModel id of them,
+        and the task totals change in the same transaction. When the
+        cost total passes the budget, the task closes with
+        ``exceeded_ceiling`` (reason ``budget``). When the month-to-date
+        spend of the AIModel reaches ``spend_cap``, it closes with
+        reason ``spend_cap``. A repeat with the same
         idempotency key returns the first row, even when the first report
         closed the task.
 
@@ -3312,9 +3318,9 @@ class TicketStore:
                     ' cache_write_1h_tokens, input_cost_per_million,'
                     ' output_cost_per_million, cache_read_cost_per_million,'
                     ' cache_write_cost_per_million,'
-                    ' cache_write_1h_cost_per_million, cost) VALUES (%s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s) RETURNING *',
+                    ' cache_write_1h_cost_per_million, cost, ai_model_id)'
+                    ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s) RETURNING *',
                     (
                         uuid.uuid4(),
                         task['id'],
@@ -3327,6 +3333,7 @@ class TicketStore:
                             for _count_column, price_column in _TOKEN_PRICES
                         ),
                         cost,
+                        ai_model_id,
                     ),
                 )
                 if row is None:  # pragma: no cover - RETURNING yields a row
@@ -3363,6 +3370,10 @@ class TicketStore:
                 await write.update(totals)
                 if remaining is not None and remaining < 0:
                     await _close(write, 'exceeded_ceiling', 'budget', system)
+                elif await _over_spend_cap(write.conn, ai_model_id, spend_cap):
+                    await _close(
+                        write, 'exceeded_ceiling', 'spend_cap', system
+                    )
         except TaskClosed:
             repeat = await self._usage_repeat(
                 organization_id, short_id, usage.idempotency_key
@@ -3880,6 +3891,22 @@ async def _release_dependents(
         if write.events:
             released.append(write)
     return released
+
+
+async def _over_spend_cap(
+    conn: psycopg.AsyncConnection[typing.Any],
+    ai_model_id: str | None,
+    cap: decimal.Decimal | None,
+) -> bool:
+    """Return ``True`` when the month-to-date spend of the AIModel is at
+    or over ``cap``."""
+    # ponytail: concurrent reports of other tasks can each see the spend
+    # under the cap, so the spend can go over the cap by the cost of the
+    # calls in flight. Lock the AIModel id if that overshoot is too large.
+    if ai_model_id is None or cap is None:
+        return False
+    spend = await llm_resolve.month_spend(conn, [ai_model_id])
+    return spend.get(ai_model_id, 0) >= cap
 
 
 async def _close(

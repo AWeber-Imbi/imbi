@@ -6,6 +6,9 @@ When that model cannot be used, :class:`ModelUnusable` is raised and no
 other level is tried. The environment applies only when no level names
 a model.
 
+A model with a ``monthly_spend_cap`` cannot be used when its spend of
+the calendar month (UTC) is at or over the cap (:func:`month_spend`).
+
 The catalog is per organization: every query reads only the models
 that ``BELONGS_TO`` the organizations of the call. The defaults are
 ``Organization -[:USES_DEFAULT_MODEL]-> AIModel`` and
@@ -14,7 +17,10 @@ organization.
 """
 
 import dataclasses
+import decimal
 import typing
+
+import psycopg
 
 from imbi.common import graph, models
 from imbi.common.prompts import resolve as prompt_resolve
@@ -26,6 +32,7 @@ Reason = typing.Literal[
     'disabled',
     'provider_disabled',
     'not_allowed',
+    'spend_cap',
     'unsupported_driver',
 ]
 Source = typing.Literal['explicit', 'team', 'org', 'env']
@@ -53,6 +60,27 @@ MATCH (o:Organization {{id: {org}}})-[:USES_DEFAULT_MODEL]->(m:AIModel)
       -[:BELONGS_TO]->(o)
 OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
 RETURN m, p, o
+"""
+
+#: The cost of each AI model in the calendar month (UTC), from the
+#: prompt runs (``ai_runtime``) and the agent usage reports
+#: (``tickets``). Both schemas are in the graph database; imbi-api
+#: creates them. A row with an unknown cost adds nothing.
+MONTH_SPEND_QUERY: typing.LiteralString = """
+WITH month AS (
+    SELECT date_trunc('month', NOW() AT TIME ZONE 'UTC')
+           AT TIME ZONE 'UTC' AS start
+)
+SELECT ai_model_id, SUM(cost) FROM (
+    SELECT ai_model_id, cost_usd AS cost FROM ai_runtime.ai_model_calls
+     WHERE ai_model_id = ANY(%(ids)s)
+       AND started_at >= (SELECT start FROM month)
+    UNION ALL
+    SELECT ai_model_id, cost FROM tickets.budget_ledger
+     WHERE ai_model_id = ANY(%(ids)s)
+       AND recorded_at >= (SELECT start FROM month)
+) AS spend
+GROUP BY ai_model_id
 """
 
 
@@ -141,6 +169,19 @@ async def resolve_model(
     return ResolvedModel(source='env')
 
 
+async def month_spend(
+    conn: psycopg.AsyncConnection[typing.Any], ids: list[str]
+) -> dict[str, decimal.Decimal]:
+    """Return the USD spend of each AI model id of ``ids`` in the
+    calendar month (UTC); a model with no spend is not in the result."""
+    cursor = await conn.execute(MONTH_SPEND_QUERY, {'ids': ids})
+    return {
+        model_id: spend
+        for model_id, spend in await cursor.fetchall()
+        if spend is not None
+    }
+
+
 def _parse(record: dict[str, typing.Any], name: str) -> models.AIModel:
     props = prompt_resolve.vertex_props(record['m']) or {}
     provider = prompt_resolve.vertex_props(record['p'])
@@ -177,20 +218,22 @@ async def _check(
             f'AI provider {model.provider.slug!r} of AI model {slug!r} '
             'is disabled',
         )
-    if admin or model.access_scope != 'restricted':
-        return
     allowed = (
-        (email is not None or team_id is not None)
-        and (
-            email is None
-            or await prompt_resolve.member_allowed(
-                db, slug, email, org_ids=[model.organization.id]
+        admin
+        or model.access_scope != 'restricted'
+        or (
+            (email is not None or team_id is not None)
+            and (
+                email is None
+                or await prompt_resolve.member_allowed(
+                    db, slug, email, org_ids=[model.organization.id]
+                )
             )
-        )
-        and (
-            team_id is None
-            or await prompt_resolve.team_allowed(
-                db, slug, team_id, org_ids=[model.organization.id]
+            and (
+                team_id is None
+                or await prompt_resolve.team_allowed(
+                    db, slug, team_id, org_ids=[model.organization.id]
+                )
             )
         )
     )
@@ -200,4 +243,19 @@ async def _check(
             slug,
             f'The model {slug!r} is restricted to teams that do not '
             'include the caller',
+        )
+    cap = model.monthly_spend_cap
+    if cap is None:
+        return
+    # ponytail: the calls in flight are not counted, so concurrent
+    # calls can go over the cap by their cost. Reserve the cost before
+    # the call if that overshoot is too large.
+    async with db.pool.connection() as conn:
+        spend = (await month_spend(conn, [model.id])).get(model.id, 0)
+    if spend >= cap:
+        raise ModelUnusable(
+            'spend_cap',
+            slug,
+            f'AI model {slug!r} reached its monthly spend cap of '
+            f'{cap} USD (spend this month: {spend} USD)',
         )

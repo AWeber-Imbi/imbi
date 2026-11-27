@@ -1,6 +1,7 @@
 """Tests for generative prompt runs and their call record."""
 
 import asyncio
+import decimal
 import json
 import typing
 import unittest
@@ -157,6 +158,27 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.calls.start.assert_not_awaited()
         self.generate.assert_not_awaited()
         self.generate.assert_not_awaited()
+
+    def test_model_at_its_spend_cap_is_refused(self) -> None:
+        self.route_run(monthly_spend_cap='5')
+        self.mock_db.pool = mock.MagicMock()
+        for spend, status in (('4.99', 200), ('5', 422)):
+            with (
+                self.subTest(spend=spend),
+                mock.patch.object(
+                    llm_resolve,
+                    'month_spend',
+                    mock.AsyncMock(
+                        return_value={MODEL_ROW['id']: decimal.Decimal(spend)}
+                    ),
+                ),
+            ):
+                response = self.run_ref()
+            self.assertEqual(response.status_code, status, response.text)
+        self.assertIn('monthly spend cap', response.json()['detail'])
+        self.assertEqual(self.calls.start.await_count, 1)
+        call = self.calls.start.await_args.args[0]
+        self.assertEqual(call['ai_model_id'], MODEL_ROW['id'])
 
     def test_cached_tokens_use_the_cache_read_price(self) -> None:
         self.generate.return_value = generate.Result(

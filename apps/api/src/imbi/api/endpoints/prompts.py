@@ -1855,6 +1855,7 @@ async def _run_generative(
             'content_sha256': version.content_sha256,
             'model': model.slug,
             'model_id': model_id,
+            'ai_model_id': model.id,
             'driver': provider.driver,
             'system': rendered.system,
             'messages': [m.model_dump() for m in rendered.messages],
