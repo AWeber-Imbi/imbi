@@ -39,30 +39,30 @@ def _make_tool(
     return tool
 
 
-class BuildAuthTestCase(unittest.TestCase):
+class BuildAuthTestCase(unittest.IsolatedAsyncioTestCase):
     """Test cases for _build_auth."""
 
-    def test_none_auth(self) -> None:
+    async def test_none_auth(self) -> None:
         server = _make_server(auth_type='none')
-        headers, http_auth = external_mcp._build_auth(server)
+        headers, http_auth = await external_mcp._build_auth(server)
         self.assertIsNone(headers)
         self.assertIsNone(http_auth)
 
     @mock.patch('imbi.common.external_mcp.decrypt_config_value')
-    def test_static_auth(self, mock_decrypt: mock.MagicMock) -> None:
+    async def test_static_auth(self, mock_decrypt: mock.MagicMock) -> None:
         mock_decrypt.return_value = 'secret-token'
         server = _make_server(
             auth_type='static',
             static_header='X-API-Key',
             static_value_encrypted='ciphertext',
         )
-        headers, http_auth = external_mcp._build_auth(server)
+        headers, http_auth = await external_mcp._build_auth(server)
         self.assertEqual(headers, {'X-API-Key': 'secret-token'})
         self.assertIsNone(http_auth)
         mock_decrypt.assert_called_once_with('ciphertext')
 
     @mock.patch('imbi.common.external_mcp.decrypt_config_value')
-    def test_static_auth_missing_value(
+    async def test_static_auth_missing_value(
         self, mock_decrypt: mock.MagicMock
     ) -> None:
         mock_decrypt.return_value = None
@@ -71,12 +71,12 @@ class BuildAuthTestCase(unittest.TestCase):
             static_header='X-API-Key',
             static_value_encrypted='bad',
         )
-        headers, http_auth = external_mcp._build_auth(server)
+        headers, http_auth = await external_mcp._build_auth(server)
         self.assertIsNone(headers)
         self.assertIsNone(http_auth)
 
     @mock.patch('imbi.common.external_mcp.decrypt_config_value')
-    def test_oauth_auth(self, mock_decrypt: mock.MagicMock) -> None:
+    async def test_oauth_auth(self, mock_decrypt: mock.MagicMock) -> None:
         mock_decrypt.return_value = 'client-secret'
         server = _make_server(
             auth_type='oauth_client_credentials',
@@ -85,7 +85,7 @@ class BuildAuthTestCase(unittest.TestCase):
             oauth_client_secret_encrypted='ciphertext',
             oauth_scope='read',
         )
-        headers, http_auth = external_mcp._build_auth(server)
+        headers, http_auth = await external_mcp._build_auth(server)
         self.assertIsNone(headers)
         assert isinstance(http_auth, external_mcp.OAuthClientCredentialsAuth)
         # The HttpUrl token URL must be coerced to a plain string.
@@ -94,7 +94,7 @@ class BuildAuthTestCase(unittest.TestCase):
         mock_decrypt.assert_called_once_with('ciphertext')
 
     @mock.patch('imbi.common.external_mcp.decrypt_config_value')
-    def test_oauth_auth_missing_secret(
+    async def test_oauth_auth_missing_secret(
         self, mock_decrypt: mock.MagicMock
     ) -> None:
         mock_decrypt.return_value = None
@@ -104,9 +104,43 @@ class BuildAuthTestCase(unittest.TestCase):
             oauth_client_id='client-id',
             oauth_client_secret_encrypted='bad',
         )
-        headers, http_auth = external_mcp._build_auth(server)
+        headers, http_auth = await external_mcp._build_auth(server)
         self.assertIsNone(headers)
         self.assertIsNone(http_auth)
+
+    async def test_static_ref_uses_the_resolver(self) -> None:
+        server = _make_server(
+            auth_type='static',
+            static_header='Authorization',
+            static_value_ref='secret://production/mcp/token',
+        )
+        resolver = mock.AsyncMock(return_value={'static_value': 'Bearer x'})
+        external_mcp.set_credential_resolver(resolver)
+        self.addCleanup(external_mcp.set_credential_resolver, None)
+        headers, _ = await external_mcp._build_auth(server)
+        self.assertEqual(headers, {'Authorization': 'Bearer x'})
+        resolver.assert_awaited_once_with(server)
+
+    async def test_install_without_a_token_installs_no_resolver(self) -> None:
+        external_mcp.set_credential_resolver(mock.AsyncMock())
+        with self.assertLogs('imbi.common.external_mcp', 'INFO'):
+            external_mcp.install_credential_resolver('http://api', '')
+        self.assertIsNone(external_mcp._credential_resolver)
+        external_mcp.install_credential_resolver('http://api', 'ik_x')
+        self.addCleanup(external_mcp.set_credential_resolver, None)
+        self.assertIsNotNone(external_mcp._credential_resolver)
+
+    async def test_ref_without_resolver_connects_without_secret(self) -> None:
+        server = _make_server(
+            auth_type='static',
+            static_header='Authorization',
+            static_value_ref='secret://production/mcp/token',
+        )
+        external_mcp.set_credential_resolver(None)
+        with self.assertLogs('imbi.common.external_mcp', 'WARNING'):
+            headers, auth = await external_mcp._build_auth(server)
+        self.assertIsNone(headers)
+        self.assertIsNone(auth)
 
 
 class OAuthClientCredentialsAuthTestCase(

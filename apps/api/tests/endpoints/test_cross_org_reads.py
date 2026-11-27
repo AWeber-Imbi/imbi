@@ -12,7 +12,7 @@ from unittest import mock
 import httpx
 
 from apps.api.tests.endpoints import test_agent_tasks
-from imbi.api import conversation_orgs, mcp_server_orgs
+from imbi.api import conversation_orgs, mcp_server_orgs, secret_broker
 from imbi.api.endpoints import plugin_edges
 from imbi.common import graph
 
@@ -238,6 +238,10 @@ class PluginEdgeTargetTests(CrossOrgTestCase):
 class MCPServerTests(CrossOrgTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        # No secret references here: the store is never read.
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: mock.AsyncMock()
+        )
         self.permissions |= {
             'mcp_server:create',
             'mcp_server:delete',

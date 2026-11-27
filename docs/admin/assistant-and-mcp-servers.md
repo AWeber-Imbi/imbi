@@ -20,6 +20,7 @@ organization. Only the members of the organization see it.
 | `mcp_server:read` | View MCP servers | `admin` |
 | `mcp_server:update` | Update MCP servers | `admin` |
 | `mcp_server:delete` | Delete MCP servers | `admin` |
+| `mcp_server:credential` | Get the secret values of MCP servers that use secret bindings | `admin`, `imbi-assistant`, `imbi-slackbot` |
 
 <!-- END GENERATED -->
 
@@ -104,6 +105,17 @@ Imbi encrypts the header value and the client secret before it stores
 them. The API never returns them. It returns only whether a value is set.
 The assistant uses these stored values. See
 [MCP servers and agents](#mcp-servers-and-agents).
+
+The header value or the client secret can instead come from a secret
+binding of the organization: select the binding as its source. The
+binding must also list the server (see
+[A binding for MCP servers](secrets.md#a-binding-for-mcp-servers)), and
+imbi-assistant and imbi-slackbot must have their API tokens
+(`IMBI_ASSISTANT_API_TOKEN`, `IMBI_SLACKBOT_API_TOKEN`). They get the
+value from imbi-api each time they connect. **Test connection** works
+only for a saved server that uses a binding. After you change the URL or
+the token URL of such a server, a user with `secret_binding:write` must
+save the binding again before the server can get the secret.
 
 **Ignored tools**
 

@@ -33,7 +33,7 @@ from mcp import types as mcp_types
 from mcp.client import streamable_http
 from mcp.shared._httpx_utils import create_mcp_http_client
 
-from imbi.common import graph
+from imbi.common import api, graph
 from imbi.common import models as common_models
 from imbi.common.auth.encryption import decrypt_config_value
 
@@ -138,19 +138,92 @@ class OAuthClientCredentialsAuth(httpx2.Auth):
         yield request
 
 
-def _build_auth(
+#: Gets the values of a server's secret references (``static_value``,
+#: ``oauth_client_secret``) from imbi-api. The service sets it at start.
+CredentialResolver = typing.Callable[
+    [common_models.MCPServer],
+    typing.Awaitable[dict[str, str | None]],
+]
+_credential_resolver: CredentialResolver | None = None
+
+
+def set_credential_resolver(resolver: CredentialResolver | None) -> None:
+    """Set how a connection gets the secrets of a server's references."""
+    global _credential_resolver
+    _credential_resolver = resolver
+
+
+def install_credential_resolver(api_url: str, api_token: str) -> None:
+    """Get the secrets of the servers' bindings from imbi-api with the
+    API key of this service's account (``POST
+    /mcp-servers/{id}/credentials``). With no key, servers that use a
+    binding connect without the secret."""
+    if not api_token:
+        LOGGER.info(
+            'No API token: MCP servers that use a secret binding cannot '
+            'get the secret'
+        )
+        set_credential_resolver(None)
+        return
+
+    async def resolve(
+        server: common_models.MCPServer,
+    ) -> dict[str, str | None]:
+        async with api.Imbi(
+            base_url=api_url, token=api_token, timeout=float(server.timeout)
+        ) as client:
+            response = await client.post(
+                f'/mcp-servers/{server.id}/credentials'
+            )
+        response.raise_for_status()
+        return typing.cast('dict[str, str | None]', response.json())
+
+    set_credential_resolver(resolve)
+
+
+async def _referenced_secrets(
+    server: common_models.MCPServer,
+) -> dict[str, str | None]:
+    """Return the values of a server's secret references. With no
+    resolver or on a failure, log it and return none: the connection
+    then fails as with a missing secret."""
+    if not (server.static_value_ref or server.oauth_client_secret_ref):
+        return {}
+    if _credential_resolver is None:
+        LOGGER.warning(
+            'MCP server %r uses a secret binding, but this service has no '
+            'API token to get it',
+            server.slug,
+        )
+        return {}
+    try:
+        return await _credential_resolver(server)
+    except Exception:
+        LOGGER.exception(
+            'Could not get the secrets of MCP server %r', server.slug
+        )
+        return {}
+
+
+async def _build_auth(
     server: common_models.MCPServer,
 ) -> tuple[dict[str, str] | None, httpx2.Auth | None]:
     """Build the headers and httpx auth for a server.
 
-    Decrypts any ``*_encrypted`` secrets at connect time.
+    Decrypts any ``*_encrypted`` secrets, and gets the values of any
+    secret references, at connect time.
 
     Returns:
         Tuple of (static headers or None, httpx2.Auth or None).
 
     """
+    referenced = await _referenced_secrets(server)
     if server.auth_type == 'static':
-        value = decrypt_config_value(server.static_value_encrypted)
+        value = (
+            referenced.get('static_value')
+            if server.static_value_ref
+            else decrypt_config_value(server.static_value_encrypted)
+        )
         if server.static_header and value is not None:
             return {server.static_header: value}, None
         LOGGER.warning(
@@ -159,7 +232,11 @@ def _build_auth(
         )
         return None, None
     if server.auth_type == 'oauth_client_credentials':
-        secret = decrypt_config_value(server.oauth_client_secret_encrypted)
+        secret = (
+            referenced.get('oauth_client_secret')
+            if server.oauth_client_secret_ref
+            else decrypt_config_value(server.oauth_client_secret_encrypted)
+        )
         if (
             server.oauth_token_url
             and server.oauth_client_id
@@ -315,7 +392,7 @@ class ExternalMCPManager:
         server: common_models.MCPServer,
     ) -> mcp.ClientSession:
         """Open and initialize a streamable-HTTP session."""
-        auth_headers, http_auth = _build_auth(server)
+        auth_headers, http_auth = await _build_auth(server)
         headers = server.request_headers(auth_headers)
         timeout = httpx2.Timeout(float(server.timeout))
         if server.verify_ssl:

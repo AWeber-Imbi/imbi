@@ -7,11 +7,12 @@ import { Check, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { removeSecretGrantAgent } from '@/api/endpoints'
-import { GitHubAppBindingSelect } from '@/components/admin/secrets/GitHubAppBindingSelect'
+import { BindingReferenceSelect } from '@/components/admin/secrets/BindingReferenceSelect'
 import { SecretDialog } from '@/components/admin/secrets/SecretDialog'
 import {
   type SecretBinding,
   type SecretGrant,
+  type SecretProvider,
   SETUP_PURPOSES,
 } from '@/components/admin/secrets/types'
 import { Button } from '@/components/ui/button'
@@ -121,8 +122,11 @@ export function AccessTab({
           htmlFor="agent-github-app"
           label="Binding"
         >
-          <GitHubAppBindingSelect
+          <BindingReferenceSelect
+            emptyLabel="No GitHub App"
+            filter={isGitHubAppBinding}
             id="agent-github-app"
+            label="GitHub App binding"
             onChange={(reference) =>
               onChange({ ...value, githubAppBinding: reference ?? '' })
             }
@@ -416,6 +420,14 @@ function GrantTable({
  * model upstream. The broker gives the key to the runner only when a
  * model_inference grant names the agent and the binding.
  */
+// The agent's own GitHub App: a binding of an enabled github_app provider.
+function isGitHubAppBinding(
+  _binding: SecretBinding,
+  provider?: SecretProvider,
+): boolean {
+  return provider?.type === 'github_app' && provider.enabled
+}
+
 function ModelKey({
   bindings,
   canGrant,

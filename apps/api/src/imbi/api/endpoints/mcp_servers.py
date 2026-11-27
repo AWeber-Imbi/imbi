@@ -18,10 +18,12 @@ import typing
 import fastapi
 import pydantic
 
-from imbi.api import mcp_test
+from imbi.api import mcp_test, secret_broker
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.endpoints.secret_broker import broker_error
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.secret_broker import broker, providers
 from imbi.common import graph, models
 from imbi.common.auth.encryption import encrypt_config_value
 
@@ -53,9 +55,11 @@ class MCPServerCreate(pydantic.BaseModel):
     auth_type: AuthType = 'none'
     static_header: str | None = None
     static_value: str | None = None
+    static_value_ref: str | None = None
     oauth_token_url: pydantic.HttpUrl | None = None
     oauth_client_id: str | None = None
     oauth_client_secret: str | None = None
+    oauth_client_secret_ref: str | None = None
     oauth_scope: str | None = None
 
 
@@ -82,9 +86,11 @@ class MCPServerUpdate(pydantic.BaseModel):
     auth_type: AuthType | None = None
     static_header: str | None = None
     static_value: str | None = None
+    static_value_ref: str | None = None
     oauth_token_url: pydantic.HttpUrl | None = None
     oauth_client_id: str | None = None
     oauth_client_secret: str | None = None
+    oauth_client_secret_ref: str | None = None
     oauth_scope: str | None = None
 
 
@@ -110,9 +116,11 @@ class MCPServerResponse(pydantic.BaseModel):
     auth_type: AuthType = 'none'
     static_header: str | None = None
     has_static_value: bool = False
+    static_value_ref: str | None = None
     oauth_token_url: pydantic.HttpUrl | None = None
     oauth_client_id: str | None = None
     has_oauth_client_secret: bool = False
+    oauth_client_secret_ref: str | None = None
     oauth_scope: str | None = None
     status: typing.Literal['unknown', 'healthy', 'degraded', 'unreachable'] = (
         'unknown'
@@ -173,11 +181,13 @@ def _to_response(node: models.MCPServer) -> MCPServerResponse:
         auth_type=node.auth_type,
         static_header=node.static_header,
         has_static_value=node.static_value_encrypted is not None,
+        static_value_ref=node.static_value_ref,
         oauth_token_url=node.oauth_token_url,
         oauth_client_id=node.oauth_client_id,
         has_oauth_client_secret=(
             node.oauth_client_secret_encrypted is not None
         ),
+        oauth_client_secret_ref=node.oauth_client_secret_ref,
         oauth_scope=node.oauth_scope,
         status=node.status,
         last_tested_at=node.last_tested_at,
@@ -196,6 +206,7 @@ async def create_mcp_server(
     org_id: organizations.MemberOrgId,
     data: MCPServerCreate,
     db: graph.Pool,
+    secrets: secret_broker.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('mcp_server:create')),
@@ -232,10 +243,16 @@ async def create_mcp_server(
             auth_type=data.auth_type,
             static_header=data.static_header,
             static_value_encrypted=encrypt_config_value(data.static_value),
+            static_value_ref=await _check_ref(
+                secrets, org_id, data.static_value_ref
+            ),
             oauth_token_url=data.oauth_token_url,
             oauth_client_id=data.oauth_client_id,
             oauth_client_secret_encrypted=encrypt_config_value(
                 data.oauth_client_secret
+            ),
+            oauth_client_secret_ref=await _check_ref(
+                secrets, org_id, data.oauth_client_secret_ref
             ),
             oauth_scope=data.oauth_scope,
             org_id=org_id,
@@ -322,6 +339,7 @@ async def update_mcp_server(
     id: str,
     data: MCPServerUpdate,
     db: graph.Pool,
+    secrets: secret_broker.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('mcp_server:update')),
@@ -379,6 +397,9 @@ async def update_mcp_server(
         updates['oauth_client_secret_encrypted'] = encrypt_config_value(
             set_fields['oauth_client_secret']
         )
+    for ref in ('static_value_ref', 'oauth_client_secret_ref'):
+        if ref in set_fields:
+            updates[ref] = await _check_ref(secrets, org_id, set_fields[ref])
 
     if not updates:
         return _to_response(existing)
@@ -446,6 +467,7 @@ async def test_mcp_server(
     org_id: organizations.MemberOrgId,
     id: str,
     db: graph.Pool,
+    service: secret_broker.Broker,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('mcp_server:update')),
@@ -470,7 +492,9 @@ async def test_mcp_server(
     """
     _ = auth
     node = await _fetch(db, org_id, id)
-    result = await mcp_test.test_connection(node)
+    result = await mcp_test.test_connection(
+        await _with_resolved_refs(service, node)
+    )
     now = datetime.datetime.now(datetime.UTC)
     node.status = result.status
     node.last_tested_at = now
@@ -517,6 +541,11 @@ async def test_mcp_server_config(
 
     """
     _ = auth
+    if data.static_value_ref or data.oauth_client_secret_ref:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Save the server first to test a secret binding',
+        )
     try:
         node = models.MCPServer(
             name=data.name,
@@ -638,4 +667,144 @@ async def _fetch(db: graph.Graph, org_id: str, id: str) -> models.MCPServer:
     return results[0]
 
 
-__all__ = ['mcp_servers_router']
+async def _check_ref(
+    secrets: secret_broker.store.SecretStore, org_id: str, ref: str | None
+) -> str | None:
+    """Return the canonical form of a secret reference whose binding is
+    in the organization. An empty value clears the reference.
+
+    Raises:
+        400: The reference does not parse, or has no binding in the
+            organization.
+
+    """
+    if not ref:
+        return None
+    try:
+        parsed = broker.parse_reference(ref)
+    except providers.BrokerError:
+        raise fastapi.HTTPException(
+            status_code=400, detail=f'{ref!r} is not a secret reference'
+        ) from None
+    if await secrets.binding_by_reference(org_id, parsed.binding) is None:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'No secret binding for {parsed.binding} in the'
+            ' organization',
+        )
+    return str(parsed)
+
+
+async def _credentials(
+    service: broker.Broker, node: models.MCPServer, actor: str
+) -> dict[str, str | None]:
+    """Resolve, through the broker, the secret reference that the
+    server's ``auth_type`` uses.
+
+    Raises:
+        HTTPException: The broker refused or failed (``broker_error``).
+
+    """
+    values: dict[str, str | None] = {
+        'static_value': None,
+        'oauth_client_secret': None,
+    }
+    name, ref = {
+        'static': ('static_value', node.static_value_ref),
+        'oauth_client_credentials': (
+            'oauth_client_secret',
+            node.oauth_client_secret_ref,
+        ),
+    }.get(node.auth_type, ('', None))
+    if not ref or not node.org_id:
+        return values
+    target = broker.McpServerTarget(
+        id=node.id,
+        url=str(node.url),
+        token_url=str(node.oauth_token_url) if node.oauth_token_url else None,
+    )
+    try:
+        material = await service.mcp_credential(
+            node.org_id, ref, target, actor=actor
+        )
+    except providers.BrokerError as err:
+        raise broker_error(err) from None
+    values[name] = material.value.decode()
+    return values
+
+
+async def _with_resolved_refs(
+    service: broker.Broker, node: models.MCPServer
+) -> models.MCPServer:
+    """Return a copy of ``node`` with the values of its references in
+    the encrypted fields, for a connection test."""
+    if not (node.static_value_ref or node.oauth_client_secret_ref):
+        return node
+    values = await _credentials(service, node, 'system')
+    update: dict[str, typing.Any] = {}
+    if node.static_value_ref:
+        update['static_value_encrypted'] = encrypt_config_value(
+            values['static_value']
+        )
+        update['static_value_ref'] = None
+    if node.oauth_client_secret_ref:
+        update['oauth_client_secret_encrypted'] = encrypt_config_value(
+            values['oauth_client_secret']
+        )
+        update['oauth_client_secret_ref'] = None
+    return node.model_copy(update=update)
+
+
+class MCPServerCredentials(pydantic.BaseModel):
+    """The values of the secret references of an MCP server."""
+
+    static_value: str | None = None
+    oauth_client_secret: str | None = None
+
+
+# The assistant and the Slack bot get the credentials of a server here,
+# with their service account. The path has no organization: the server
+# id names one, and the broker checks that the binding lists the server.
+mcp_server_credentials_router = fastapi.APIRouter(tags=['MCP Servers'])
+
+
+@mcp_server_credentials_router.post(
+    '/mcp-servers/{id}/credentials', response_model=MCPServerCredentials
+)
+async def get_mcp_server_credentials(
+    id: str,
+    response: fastapi.Response,
+    db: graph.Pool,
+    service: secret_broker.Broker,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('mcp_server:credential')
+        ),
+    ],
+) -> MCPServerCredentials:
+    """Return the values of the secret references of a server.
+
+    Only a service account (imbi-assistant, imbi-slackbot) can call it.
+
+    Raises:
+        403: The caller is a user, or a binding does not list the server.
+        404: No such server.
+        503: The secret provider failed.
+
+    """
+    if auth.service_account is None:
+        raise fastapi.HTTPException(
+            status_code=403, detail='Only a service account can call this'
+        )
+    results = await db.match(models.MCPServer, {'id': id})
+    if not results or not results[0].org_id:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'MCP server with id {id!r} not found'
+        )
+    values = await _credentials(service, results[0], auth.principal_name)
+    response.headers.update(broker.NO_STORE_HEADERS)
+    return MCPServerCredentials(**values)
+
+
+__all__ = ['mcp_server_credentials_router', 'mcp_servers_router']

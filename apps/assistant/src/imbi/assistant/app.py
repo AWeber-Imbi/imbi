@@ -39,6 +39,10 @@ async def _anthropic_lifespan() -> abc.AsyncIterator[None]:
 
 @contextlib.asynccontextmanager
 async def _mcp_lifespan() -> abc.AsyncIterator[None]:
+    service = settings.get_assistant_settings()
+    external_mcp.install_credential_resolver(
+        service.api_base_url, service.api_token
+    )
     await mcp.initialize()
     try:
         yield

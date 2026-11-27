@@ -798,9 +798,15 @@ class MCPServer(Node):
     )
     static_header: str | None = None
     static_value_encrypted: str | None = None
+    #: A secret reference (``secret://...``) in place of
+    #: ``static_value_encrypted``. The binding must list this server in
+    #: its ``mcp_server_usage``.
+    static_value_ref: str | None = None
     oauth_token_url: pydantic.HttpUrl | None = None
     oauth_client_id: str | None = None
     oauth_client_secret_encrypted: str | None = None
+    #: A secret reference in place of ``oauth_client_secret_encrypted``.
+    oauth_client_secret_ref: str | None = None
     oauth_scope: str | None = None
     # Runtime health, written by the connection-test endpoint and by the
     # assistant when a tool call against this server fails. ``unknown``
@@ -844,14 +850,32 @@ class MCPServer(Node):
         Validates the persisted shape: secret presence is checked via the
         ``*_encrypted`` fields, so this holds equally for a freshly built
         node and for a node assembled by merging a partial update onto an
-        existing one.
+        existing one. A secret is either a stored value or a reference,
+        never both.
         """
+        for name, value, ref in (
+            (
+                'static_value',
+                self.static_value_encrypted,
+                self.static_value_ref,
+            ),
+            (
+                'oauth_client_secret',
+                self.oauth_client_secret_encrypted,
+                self.oauth_client_secret_ref,
+            ),
+        ):
+            if value and ref:
+                raise ValueError(f'{name} has a value and a reference')
         if self.auth_type == 'static':
             missing = [
                 name
                 for name, value in (
                     ('static_header', self.static_header),
-                    ('static_value', self.static_value_encrypted),
+                    (
+                        'static_value',
+                        self.static_value_encrypted or self.static_value_ref,
+                    ),
                 )
                 if not value
             ]
@@ -867,7 +891,8 @@ class MCPServer(Node):
                     ('oauth_client_id', self.oauth_client_id),
                     (
                         'oauth_client_secret',
-                        self.oauth_client_secret_encrypted,
+                        self.oauth_client_secret_encrypted
+                        or self.oauth_client_secret_ref,
                     ),
                 )
                 if not value

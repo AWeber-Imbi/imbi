@@ -2214,6 +2214,24 @@ class MCPServerModelTestCase(unittest.TestCase):
                 auth_type='static',
             )
 
+    def test_secret_is_a_value_or_a_reference(self) -> None:
+        """A reference satisfies the auth type; a value and a reference
+        together are refused."""
+        fields = {
+            'name': 'Example',
+            'slug': 'example',
+            'url': 'https://mcp.example.com/mcp',
+            'auth_type': 'static',
+            'static_header': 'Authorization',
+            'static_value_ref': 'secret://production/mcp/token',
+        }
+        server = models.MCPServer(**fields)
+        self.assertEqual(
+            server.static_value_ref, 'secret://production/mcp/token'
+        )
+        with self.assertRaises(pydantic.ValidationError):
+            models.MCPServer(**fields, static_value_encrypted='ciphertext')
+
     def test_static_auth_valid(self) -> None:
         """A fully specified static auth config validates."""
         server = models.MCPServer(

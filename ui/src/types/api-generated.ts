@@ -2298,6 +2298,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp-servers/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get Mcp Server Credentials
+         * @description Return the values of the secret references of a server.
+         *
+         *     Only a service account (imbi-assistant, imbi-slackbot) can call it.
+         *
+         *     Raises:
+         *         403: The caller is a user, or a binding does not list the server.
+         *         404: No such server.
+         *         503: The secret provider failed.
+         */
+        post: operations["get_mcp_server_credentials_api_mcp_servers__id__credentials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me/identities": {
         parameters: {
             query?: never;
@@ -17309,14 +17336,28 @@ export interface components {
             static_header?: string | null;
             /** Static Value */
             static_value?: string | null;
+            /** Static Value Ref */
+            static_value_ref?: string | null;
             /** Oauth Token Url */
             oauth_token_url?: string | null;
             /** Oauth Client Id */
             oauth_client_id?: string | null;
             /** Oauth Client Secret */
             oauth_client_secret?: string | null;
+            /** Oauth Client Secret Ref */
+            oauth_client_secret_ref?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
+        };
+        /**
+         * MCPServerCredentials
+         * @description The values of the secret references of an MCP server.
+         */
+        MCPServerCredentials: {
+            /** Static Value */
+            static_value?: string | null;
+            /** Oauth Client Secret */
+            oauth_client_secret?: string | null;
         };
         /**
          * MCPServerResponse
@@ -17377,6 +17418,8 @@ export interface components {
              * @default false
              */
             has_static_value: boolean;
+            /** Static Value Ref */
+            static_value_ref?: string | null;
             /** Oauth Token Url */
             oauth_token_url?: string | null;
             /** Oauth Client Id */
@@ -17386,6 +17429,8 @@ export interface components {
              * @default false
              */
             has_oauth_client_secret: boolean;
+            /** Oauth Client Secret Ref */
+            oauth_client_secret_ref?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
             /**
@@ -17480,12 +17525,16 @@ export interface components {
             static_header?: string | null;
             /** Static Value */
             static_value?: string | null;
+            /** Static Value Ref */
+            static_value_ref?: string | null;
             /** Oauth Token Url */
             oauth_token_url?: string | null;
             /** Oauth Client Id */
             oauth_client_id?: string | null;
             /** Oauth Client Secret */
             oauth_client_secret?: string | null;
+            /** Oauth Client Secret Ref */
+            oauth_client_secret_ref?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
         };
@@ -17555,12 +17604,16 @@ export interface components {
             static_header?: string | null;
             /** Static Value */
             static_value?: string | null;
+            /** Static Value Ref */
+            static_value_ref?: string | null;
             /** Oauth Token Url */
             oauth_token_url?: string | null;
             /** Oauth Client Id */
             oauth_client_id?: string | null;
             /** Oauth Client Secret */
             oauth_client_secret?: string | null;
+            /** Oauth Client Secret Ref */
+            oauth_client_secret_ref?: string | null;
             /** Oauth Scope */
             oauth_scope?: string | null;
         };
@@ -17841,6 +17894,22 @@ export interface components {
             name?: string | null;
             /** Slug */
             slug?: string | null;
+        };
+        /**
+         * McpServerUsage
+         * @description The MCP servers of the organization that may use the binding as
+         *     their credential. The assistant and the Slack bot get the value
+         *     through imbi-api; no grant gives it to a task. A save stores each
+         *     server's current URL and token URL; when either changes, the server
+         *     cannot use the binding until a binding writer saves it again.
+         */
+        McpServerUsage: {
+            /**
+             * Servers
+             * @description The ids of the MCP servers
+             * @default []
+             */
+            servers: string[];
         };
         /**
          * MergedConfig
@@ -21886,6 +21955,10 @@ export interface components {
             provider_key_usage?: {
                 [key: string]: unknown;
             } | null;
+            /** Mcp Server Usage */
+            mcp_server_usage?: {
+                [key: string]: unknown;
+            } | null;
             /** Created By */
             created_by: string;
             /**
@@ -21955,6 +22028,7 @@ export interface components {
              */
             grantable: boolean;
             provider_key_usage?: components["schemas"]["ProviderKeyUsage"] | null;
+            mcp_server_usage?: components["schemas"]["McpServerUsage"] | null;
         };
         /** SecretBindingPatch */
         SecretBindingPatch: {
@@ -21979,6 +22053,7 @@ export interface components {
             /** Grantable */
             grantable?: boolean | null;
             provider_key_usage?: components["schemas"]["ProviderKeyUsage"] | null;
+            mcp_server_usage?: components["schemas"]["McpServerUsage"] | null;
         };
         /** SecretBindingValidation */
         SecretBindingValidation: {
@@ -28315,6 +28390,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaintenanceLogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_server_credentials_api_mcp_servers__id__credentials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerCredentials"];
                 };
             };
             /** @description Validation Error */

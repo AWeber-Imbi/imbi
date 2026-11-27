@@ -22,6 +22,7 @@ from imbi.slackbot import (
     identity,
     links,
     mcp,
+    settings,
     slack_handler,
 )
 
@@ -40,6 +41,10 @@ async def _anthropic_lifespan() -> abc.AsyncGenerator[None, None]:
 
 @contextlib.asynccontextmanager
 async def _mcp_lifespan() -> abc.AsyncGenerator[None, None]:
+    service = settings.get_slackbot_settings()
+    external_mcp.install_credential_resolver(
+        service.api_base_url, service.api_token
+    )
     await mcp.initialize()
     try:
         yield

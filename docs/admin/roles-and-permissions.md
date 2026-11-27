@@ -184,6 +184,7 @@ it.
 | `mcp_server:read` | View MCP servers | yes |  |  |  |  |  |  |  |  |
 | `mcp_server:update` | Update MCP servers | yes |  |  |  |  |  |  |  |  |
 | `mcp_server:delete` | Delete MCP servers | yes |  |  |  |  |  |  |  |  |
+| `mcp_server:credential` | Get the secret values of MCP servers that use secret bindings | yes |  |  |  |  |  |  | yes | yes |
 | `ai_model:create` | Create AI providers and models | yes |  |  |  |  |  |  |  |  |
 | `ai_model:read` | View AI providers and models | yes | yes | yes | yes | yes |  |  |  |  |
 | `ai_model:update` | Update AI providers and models | yes |  |  |  |  |  |  |  |  |

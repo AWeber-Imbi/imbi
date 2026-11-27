@@ -8,7 +8,7 @@ import psycopg.errors
 from fastapi.testclient import TestClient
 
 from apps.api.tests import support
-from imbi.api import models
+from imbi.api import models, secret_broker
 from imbi.api.auth import organizations, permissions
 from imbi.api.mcp_test import ConnectionTestResult
 from imbi.common import graph
@@ -50,6 +50,14 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
 
         self.test_app.dependency_overrides[organizations.member_org_id] = (
             lambda: 'org-1'
+        )
+        self.mock_secrets = mock.AsyncMock()
+        self.mock_broker = mock.AsyncMock()
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.mock_secrets
+        )
+        self.test_app.dependency_overrides[secret_broker.get_broker] = (
+            lambda: self.mock_broker
         )
         self.client = TestClient(self.test_app)
 
@@ -132,6 +140,62 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         self.assertNotIn('static_value_encrypted', data)
         self.assertNotIn('oauth_client_secret', data)
         self.assertNotIn('oauth_client_secret_encrypted', data)
+
+    def test_create_with_a_secret_reference(self) -> None:
+        """A binding reference of the org replaces the stored value."""
+        ref = 'secret://production/mcp/token'
+        self.mock_secrets.binding_by_reference.return_value = {'id': 'b-1'}
+        self.mock_db.execute.return_value = [
+            {
+                'n': self._server_props(
+                    auth_type='static',
+                    static_header='Authorization',
+                    static_value_ref=ref,
+                )
+            }
+        ]
+        body = {
+            'name': 'Example',
+            'slug': 'example',
+            'url': 'https://mcp.example.com',
+            'auth_type': 'static',
+            'static_header': 'Authorization',
+            'static_value_ref': ref,
+        }
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/acme/mcp-servers/', json=body
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['static_value_ref'], ref)
+        self.assertEqual(
+            self.mock_db.execute.call_args.args[1]['static_value_ref'], ref
+        )
+        self.mock_secrets.binding_by_reference.assert_awaited_once_with(
+            'org-1', ref
+        )
+        for change, why in (
+            ({'static_value_ref': 'not a ref'}, 'does not parse'),
+            ({'static_value': 'x'}, 'value and a reference'),
+        ):
+            with self.subTest(why=why):
+                response = self.client.post(
+                    '/organizations/acme/mcp-servers/', json=body | change
+                )
+                self.assertEqual(response.status_code, 400, response.text)
+        # No binding with the reference in the organization.
+        self.mock_secrets.binding_by_reference.return_value = None
+        response = self.client.post(
+            '/organizations/acme/mcp-servers/', json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        # An unsaved configuration cannot test a reference.
+        response = self.client.post(
+            '/organizations/acme/mcp-servers/test', json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
 
     def test_create_validation_error(self) -> None:
         """Missing required fields return 422."""
@@ -646,6 +710,14 @@ class MCPServerPermissionTestCase(support.SharedAppTestCase):
         )
         self.test_app.dependency_overrides[organizations.member_org_id] = (
             lambda: 'org-1'
+        )
+        self.mock_secrets = mock.AsyncMock()
+        self.mock_broker = mock.AsyncMock()
+        self.test_app.dependency_overrides[secret_broker._inject_store] = (
+            lambda: self.mock_secrets
+        )
+        self.test_app.dependency_overrides[secret_broker.get_broker] = (
+            lambda: self.mock_broker
         )
         self.client = TestClient(self.test_app)
 

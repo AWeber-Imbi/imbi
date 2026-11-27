@@ -171,6 +171,28 @@ A binding gives one AWS secret a reference in Imbi.
 Click **Validate** on the binding row to check that the role can see the
 AWS secret.
 
+### A binding for MCP servers
+
+An [MCP server](assistant-and-mcp-servers.md) can take its header value
+or its client secret from a binding. The binding must list the server:
+
+1. Create the MCP server first.
+2. Open the binding and select the server in **MCP servers**. Only a user
+   with `secret_binding:write` can change this list, so an admin of MCP
+   servers alone cannot send a secret to a server of their choice.
+3. On the MCP server, select the binding as the source of the secret.
+
+The binding keeps the URL and the token URL that each listed server had
+when the binding was saved. Imbi sends the secret only to that place.
+After someone changes the URL or the token URL of a server, the server
+cannot get the secret until a user with `secret_binding:write` opens the
+binding and saves it again.
+
+A dynamic binding cannot serve an MCP server. imbi-api gives the value
+only to the imbi-assistant and imbi-slackbot service accounts
+(`mcp_server:credential`), and records a `secret_materialized` event with
+the purpose `assistant_mcp` for each read.
+
 ## Add a grant
 
 A grant lets agents use bindings. Exactly one enabled grant must allow a

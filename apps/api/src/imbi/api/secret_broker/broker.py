@@ -81,6 +81,9 @@ SETUP_PURPOSES = frozenset(
         'workspace_checkout',
     }
 )
+#: The purpose of the credential of an MCP server of the assistant and
+#: the Slack bot (:meth:`Broker.mcp_credential`). No grant uses it.
+MCP_PURPOSE = 'assistant_mcp'
 #: Purposes that nothing uses any more. Their stored grants were for the
 #: runner only, so the broker refuses them instead of letting them become
 #: ordinary purposes that a model command can request.
@@ -760,6 +763,44 @@ def _new_handle() -> str:
 
 
 # --- The service ----------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class McpServerTarget:
+    """Where an MCP server sends its credential: the binding pins it."""
+
+    id: str
+    url: str
+    token_url: str | None = None
+
+
+def mcp_usage_entry(server: McpServerTarget) -> dict[str, str | None]:
+    """The stored form of a server in ``mcp_server_usage.servers``."""
+    return {'id': server.id, 'url': server.url, 'token_url': server.token_url}
+
+
+def _check_mcp_usage(binding: Row, server: McpServerTarget) -> None:
+    """The binding must list the server, at its current destination.
+
+    Raises:
+        BrokerError: ``secret_access_denied``.
+
+    """
+    usage: dict[str, typing.Any] = binding['mcp_server_usage'] or {}
+    entry = next(
+        (e for e in usage.get('servers', []) if e.get('id') == server.id),
+        None,
+    )
+    if entry is None:
+        raise providers.BrokerError(
+            'secret_access_denied', 'mcp_server_not_listed'
+        )
+    if entry != mcp_usage_entry(server):
+        raise providers.BrokerError('secret_access_denied', 'mcp_server_moved')
+    if binding['credential_class'] == 'dynamic':
+        raise providers.BrokerError(
+            'secret_access_denied', 'dynamic_mcp_binding'
+        )
 
 
 class Broker:
@@ -1693,6 +1734,94 @@ class Broker:
             raise providers.BrokerError(
                 'secret_access_denied', 'provider_key_consumer'
             )
+        return await self._resolve_for_imbi(
+            organization_id,
+            binding,
+            parsed,
+            purpose='provider_key',
+            reason='provider_key',
+            actor='system',
+            task_id=task_id,
+        )
+
+    async def mcp_credential(
+        self,
+        organization_id: str,
+        reference: str,
+        server: McpServerTarget,
+        *,
+        actor: str = 'system',
+    ) -> providers.Material:
+        """Return the material of an MCP server's credential.
+
+        The assistant and the Slack bot connect to the MCP servers of an
+        organization with this value. The binding must be in the
+        organization, be enabled, not be dynamic, and list the server in
+        its ``mcp_server_usage`` with the server's current ``url`` and
+        ``token_url``. Only a principal with ``secret_binding:write``
+        sets that list, so an admin of MCP servers alone cannot send a
+        secret to a server of their choice, or move a listed server.
+
+        Raises:
+            BrokerError: The binding does not allow the server, or the
+                provider failed.
+
+        """
+        parsed = parse_reference(reference)
+        denied = audit.Event(
+            organization_id=organization_id,
+            type='secret_resolution_denied',
+            result='denied',
+            actor=actor,
+            purpose=MCP_PURPOSE,
+        )
+        try:
+            async with self._pool.connection() as conn:
+                binding = _check_binding(
+                    await _fetch_one(
+                        conn,
+                        'SELECT * FROM secrets.bindings'
+                        ' WHERE organization_id = %s AND reference = %s',
+                        (organization_id, parsed.binding),
+                    ),
+                    parsed,
+                )
+            denied = denied.model_copy(
+                update={'binding_id': str(binding['id'])}
+            )
+            _check_mcp_usage(binding, server)
+        except providers.BrokerError as err:
+            await self._record_event(
+                denied.model_copy(update={'reason': err.reason or err.code})
+            )
+            raise
+        return await self._resolve_for_imbi(
+            organization_id,
+            binding,
+            parsed,
+            purpose=MCP_PURPOSE,
+            reason='mcp_server',
+            actor=actor,
+        )
+
+    async def _resolve_for_imbi(
+        self,
+        organization_id: str,
+        binding: Row,
+        parsed: Reference,
+        *,
+        purpose: str,
+        reason: str,
+        actor: str,
+        task_id: uuid.UUID | None = None,
+    ) -> providers.Material:
+        """Resolve a binding that only imbi-api reads (a provider key,
+        an MCP server credential), with its audit event.
+
+        Raises:
+            BrokerError: The provider is disabled or failed.
+
+        """
         async with self._pool.connection() as conn:
             provider = _check_provider(
                 await _fetch_one(
@@ -1706,12 +1835,12 @@ class Broker:
         event = audit.Event(
             organization_id=organization_id,
             type='secret_materialized',
-            actor='system',
-            reason='provider_key',
+            actor=actor,
+            reason=reason,
             task_id='' if task_id is None else str(task_id),
             provider_id=str(provider['id']),
             binding_id=str(binding['id']),
-            purpose='provider_key',
+            purpose=purpose,
         )
         try:
             material = await providers.get(provider['type']).resolve(
@@ -1722,7 +1851,7 @@ class Broker:
                     organization_id=organization_id,
                     task_id=task_id or uuid.UUID(int=0),
                     project_ids=(),
-                    purpose='provider_key',
+                    purpose=purpose,
                     ttl_seconds=MAX_TTL_SECONDS,
                     credential_class=binding['credential_class'],
                 ),

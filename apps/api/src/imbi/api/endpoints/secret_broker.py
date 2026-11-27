@@ -231,6 +231,20 @@ class ProviderKeyUsage(pydantic.BaseModel):
         return consumer.check_key_host(value)
 
 
+class McpServerUsage(pydantic.BaseModel):
+    """The MCP servers of the organization that may use the binding as
+    their credential. The assistant and the Slack bot get the value
+    through imbi-api; no grant gives it to a task. A save stores each
+    server's current URL and token URL; when either changes, the server
+    cannot use the binding until a binding writer saves it again."""
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    servers: list[str] = pydantic.Field(
+        default=[], description='The ids of the MCP servers'
+    )
+
+
 class SecretLocatorCheck(pydantic.BaseModel):
     """A locator to check before a binding is saved."""
 
@@ -263,6 +277,7 @@ class SecretBindingCreate(pydantic.BaseModel):
         'it to agents of a team that the caller is in.',
     )
     provider_key_usage: ProviderKeyUsage | None = None
+    mcp_server_usage: McpServerUsage | None = None
 
 
 class SecretBindingPatch(pydantic.BaseModel):
@@ -278,6 +293,7 @@ class SecretBindingPatch(pydantic.BaseModel):
     description: str | None = None
     grantable: bool | None = None
     provider_key_usage: ProviderKeyUsage | None = None
+    mcp_server_usage: McpServerUsage | None = None
 
 
 class SecretBinding(pydantic.BaseModel):
@@ -294,6 +310,7 @@ class SecretBinding(pydantic.BaseModel):
     description: str
     grantable: bool = False
     provider_key_usage: dict[str, typing.Any] | None = None
+    mcp_server_usage: dict[str, typing.Any] | None = None
     created_by: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -819,6 +836,53 @@ def _key_usage(
     return usage.model_dump(mode='json')
 
 
+_MCP_SERVERS_IN_ORG: typing.LiteralString = """
+MATCH (s:MCPServer)
+WHERE s.org_id = {org_id} AND s.id IN {ids}
+RETURN s.id AS id, s.url AS url, s.oauth_token_url AS token_url
+"""
+
+
+async def _mcp_usage(
+    db: graph.Graph,
+    org_id: str,
+    usage: McpServerUsage | None,
+    credential_class: str,
+) -> dict[str, typing.Any] | None:
+    """The stored form of the MCP server list of a binding: each server
+    with its current URL and token URL, which the broker then requires
+    (:func:`broker.mcp_usage_entry`). Each server must be in the
+    organization, and the credential must not be dynamic (an MCP
+    connection keeps its credential)."""
+    if usage is None:
+        return None
+    if credential_class == 'dynamic':
+        raise _invalid('A binding for MCP servers cannot be dynamic')
+    ids = sorted(set(usage.servers))
+    found: dict[str, dict[str, str | None]] = {}
+    for r in await db.execute(
+        _MCP_SERVERS_IN_ORG,
+        {'org_id': org_id, 'ids': ids},
+        ['id', 'url', 'token_url'],
+    ):
+        token_url = graph.parse_agtype(r['token_url'])
+        # The same form as the MCPServer model gives the broker.
+        target = broker.McpServerTarget(
+            id=str(graph.parse_agtype(r['id'])),
+            url=str(pydantic.HttpUrl(str(graph.parse_agtype(r['url'])))),
+            token_url=(
+                str(pydantic.HttpUrl(str(token_url))) if token_url else None
+            ),
+        )
+        found[target.id] = broker.mcp_usage_entry(target)
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise _invalid(
+            'MCP servers not in the organization: ' + ', '.join(missing)
+        )
+    return {'servers': [found[i] for i in ids]}
+
+
 async def _check_consumers(
     secrets: store.SecretStore,
     org_id: str,
@@ -865,6 +929,7 @@ async def create_binding(
     org_id: OrgId,
     data: SecretBindingCreate,
     secrets: secret_broker.Store,
+    db: graph.Pool,
     auth: BindingWrite,
 ) -> store.Row:
     """Map a reference to a provider location.
@@ -892,6 +957,9 @@ async def create_binding(
         data.provider_key_usage, data.credential_class
     )
     await _check_consumers(secrets, org_id, values['provider_key_usage'])
+    values['mcp_server_usage'] = await _mcp_usage(
+        db, org_id, data.mcp_server_usage, data.credential_class
+    )
     values['created_by'] = auth.principal_name
     with conflict_on_unique_violation(f'{reference} is bound already'):
         row = await secrets.create(
@@ -926,6 +994,7 @@ async def update_binding(
     binding_id: uuid.UUID,
     data: SecretBindingPatch,
     secrets: secret_broker.Store,
+    db: graph.Pool,
     auth: BindingWrite,
 ) -> store.Row:
     """Change a binding. The reference and the provider do not change.
@@ -965,6 +1034,13 @@ async def update_binding(
         await _check_consumers(secrets, org_id, changes['provider_key_usage'])
     elif current['provider_key_usage'] and credential_class == 'dynamic':
         raise _invalid('A provider key binding cannot be dynamic')
+    if 'mcp_server_usage' in data.model_fields_set:
+        # An explicit null clears the list.
+        changes['mcp_server_usage'] = await _mcp_usage(
+            db, org_id, data.mcp_server_usage, credential_class
+        )
+    elif current['mcp_server_usage'] and credential_class == 'dynamic':
+        raise _invalid('A binding for MCP servers cannot be dynamic')
     if not changes:
         return current
     try:

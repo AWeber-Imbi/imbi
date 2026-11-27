@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { listSecretBindings, listSecretProviders } from '@/api/endpoints'
 import { render, screen } from '@/test/utils'
 
-import { GitHubAppBindingSelect } from '../GitHubAppBindingSelect'
+import { BindingReferenceSelect } from '../BindingReferenceSelect'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
@@ -12,7 +12,7 @@ vi.mock('@/api/endpoints', () => ({
   listSecretProviders: vi.fn(),
 }))
 
-describe('GitHubAppBindingSelect', () => {
+describe('BindingReferenceSelect', () => {
   beforeEach(() => {
     // jsdom has no pointer capture or scrollIntoView; Radix Select needs them.
     Element.prototype.hasPointerCapture = vi.fn(() => false) as never
@@ -51,7 +51,12 @@ describe('GitHubAppBindingSelect', () => {
   it('lists only github_app bindings and returns the reference', async () => {
     const onChange = vi.fn()
     render(
-      <GitHubAppBindingSelect
+      <BindingReferenceSelect
+        emptyLabel="No GitHub App"
+        filter={(_b, provider) =>
+          provider?.type === 'github_app' && provider.enabled
+        }
+        label="GitHub App binding"
         onChange={onChange}
         orgSlug="acme"
         value={null}
@@ -75,7 +80,12 @@ describe('GitHubAppBindingSelect', () => {
   it('clears the value with the none option', async () => {
     const onChange = vi.fn()
     render(
-      <GitHubAppBindingSelect
+      <BindingReferenceSelect
+        emptyLabel="No GitHub App"
+        filter={(_b, provider) =>
+          provider?.type === 'github_app' && provider.enabled
+        }
+        label="GitHub App binding"
         onChange={onChange}
         orgSlug="acme"
         value="secret://production/github/app"
@@ -90,7 +100,12 @@ describe('GitHubAppBindingSelect', () => {
 
   it('keeps a saved disabled binding visible', async () => {
     render(
-      <GitHubAppBindingSelect
+      <BindingReferenceSelect
+        emptyLabel="No GitHub App"
+        filter={(_b, provider) =>
+          provider?.type === 'github_app' && provider.enabled
+        }
+        label="GitHub App binding"
         onChange={vi.fn()}
         orgSlug="acme"
         value="secret://production/github/disabled"

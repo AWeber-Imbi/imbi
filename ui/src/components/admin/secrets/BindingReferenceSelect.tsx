@@ -9,26 +9,37 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+import type { SecretBinding, SecretProvider } from './types'
+
 // Radix Select refuses an empty item value.
 const NONE = '__none__'
 
-interface GitHubAppBindingSelectProps {
+interface BindingReferenceSelectProps {
   disabled?: boolean
+  /** The label of the "no binding" choice. */
+  emptyLabel: string
+  /** Which enabled bindings to offer; ``provider`` is the binding's own. */
+  filter?: (binding: SecretBinding, provider?: SecretProvider) => boolean
   id?: string
+  label: string
   onChange: (reference: null | string) => void
   orgSlug: string
   value: null | string
 }
 
-// The agent editor field for a github_app secret binding (harness plan
-// 5.3 and 9.8). The value is the binding's secret:// reference.
-export function GitHubAppBindingSelect({
+// A select of the organization's secret bindings. The value is the
+// binding's secret:// reference. Only enabled bindings are offered: the
+// broker refuses a disabled one.
+export function BindingReferenceSelect({
   disabled,
+  emptyLabel,
+  filter = () => true,
   id,
+  label,
   onChange,
   orgSlug,
   value,
-}: GitHubAppBindingSelectProps) {
+}: BindingReferenceSelectProps) {
   const bindingsQuery = useQuery({
     queryFn: ({ signal }) => listSecretBindings(orgSlug, signal),
     queryKey: ['secret-bindings', orgSlug],
@@ -37,15 +48,13 @@ export function GitHubAppBindingSelect({
     queryFn: ({ signal }) => listSecretProviders(orgSlug, signal),
     queryKey: ['secret-providers', orgSlug],
   })
-  const appProviders = new Set(
-    (providersQuery.data ?? [])
-      .filter((provider) => provider.type === 'github_app' && provider.enabled)
-      .map((provider) => provider.id),
+  const providers = new Map(
+    (providersQuery.data ?? []).map((provider) => [provider.id, provider]),
   )
-  // Only enabled choices: the broker refuses a disabled provider or binding.
   const references = (bindingsQuery.data ?? [])
     .filter(
-      (binding) => binding.enabled && appProviders.has(binding.provider_id),
+      (binding) =>
+        binding.enabled && filter(binding, providers.get(binding.provider_id)),
     )
     .map((binding) => binding.reference)
   // Keep a saved value visible after its binding is gone or disabled.
@@ -57,15 +66,11 @@ export function GitHubAppBindingSelect({
       onValueChange={(next) => onChange(next === NONE ? null : next)}
       value={value ?? NONE}
     >
-      <SelectTrigger
-        aria-label="GitHub App binding"
-        className="text-sm"
-        id={id}
-      >
+      <SelectTrigger aria-label={label} className="text-sm" id={id}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={NONE}>No GitHub App</SelectItem>
+        <SelectItem value={NONE}>{emptyLabel}</SelectItem>
         {references.map((reference) => (
           <SelectItem key={reference} value={reference}>
             {reference}

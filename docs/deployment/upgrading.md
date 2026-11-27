@@ -187,6 +187,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
       Admin > MCP Servers**).
     - Each conversation goes to the organization of its owner, or the
       first by slug when the owner is in more than one.
+6. Run `imbi-api setup-permissions`. It adds `mcp_server:credential` and
+   gives it to the `imbi-assistant` and `imbi-slackbot` roles. An MCP
+   server can now take its secret from a secret binding (see
+   [A binding for MCP servers](../admin/secrets.md#a-binding-for-mcp-servers)).
+   To use one, set `IMBI_ASSISTANT_API_TOKEN` and `IMBI_SLACKBOT_API_TOKEN`
+   to API keys of those service accounts.
 
 ## 2.65.0
 
