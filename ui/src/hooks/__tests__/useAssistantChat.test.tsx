@@ -30,7 +30,9 @@ vi.mock('@/api/assistant', () => ({
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: null }),
+  useOrganization: () => ({
+    selectedOrganization: { name: 'Acme', slug: 'acme' },
+  }),
 }))
 
 // fallow-ignore-next-line unresolved-import
@@ -66,12 +68,15 @@ describe('useAssistantChat', () => {
     expect(messages.map((m) => m.content)).toEqual(['from search'])
     // Other browsers follow the new conversation.
     await waitFor(() =>
-      expect(assistant.setCurrentConversation).toHaveBeenCalledWith('c-1'),
+      expect(assistant.setCurrentConversation).toHaveBeenCalledWith(
+        'acme',
+        'c-1',
+      ),
     )
   })
   it.each([
     ['Stop', stopAssistant],
-    ['New conversation', newAssistantConversation],
+    ['New conversation', () => newAssistantConversation('acme')],
   ])('%s during create drops the pending send', async (_, act) => {
     let created: (v: { id: string }) => void = () => {}
     vi.mocked(assistant.createConversation).mockReturnValue(
@@ -94,7 +99,7 @@ describe('useAssistantChat', () => {
   it('settles a stream that closes without a done event', async () => {
     useAssistantStore.getState().setCurrentConversation('c-1')
     vi.mocked(assistant.sendMessageSSE).mockImplementation(
-      async (_id, _content, handlers) => {
+      async (_org, _id, _content, handlers) => {
         handlers.onText?.('partial')
       },
     )
@@ -201,8 +206,8 @@ describe('useCurrentConversationSync', () => {
       }),
     )
     vi.mocked(assistant.getConversation).mockResolvedValue(stored('c-2', 't1'))
-    await openAssistantConversation('c-2')
-    newAssistantConversation()
+    await openAssistantConversation('acme', 'c-2')
+    newAssistantConversation('acme')
     // The second write waits until the first one settles.
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(assistant.setCurrentConversation).toHaveBeenCalledOnce()
@@ -211,16 +216,19 @@ describe('useCurrentConversationSync', () => {
       expect(assistant.setCurrentConversation).toHaveBeenCalledTimes(2),
     )
     expect(vi.mocked(assistant.setCurrentConversation).mock.calls).toEqual([
-      ['c-2'],
-      [null],
+      ['acme', 'c-2'],
+      ['acme', null],
     ])
   })
 
   it('shares a reselect of the open conversation without a reload', async () => {
     useAssistantStore.getState().setCurrentConversation('c-1')
-    await openAssistantConversation('c-1')
+    await openAssistantConversation('acme', 'c-1')
     await waitFor(() =>
-      expect(assistant.setCurrentConversation).toHaveBeenCalledWith('c-1'),
+      expect(assistant.setCurrentConversation).toHaveBeenCalledWith(
+        'acme',
+        'c-1',
+      ),
     )
     expect(assistant.getConversation).not.toHaveBeenCalled()
   })

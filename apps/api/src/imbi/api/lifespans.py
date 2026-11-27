@@ -11,6 +11,7 @@ import logging
 from collections import abc
 
 from imbi.api import (
+    conversation_orgs,
     iggy_metrics,
     mcp_server_orgs,
     openapi,
@@ -56,6 +57,10 @@ async def _on_graph_startup(db: graph.Graph) -> None:
         await mcp_server_orgs.backfill(db)
     except Exception:
         LOGGER.exception('Failed to link MCP servers to organizations')
+    try:
+        await conversation_orgs.backfill(db)
+    except Exception:
+        LOGGER.exception('Failed to put conversations in organizations')
 
 
 graph.set_on_startup(_on_graph_startup)

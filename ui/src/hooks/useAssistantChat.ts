@@ -31,7 +31,9 @@ export function useAssistantChat() {
     // fallow-ignore-next-line complexity
     async (messageContent: string, displayText = messageContent) => {
       const store = useAssistantStore.getState()
-      if (store.isStreaming) return
+      // One organization for the whole send, even if the reader switches.
+      const orgSlug = selectedOrganization?.slug
+      if (store.isStreaming || !orgSlug) return
       // Streaming state reserves the one send slot before the first
       // await, so the composer cannot start a second conversation while
       // this one is being created.
@@ -53,12 +55,12 @@ export function useAssistantChat() {
       const isNewConversation = !conversationId
       if (!conversationId) {
         try {
-          const conv = await createConversation()
+          const conv = await createConversation(orgSlug)
           if (abort.signal.aborted) return
           conversationId = conv.id
           // setState, not setCurrentConversation, which clears messages.
           useAssistantStore.setState({ currentConversationId: conv.id })
-          shareCurrentConversation(conv.id)
+          shareCurrentConversation(orgSlug, conv.id)
         } catch (err) {
           if (abort.signal.aborted) return
           console.error('[Assistant] Failed to create conversation:', err)
@@ -80,6 +82,7 @@ export function useAssistantChat() {
 
       try {
         await sendMessageSSE(
+          orgSlug,
           conversationId,
           fullContent,
           {
@@ -183,10 +186,12 @@ export function useAssistantChat() {
 
 /** The reader's recent conversations, newest first. */
 export function useAssistantConversations(enabled = true) {
+  const orgSlug = useOrganization().selectedOrganization?.slug
   return useQuery({
-    enabled,
-    queryFn: ({ signal }) => listConversations({ limit: 100 }, signal),
-    queryKey: ['assistant-conversations'],
+    enabled: enabled && !!orgSlug,
+    queryFn: ({ signal }) =>
+      orgSlug ? listConversations(orgSlug, { limit: 100 }, signal) : [],
+    queryKey: ['assistant-conversations', orgSlug],
     staleTime: 30_000,
   })
 }
@@ -206,26 +211,26 @@ export function rememberAssistantReturnPath(path: string) {
 // One stream at a time across both views, so stop works from either.
 let abortController: AbortController | null = null
 
-export function newAssistantConversation() {
+export function newAssistantConversation(orgSlug: string) {
   resetConversation()
   abortController?.abort()
   abortController = null
-  shareCurrentConversation(null)
+  shareCurrentConversation(orgSlug, null)
 }
 
 /** Load a stored conversation into the store, unless it is already open. */
 let openRequest = 0
 
-export async function openAssistantConversation(id: string) {
+export async function openAssistantConversation(orgSlug: string, id: string) {
   const store = useAssistantStore.getState()
   // Count even a reselect of the current conversation, so a load still
   // in flight cannot replace it.
   const request = ++openRequest
   // Share even a reselect, so a link to the open conversation still
   // makes it the current one in every browser.
-  shareCurrentConversation(id)
+  shareCurrentConversation(orgSlug, id)
   if (store.currentConversationId === id) return
-  await loadConversation(id, request)
+  await loadConversation(orgSlug, id, request)
 }
 
 export function stopAssistant() {
@@ -241,18 +246,23 @@ export function stopAssistant() {
  * while `poll` is true; otherwise it checks on mount and window focus.
  */
 export function useCurrentConversationSync(poll: boolean) {
+  // Each organization has its own current conversation; a switch of
+  // organization fetches it and opens it, or starts a new one.
+  const orgSlug = useOrganization().selectedOrganization?.slug
   useQuery({
+    enabled: !!orgSlug,
     // Follow here, not in an effect: the panel remounts on every page,
     // and only a real fetch (never cached data) may switch the store.
     queryFn: async ({ signal }) => {
+      if (!orgSlug) return null
       // Read only after this browser's own switch has been written.
       await pendingShare
-      const conv = await getCurrentConversation(signal)
+      const conv = await getCurrentConversation(orgSlug, signal)
       // A local switch cancels this poll; its answer is out of date.
-      if (!signal.aborted) followCurrentConversation(conv)
+      if (!signal.aborted) followCurrentConversation(orgSlug, conv)
       return conv
     },
-    queryKey: CURRENT_KEY,
+    queryKey: [...CURRENT_KEY, orgSlug],
     refetchInterval: poll ? 5_000 : false,
     // The app defaults turn both off; returning to a browser must catch
     // up at once.
@@ -272,7 +282,7 @@ let syncedUpdatedAt: null | string = null
 // Switch writes run in order, so the last one the reader made wins.
 let pendingShare: Promise<unknown> = Promise.resolve()
 
-function followCurrentConversation(conv: Conversation | null) {
+function followCurrentConversation(orgSlug: string, conv: Conversation | null) {
   const store = useAssistantStore.getState()
   // This browser's own stream is newer than any saved state.
   if (store.isStreaming) return
@@ -291,13 +301,13 @@ function followCurrentConversation(conv: Conversation | null) {
     openRequest += 1
     return
   }
-  loadConversation(conv.id, ++openRequest).catch((err) =>
+  loadConversation(orgSlug, conv.id, ++openRequest).catch((err) =>
     console.error('[Assistant] Failed to sync conversation:', err),
   )
 }
 
-async function loadConversation(id: string, request: number) {
-  const conv = await getConversation(id)
+async function loadConversation(orgSlug: string, id: string, request: number) {
+  const conv = await getConversation(orgSlug, id)
   // A later open or a new conversation supersedes this one.
   if (request !== openRequest) return
   abortController?.abort()
@@ -313,11 +323,11 @@ function resetConversation() {
   useAssistantStore.getState().clearConversation()
 }
 
-function shareCurrentConversation(id: null | string) {
+function shareCurrentConversation(orgSlug: string, id: null | string) {
   // Drop a poll already in flight; it can hold the previous conversation.
   void queryClient.cancelQueries({ queryKey: CURRENT_KEY })
   pendingShare = pendingShare
-    .then(() => setCurrentConversation(id))
+    .then(() => setCurrentConversation(orgSlug, id))
     .catch((err) =>
       console.error('[Assistant] Failed to share conversation:', err),
     )

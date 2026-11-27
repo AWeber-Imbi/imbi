@@ -6,13 +6,15 @@ The user is a member of ``org`` and ``other_org``, not of
 
 import json
 import typing
+import uuid
 from unittest import mock
 
 import httpx
 
 from apps.api.tests.endpoints import test_agent_tasks
-from imbi.api import mcp_server_orgs
+from imbi.api import conversation_orgs, mcp_server_orgs
 from imbi.api.endpoints import plugin_edges
+from imbi.common import graph
 
 STAMP = '2026-10-15T00:00:00+00:00'
 
@@ -299,3 +301,38 @@ class MCPServerTests(CrossOrgTestCase):
         )
         listed = await self.get(f'/organizations/{self.org}/mcp-servers/')
         self.assertIn(server, {s['id'] for s in listed.json()})
+
+
+class ConversationBackfillTests(CrossOrgTestCase):
+    async def conversation(self, email: str) -> str:
+        conversation = f'conv-{uuid.uuid4().hex[:10]}'
+        await self.node(
+            'CREATE (c:Conversation {{id: {id}, user_email: {email},'
+            ' model: "m", is_archived: false, created_at: {stamp},'
+            ' updated_at: {stamp}}}) RETURN 1 AS ok',
+            id=conversation,
+            email=email,
+            stamp=STAMP,
+        )
+        return conversation
+
+    async def org_of(self, conversation: str) -> str | None:
+        records = await self.graph.execute(
+            'MATCH (c:Conversation {{id: {id}}}) RETURN c.org_id AS org',
+            {'id': conversation},
+            ['org'],
+        )
+        org = graph.parse_agtype(records[0]['org'])
+        return None if org is None else str(org)
+
+    async def test_rules(self) -> None:
+        single = await self.conversation(self.member)
+        # self.email is in two organizations: the first by slug wins.
+        two = await self.conversation(self.email)
+        nobody = await self.conversation(f'nobody-{self.org}@example.com')
+        with self.assertLogs('imbi.api.conversation_orgs', 'INFO') as logs:
+            await conversation_orgs.backfill(self.graph)
+        self.assertEqual(await self.org_of(single), self.org)
+        self.assertEqual(await self.org_of(two), min(self.org, self.other_org))
+        self.assertIsNone(await self.org_of(nobody))
+        self.assertTrue(any('nobody-' in line for line in logs.output))

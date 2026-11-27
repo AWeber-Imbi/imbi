@@ -26,6 +26,7 @@ class CreateConversationTestCase(
         conv = await age_ops.create_conversation(
             db,
             user_email='test@example.com',
+            org_id='org-1',
             model='claude-sonnet-4-20250514',
         )
         self.assertIsInstance(conv, models.Conversation)
@@ -48,6 +49,7 @@ class GetConversationTestCase(
             mc.return_value = {
                 'id': 'conv-123',
                 'user_email': 'test@example.com',
+                'org_id': 'org-1',
                 'title': 'Test',
                 'created_at': now,
                 'updated_at': now,
@@ -55,7 +57,7 @@ class GetConversationTestCase(
                 'is_archived': False,
             }
             conv = await age_ops.get_conversation(
-                db, 'conv-123', 'test@example.com'
+                db, 'conv-123', 'test@example.com', 'org-1'
             )
             self.assertIsNotNone(conv)
             self.assertEqual(conv.id, 'conv-123')
@@ -63,7 +65,7 @@ class GetConversationTestCase(
     async def test_conversation_not_found(self) -> None:
         db = mock_db()
         conv = await age_ops.get_conversation(
-            db, 'missing', 'test@example.com'
+            db, 'missing', 'test@example.com', 'org-1'
         )
         self.assertIsNone(conv)
 
@@ -73,7 +75,9 @@ class ListConversationsTestCase(
 ):
     async def test_list_empty(self) -> None:
         db = mock_db()
-        convs = await age_ops.list_conversations(db, 'test@example.com')
+        convs = await age_ops.list_conversations(
+            db, 'test@example.com', 'org-1'
+        )
         self.assertEqual(convs, [])
 
     async def test_list_with_conversations(self) -> None:
@@ -91,6 +95,7 @@ class ListConversationsTestCase(
                 {
                     'id': 'conv-1',
                     'user_email': 'test@example.com',
+                    'org_id': 'org-1',
                     'title': 'First',
                     'created_at': now,
                     'updated_at': now,
@@ -100,6 +105,7 @@ class ListConversationsTestCase(
                 {
                     'id': 'conv-2',
                     'user_email': 'test@example.com',
+                    'org_id': 'org-1',
                     'title': 'Second',
                     'created_at': now,
                     'updated_at': now,
@@ -107,7 +113,9 @@ class ListConversationsTestCase(
                     'is_archived': False,
                 },
             ]
-            convs = await age_ops.list_conversations(db, 'test@example.com')
+            convs = await age_ops.list_conversations(
+                db, 'test@example.com', 'org-1'
+            )
             self.assertEqual(len(convs), 2)
 
     async def test_include_archived(self) -> None:
@@ -115,6 +123,7 @@ class ListConversationsTestCase(
         await age_ops.list_conversations(
             db,
             'test@example.com',
+            'org-1',
             include_archived=True,
         )
         call_args = db.execute.call_args
@@ -268,6 +277,7 @@ class UpdateConversationTitleTestCase(
             db,
             'conv-123',
             'test@example.com',
+            'org-1',
             'New Title',
         )
         self.assertTrue(result)
@@ -278,6 +288,7 @@ class UpdateConversationTitleTestCase(
             db,
             'missing',
             'test@example.com',
+            'org-1',
             'New Title',
         )
         self.assertFalse(result)
@@ -289,14 +300,14 @@ class ArchiveConversationTestCase(
     async def test_archive_success(self) -> None:
         db = mock_db([{'id': 'conv-123'}])
         result = await age_ops.archive_conversation(
-            db, 'conv-123', 'test@example.com'
+            db, 'conv-123', 'test@example.com', 'org-1'
         )
         self.assertTrue(result)
 
     async def test_archive_not_found(self) -> None:
         db = mock_db()
         result = await age_ops.archive_conversation(
-            db, 'missing', 'test@example.com'
+            db, 'missing', 'test@example.com', 'org-1'
         )
         self.assertFalse(result)
 
@@ -313,7 +324,7 @@ class DeleteConversationTestCase(
             [{'ok': 1}],
         ]
         result = await age_ops.delete_conversation(
-            db, 'conv-123', 'test@example.com'
+            db, 'conv-123', 'test@example.com', 'org-1'
         )
         self.assertTrue(result)
         self.assertEqual(db.execute.await_count, 2)
@@ -321,7 +332,7 @@ class DeleteConversationTestCase(
     async def test_delete_not_found(self) -> None:
         db = mock_db()  # check returns empty
         result = await age_ops.delete_conversation(
-            db, 'missing', 'test@example.com'
+            db, 'missing', 'test@example.com', 'org-1'
         )
         self.assertFalse(result)
         db.execute.assert_awaited_once()

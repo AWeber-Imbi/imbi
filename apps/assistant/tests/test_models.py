@@ -15,6 +15,7 @@ class ConversationModelTestCase(unittest.TestCase):
         now = datetime.datetime.now(datetime.UTC)
         conv = models.Conversation(
             user_email='test@example.com',
+            org_id='org-1',
             created_at=now,
             updated_at=now,
             model='claude-sonnet-4-20250514',
@@ -28,6 +29,7 @@ class ConversationModelTestCase(unittest.TestCase):
         now = datetime.datetime.now(datetime.UTC)
         conv = models.Conversation(
             user_email='test@example.com',
+            org_id='org-1',
             title='Test Conversation',
             created_at=now,
             updated_at=now,
@@ -39,6 +41,7 @@ class ConversationModelTestCase(unittest.TestCase):
         now = datetime.datetime.now(datetime.UTC)
         conv = models.Conversation(
             user_email='test@example.com',
+            org_id='org-1',
             created_at=now,
             updated_at=now,
             model='claude-sonnet-4-20250514',
@@ -185,6 +188,7 @@ class ConverterTestCase(unittest.TestCase):
         conv = models.Conversation(
             id='conv-123',
             user_email='test@example.com',
+            org_id='org-1',
             title='Test',
             created_at=now,
             updated_at=now,

@@ -52,7 +52,9 @@ same token is forwarded to the Imbi API when executing OpenAPI-backed tools.
 ## API
 
 All routes are served under the path component of `IMBI_ASSISTANT_URL`
-(e.g. `/assistant`), so they match the ingress prefix.
+(e.g. `/assistant`), so they match the ingress prefix, plus
+`/organizations/{org_slug}`. Each conversation is in one organization,
+and every route checks that the user is a member of it.
 
 | Method   | Path                           | Description                              |
 | -------- | ------------------------------ | ---------------------------------------- |
