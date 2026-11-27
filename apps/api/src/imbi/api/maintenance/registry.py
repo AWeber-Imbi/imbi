@@ -158,8 +158,8 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
                 'known is attached to it. Also backfills release drift '
                 'verdicts from git notes for releases without an '
                 'existing verdict. Projects without a deployment '
-                'integration are skipped. Safe to re-run. Imbi does not '
-                'run it on a schedule.'
+                'integration are skipped. Safe to re-run. The scheduler '
+                'runs this every 6 hours.'
             ),
             pause_key=None,
             enumerate=operations.enumerate_all_projects,

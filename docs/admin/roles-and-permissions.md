@@ -285,6 +285,7 @@ it.
 | `admin:maintenance:cve-sync` | Start the cve-sync maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `admin:maintenance:ai-model-calls-prune` | Start the ai-model-calls-prune maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `admin:maintenance:plugin-step-calls-prune` | Start the plugin-step-calls-prune maintenance operation | yes |  |  |  | yes |  |  |  |  |
+| `admin:maintenance:deployment-sweep` | Start the deployment-sweep maintenance operation | yes |  |  |  | yes |  |  |  |  |
 | `project:configuration:read` | Read project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:read_secrets` | Read secret configuration values via plugins | yes | yes |  |  |  |  |  |  |  |
 | `project:configuration:write` | Write project configuration via plugins | yes | yes |  |  |  |  |  |  |  |
