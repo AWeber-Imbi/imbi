@@ -260,6 +260,34 @@ async def default_model(
     return ConsumerModel(model.model_id, model.provider)
 
 
+async def request_model(
+    db: graph.Graph, email: str, model_id: str, *, admin: bool = False
+) -> ConsumerModel | None:
+    """Return the catalog model of the vendor ``model_id`` that a request
+    names, in the organizations of the user ``email``. ``None``: no
+    catalog model has the id.
+
+    Raises:
+        llm_resolve.ModelUnusable: The model cannot be used, or a driver
+            other than Anthropic serves it.
+
+    """
+    try:
+        resolved = await llm_resolve.resolve_model(
+            db,
+            await resolve.member_org_ids(db, email),
+            model_id=model_id,
+            email=email,
+            admin=admin,
+        )
+    except llm_resolve.ModelUnusable as e:
+        if e.reason == 'not_found':
+            return None
+        raise
+    model = _supported(typing.cast('models.AIModel', resolved.model))
+    return ConsumerModel(model.model_id, model.provider)
+
+
 async def _model(
     db: graph.Graph,
     version: models.PromptVersion,

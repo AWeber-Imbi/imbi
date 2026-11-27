@@ -51,6 +51,16 @@ RETURN m, p, o
 ORDER BY o.slug
 """
 
+#: The model by its vendor ``model_id``, in the organizations
+#: ``org_ids``, in the order of :data:`EXPLICIT_QUERY`.
+MODEL_ID_QUERY: typing.LiteralString = """
+MATCH (m:AIModel)-[:BELONGS_TO]->(o:Organization)
+WHERE o.id IN {org_ids} AND m.model_id = {model_id}
+OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
+RETURN m, p, o
+ORDER BY o.slug
+"""
+
 TEAM_DEFAULT_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{id: {org}}})<-[:BELONGS_TO]-(:Team {{id: {team}}})
       -[:USES_DEFAULT_MODEL]->(m:AIModel)-[:BELONGS_TO]->(o)
@@ -115,6 +125,7 @@ async def resolve_model(
     org_ids: prompt_resolve.OrgIds,
     *,
     model: str | None = None,
+    model_id: str | None = None,
     team_id: str | None = None,
     email: str | None = None,
     admin: bool = False,
@@ -127,6 +138,8 @@ async def resolve_model(
             organization of the user; then only the explicit model is
             read.
         model: The explicit model, by id or slug.
+        model_id: The explicit model, by its vendor model id (a caller
+            that names a model as the provider does).
         team_id: The team of the call. Its default is the second level,
             and a ``restricted`` model must allow it.
         email: The user of the call. A ``restricted`` model must allow
@@ -142,6 +155,10 @@ async def resolve_model(
     if model is not None:
         params = {'model': model, 'org_ids': list(org_ids)}
         levels.append(('explicit', EXPLICIT_QUERY, params))
+    elif model_id is not None:
+        model = model_id
+        params = {'model_id': model_id, 'org_ids': list(org_ids)}
+        levels.append(('explicit', MODEL_ID_QUERY, params))
     elif len(org_ids) == 1:
         if team_id is not None:
             params = {'org': org_ids[0], 'team': team_id}

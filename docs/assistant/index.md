@@ -61,7 +61,12 @@ is set:
    organization.
 4. `IMBI_ASSISTANT_MODEL`.
 
-A catalog model (2 or 3) uses the credential of its provider: a workload
+The model in the request is a vendor model id. It must be the model id of an
+AI model in an organization of the user, with the same checks as the other
+levels, or `IMBI_ASSISTANT_MODEL`. Another id gets `403`
+(`model_not_allowed`).
+
+A catalog model (1, 2, or 3) uses the credential of its provider: a workload
 identity token from imbi-api, else `ANTHROPIC_API_KEY` (see
 [Imbi services](../admin/ai-models.md#imbi-services)).
 `IMBI_ASSISTANT_MODEL` uses the credential of the assistant.

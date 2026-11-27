@@ -504,12 +504,21 @@ class CreateConversationEndpointTestCase(
         ):
             db = mock.AsyncMock()
             db.execute.side_effect = [scopes, allowed_rows]
+            # The catalog lookup of the request model (see the tests of
+            # request_model); this test checks the team rule after it.
+            found = _consumer_model(model) if scopes else None
             with (
                 self.subTest(model=model, scopes=scopes, allowed=allowed_rows),
                 mock.patch.dict('os.environ', {}, clear=True),
                 mock.patch.object(
                     resolve.graph, 'parse_agtype', side_effect=lambda v: v
                 ),
+                mock.patch.object(
+                    prompt_system,
+                    'request_model',
+                    mock.AsyncMock(return_value=found),
+                ),
+                mock.patch.object(client, 'client_for'),
             ):
                 mock_create.reset_mock()
                 try:
@@ -527,7 +536,7 @@ class CreateConversationEndpointTestCase(
                 else:
                     self.assertFalse(refused)
                     mock_create.assert_called_once()
-                if not is_admin:
+                if not is_admin and db.execute.await_args_list:
                     self.assertEqual(
                         db.execute.await_args_list[0].args[1],
                         {'model_id': model, 'org_ids': ['org-1']},
@@ -661,25 +670,110 @@ class CreateConversationEndpointTestCase(
         self,
         mock_create: mock.AsyncMock,
     ) -> None:
+        # A request model is a vendor model id. A catalog model with that
+        # id is used with the client of its provider.
         client._client = mock.MagicMock()
-        auth_ctx = _make_auth_context(is_admin=True)
-        conv = _make_conversation()
-        mock_create.return_value = conv
-        body = models.CreateConversationRequest(
-            model='claude-opus-4-20250514',
-        )
-        db = mock.AsyncMock()
-        with mock.patch.dict('os.environ', {}, clear=True):
+        mock_create.return_value = _make_conversation()
+        body = models.CreateConversationRequest(model='claude-opus-4-20250514')
+        with (
+            mock.patch.dict('os.environ', {}, clear=True),
+            mock.patch.object(
+                prompt_system,
+                'request_model',
+                mock.AsyncMock(
+                    return_value=_consumer_model('claude-opus-4-20250514')
+                ),
+            ) as request_model,
+            mock.patch.object(client, 'client_for') as client_for,
+        ):
             await endpoints.create_conversation(
-                org_id='org-1', db=db, auth_ctx=auth_ctx, body=body
+                org_id='org-1',
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(is_admin=True),
+                body=body,
             )
+        request_model.assert_awaited_once_with(
+            mock.ANY, 'test@example.com', 'claude-opus-4-20250514', admin=True
+        )
+        client_for.assert_called_once()
         mock_create.assert_called_once_with(
             mock.ANY,
             user_email='test@example.com',
             org_id='org-1',
             model='claude-opus-4-20250514',
-            provider=None,
+            provider='acme/anthropic',
         )
+
+    @mock.patch('imbi.assistant.age_ops.create_conversation')
+    async def test_create_conversation_request_model_not_in_catalog(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        # Only the configured model can be outside the catalog.
+        client._client = mock.MagicMock()
+        mock_create.return_value = _make_conversation()
+        for requested, refused in (
+            ('claude-unknown', True),
+            ('claude-sonnet-4-6', False),
+        ):
+            mock_create.reset_mock()
+            with (
+                self.subTest(requested=requested),
+                mock.patch.dict('os.environ', {}, clear=True),
+                mock.patch.object(
+                    prompt_system,
+                    'request_model',
+                    mock.AsyncMock(return_value=None),
+                ),
+            ):
+                call = endpoints.create_conversation(
+                    org_id='org-1',
+                    db=mock.AsyncMock(),
+                    auth_ctx=_make_auth_context(is_admin=True),
+                    body=models.CreateConversationRequest(model=requested),
+                )
+                if refused:
+                    with self.assertRaises(fastapi.HTTPException) as ctx:
+                        await call
+                    self.assertEqual(ctx.exception.status_code, 403)
+                    mock_create.assert_not_called()
+                else:
+                    await call
+                    self.assertIsNone(mock_create.call_args.kwargs['provider'])
+
+    @mock.patch('imbi.assistant.age_ops.create_conversation')
+    async def test_create_conversation_request_model_over_its_cap(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        # The resolver refuses a model at its spend cap (P2); the request
+        # model gets the same refusal, and no other model is used.
+        client._client = mock.MagicMock()
+        error = llm_resolve.ModelUnusable(
+            typing.cast('llm_resolve.Reason', 'spend_cap'), 'opus', 'cap'
+        )
+        with (
+            mock.patch.dict('os.environ', {}, clear=True),
+            mock.patch.object(
+                endpoints.llm_resolve,
+                'resolve_model',
+                mock.AsyncMock(side_effect=error),
+            ),
+            mock.patch.object(
+                prompt_system.resolve,
+                'member_org_ids',
+                mock.AsyncMock(return_value=['org-1']),
+            ),
+            self.assertRaises(fastapi.HTTPException) as ctx,
+        ):
+            await endpoints.create_conversation(
+                org_id='org-1',
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(),
+                body=models.CreateConversationRequest(model='claude-opus'),
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+        mock_create.assert_not_called()
 
 
 class ListConversationsEndpointTestCase(

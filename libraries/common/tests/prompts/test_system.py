@@ -351,6 +351,55 @@ class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
             await self.default(error)
 
 
+class RequestModelTestCase(unittest.IsolatedAsyncioTestCase):
+    async def request(self, result: object) -> typing.Any:
+        kwargs: dict[str, typing.Any] = (
+            {'side_effect': result}
+            if isinstance(result, BaseException)
+            else {'return_value': result}
+        )
+        with (
+            mock.patch.object(
+                resolve,
+                'member_org_ids',
+                mock.AsyncMock(return_value=['org-1']),
+            ),
+            mock.patch.object(
+                llm_resolve, 'resolve_model', mock.AsyncMock(**kwargs)
+            ) as resolver,
+        ):
+            found = await system.request_model(
+                mock.AsyncMock(), 'dev@example.com', 'claude-x', admin=True
+            )
+        resolver.assert_awaited_once_with(
+            mock.ANY,
+            ['org-1'],
+            model_id='claude-x',
+            email='dev@example.com',
+            admin=True,
+        )
+        return found
+
+    async def test_catalog_model(self) -> None:
+        found = await self.request(_model('x', 'claude-x'))
+        self.assertEqual(found.model_id, 'claude-x')
+
+    async def test_not_in_the_catalog_is_none(self) -> None:
+        error = llm_resolve.ModelUnusable('not_found', 'claude-x', 'no')
+        self.assertIsNone(await self.request(error))
+
+    async def test_unusable_or_other_driver_is_an_error(self) -> None:
+        for result in (
+            llm_resolve.ModelUnusable('disabled', 'claude-x', 'no'),
+            _model('x', 'claude-x', 'openai'),
+        ):
+            with (
+                self.subTest(result=result),
+                self.assertRaises(llm_resolve.ModelUnusable),
+            ):
+                await self.request(result)
+
+
 class UnlabelledPromptTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_prompt_without_labels_uses_the_fallback(self) -> None:
         # A prompt created without promote authority has no labels, so

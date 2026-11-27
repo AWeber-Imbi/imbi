@@ -138,28 +138,40 @@ async def create_conversation(
     """Create a new conversation."""
     _require_assistant()
     assistant_settings = settings.get_assistant_settings()
-    email = auth_ctx.require_user.email
-    model = body.model if body and body.model else None
+    user = auth_ctx.require_user
+    requested = body.model if body and body.model else None
     provider: str | None = None
-    if model is None:
-        # A new conversation takes the model of the prompt version, else
-        # the default model of the user's organization, else the
-        # configured model (ADR 0018). A catalog model keeps its
-        # provider, whose credential each turn uses.
-        try:
+    # The model in the request, else the model of the prompt version,
+    # else the default model of the user's organization, else the
+    # configured model (ADR 0018). A catalog model keeps its provider,
+    # whose credential each turn uses.
+    try:
+        if requested is not None:
+            chosen = await prompt_system.request_model(
+                db, user.email, requested, admin=user.is_admin
+            )
+            if chosen is None and requested != assistant_settings.model:
+                raise resolve.ModelNotAllowed(
+                    f'The model {requested!r} is not in the catalog'
+                )
+        else:
             chosen = await prompt_system.load_model(
-                db, assistant_settings.prompt_ref, email
-            ) or await prompt_system.default_model(db, email)
-            if chosen is not None:
-                client.client_for(chosen.provider, email)
-                provider = llm_clients.provider_ref(chosen.provider)
-        except llm_resolve.ModelUnusable as e:
-            raise _unusable(e) from e
-        model = chosen.model_id if chosen else assistant_settings.model
+                db, assistant_settings.prompt_ref, user.email
+            ) or await prompt_system.default_model(db, user.email)
+        if chosen is not None:
+            client.client_for(chosen.provider, user.email)
+            provider = llm_clients.provider_ref(chosen.provider)
+    except llm_resolve.ModelUnusable as e:
+        raise _unusable(e) from e
+    model = (
+        chosen.model_id
+        if chosen is not None
+        else requested or assistant_settings.model
+    )
     await _check_model(db, auth_ctx, org_id, model, assistant_settings.model)
     conv = await age_ops.create_conversation(
         db,
-        user_email=email,
+        user_email=user.email,
         org_id=org_id,
         model=model,
         provider=provider,

@@ -151,6 +151,28 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
         # A model of another organization is not found.
         await self.assert_unusable('not_found', org='org-b', model='chat')
 
+    async def test_explicit_by_vendor_model_id(self) -> None:
+        found = await resolve.resolve_model(
+            self.graph, [self.ids['org-a']], model_id='claude-chat'
+        )
+        self.assertEqual(found.source, 'explicit')
+        assert found.model is not None
+        self.assertEqual(found.model.slug, self.ids['chat'])
+        for org, model_id, reason in (
+            ('org-a', 'claude-nope', 'not_found'),
+            # The id of a model of another organization is not found.
+            ('org-b', 'claude-chat', 'not_found'),
+            ('org-a', 'claude-off', 'disabled'),
+        ):
+            with (
+                self.subTest(model_id=model_id),
+                self.assertRaises(resolve.ModelUnusable) as raised,
+            ):
+                await resolve.resolve_model(
+                    self.graph, [self.ids[org]], model_id=model_id
+                )
+            self.assertEqual(raised.exception.reason, reason)
+
     async def test_explicit_errors(self) -> None:
         with self.assertRaises(resolve.ModelUnusable) as raised:
             await resolve.resolve_model(self.graph, [], model='no-such')
