@@ -591,6 +591,13 @@ class SecretEndpointTestCase(
 
         overrides = self.test_app.dependency_overrides
         overrides[permissions.get_current_user] = service
+        # Another service account with the permission (an org admin can
+        # give it the admin role) gets nothing.
+        assert account.service_account is not None
+        account.service_account.slug = 'org-admin-bot'
+        response = await self.client.post(path, json=dest)
+        self.assertEqual(response.status_code, 403, response.text)
+        account.service_account.slug = 'imbi-assistant'
         response = await self.client.post(path, json=dest)
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(

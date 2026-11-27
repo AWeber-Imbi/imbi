@@ -478,6 +478,25 @@ class OrganizationEndpointsTestCase(support.SharedAppTestCase):
         response = self.client.patch('/organizations/engineering', json=bad)
         self.assertEqual(response.status_code, 400)
 
+    def test_slack_team_id_needs_install_admin(self) -> None:
+        """An org-level admin cannot set the Slack team id."""
+        self.admin_user.is_admin = False
+        self.mock_db.match.return_value = [self.test_org]
+        patch = [{'op': 'add', 'path': '/slack_team_id', 'value': 'T012AB3CD'}]
+        response = self.client.patch('/organizations/engineering', json=patch)
+        self.assertEqual(response.status_code, 403, response.text)
+        response = self.client.post(
+            '/organizations/',
+            json={
+                'name': 'Other',
+                'slug': 'other',
+                'slack_team_id': 'T012AB3CD',
+            },
+        )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.mock_db.execute.assert_not_called()
+        self.mock_db.create.assert_not_called()
+
     def test_patch_organization_not_found(self) -> None:
         """Test patching non-existent organization returns 404."""
         self.mock_db.match.return_value = []

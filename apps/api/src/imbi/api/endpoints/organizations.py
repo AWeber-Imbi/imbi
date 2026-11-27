@@ -383,12 +383,28 @@ organizations_router.include_router(
 )
 
 
+def _check_slack_team_id(
+    auth: permissions.AuthContext, old: str | None, new: str | None
+) -> None:
+    """Only an install admin can set or change ``slack_team_id``.
+
+    The team ID picks the organization of a Slack workspace's bot. An
+    organization admin who could set it could take another
+    organization's workspace.
+    """
+    if old != new and not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only an install admin can set the Slack team ID',
+        )
+
+
 @organizations_router.post('/', status_code=201)
 async def create_organization(
     org: models.Organization,
     request: fastapi.Request,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('organization:create'),
@@ -407,6 +423,7 @@ async def create_organization(
         409: Organization with slug already exists.
 
     """
+    _check_slack_team_id(auth, None, org.slack_team_id)
     now = datetime.datetime.now(datetime.UTC)
     org.created_at = now
     org.updated_at = now
@@ -739,7 +756,7 @@ async def patch_organization(
     operations: list[json_patch.PatchOperation],
     request: fastapi.Request,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('organization:update'),
@@ -757,6 +774,8 @@ async def patch_organization(
 
     Raises:
         400: Invalid patch, read-only path, or validation error.
+        403: The caller is not an install admin and the patch changes
+            ``slack_team_id``.
         404: Organization not found.
         409: Slug rename conflicts with existing organization.
         422: Patch test operation failed.
@@ -783,6 +802,7 @@ async def patch_organization(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
+    _check_slack_team_id(auth, existing.slack_team_id, org.slack_team_id)
     org.created_at = existing.created_at
     org.updated_at = datetime.datetime.now(datetime.UTC)
     return await _persist_organization(slug, existing.id, org, request, db)

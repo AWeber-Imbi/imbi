@@ -25,6 +25,7 @@ from imbi.api.endpoints.secret_broker import broker_error
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.api.secret_broker import broker, providers
 from imbi.common import graph, models
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import encrypt_config_value
 
 LOGGER = logging.getLogger(__name__)
@@ -797,16 +798,24 @@ async def get_mcp_server_credentials(
     Only a service account (imbi-assistant, imbi-slackbot) can call it.
 
     Raises:
-        403: The caller is a user, or a binding does not list the server.
+        403: The caller is not imbi-assistant or imbi-slackbot, or a
+            binding does not list the server.
         404: No such server.
         409: The caller's URLs are not the saved URLs of the server, for
             example from a connection made before a URL change.
         503: The secret provider failed.
 
     """
-    if auth.service_account is None:
+    # The admin role has every permission, so an org admin could give it to
+    # a service account of their own. Only the two internal accounts may
+    # call this: the server can be in any organization.
+    if auth.service_account is None or auth.service_account.slug not in (
+        common_permissions.ASSISTANT_ACCOUNT,
+        common_permissions.SLACKBOT_ACCOUNT,
+    ):
         raise fastapi.HTTPException(
-            status_code=403, detail='Only a service account can call this'
+            status_code=403,
+            detail='Only imbi-assistant and imbi-slackbot can call this',
         )
     results = await db.match(models.MCPServer, {'id': id})
     if not results or not results[0].org_id:

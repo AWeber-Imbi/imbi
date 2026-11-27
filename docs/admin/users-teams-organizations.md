@@ -46,7 +46,8 @@ that workspace belongs to one organization.
    organization.
 3. Enter the ID in **Slack team ID**, then save.
 
-Two organizations cannot have the same team ID. When no organization has
+Only an install admin can set or change the team ID. Two organizations
+cannot have the same team ID. When no organization has
 the team ID of the bot's workspace, the bot answers no one.
 
 ### Membership
