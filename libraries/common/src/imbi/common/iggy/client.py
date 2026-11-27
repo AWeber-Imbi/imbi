@@ -18,7 +18,7 @@ import urllib.parse
 import orjson
 import prometheus_client
 import pydantic
-from apache_iggy import IggyClient, SendMessage
+from apache_iggy import IggyClient, SendMessage, TopicOptions
 
 from imbi.common import clickhouse, posthog, settings
 
@@ -262,7 +262,9 @@ class Iggy:
                 LOGGER.debug('Creating Iggy topic %s/%s', stream, topic)
                 await _tolerate_exists(
                     client.create_topic(
-                        stream, topic, partitions_count=PARTITIONS_COUNT
+                        stream,
+                        topic,
+                        TopicOptions(partitions_count=PARTITIONS_COUNT),
                     )
                 )
         # Only when this client is still the cached one. A concurrent
@@ -553,7 +555,7 @@ def _payload(
     return {column: dumped[column] for column in columns}
 
 
-async def _tolerate_exists(awaitable: typing.Awaitable[None]) -> None:
+async def _tolerate_exists(awaitable: typing.Awaitable[object]) -> None:
     """Await a create call, treating "already exists" as success.
 
     Nothing else creates these streams and topics, so the only way to

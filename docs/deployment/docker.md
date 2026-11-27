@@ -245,7 +245,7 @@ docker run --network <network> \
   -e IGGY_CONNECTORS_IGGY_ADDRESS=iggy:8090 \
   -e IGGY_CONNECTORS_IGGY_USERNAME=iggy \
   -e IGGY_CONNECTORS_IGGY_PASSWORD=iggy \
-  ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+  ghcr.io/aweber-imbi/iggy:0.10.0-0
 ```
 
 The base URL carries whatever path imbi-api mounts its routes under, which is

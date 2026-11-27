@@ -104,6 +104,34 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    `deployment-sweep` system task, which runs **Close Out Stuck
    Deployments** every 6 hours. Until you run the command, the task
    fails with a 403.
+4. **Before you deploy**, upgrade Iggy to `ghcr.io/aweber-imbi/iggy:0.10.0-0`
+   (Apache Iggy 0.10.0). This release uses `apache-iggy` 0.10.0, which
+   speaks wire protocol 0.12.0. It cannot connect to an older Iggy server,
+   and an older client cannot connect to the new server. Iggy 0.10.0 also
+   changes its storage format and has no migration, so you must remove the
+   Iggy data directory:
+    1. Stop the services that publish to Iggy (imbi-api, imbi-gateway,
+       imbi-scheduler, imbi-workflows).
+    2. Let iggy-connect write the remaining messages to ClickHouse. A
+       message that is still in Iggy when you remove the data directory is
+       lost. A topic is drained when the stored offset of its consumer
+       group is the same as the current offset of partition 0. In the Iggy
+       server container, for each stream and topic:
+
+        ```bash
+        iggy --credentials-username <user> --credentials-password <password> \
+          consumer-offset get <stream> <stream> <topic> 0 --kind consumer-group
+        ```
+
+        The consumer group has the name of the stream.
+    3. Stop iggy-connect and the Iggy server, and delete the Iggy data
+       directory (on Kubernetes, the PersistentVolumeClaim).
+    4. Start the Iggy server with the new image. Iggy 0.10.0 does not
+       generate a root password, so `IGGY_ROOT_USERNAME` and
+       `IGGY_ROOT_PASSWORD` must be set (see
+       [Run the Iggy server](operations.md#run-the-iggy-server)).
+    5. Deploy this release, then start iggy-connect with the new image.
+       imbi-api creates the streams and topics again at startup.
 
 ## 2.65.0
 

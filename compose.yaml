@@ -86,7 +86,7 @@ services:
       retries: 10
 
   iggy:
-    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.8-0
+    image: ghcr.io/aweber-imbi/iggy:0.10.0-0
     ports:
       - 3000
       - 8090
@@ -124,7 +124,7 @@ services:
   # container port rather than through Caddy, so the /api prefix here is
   # the one IMBI_API_URL above sets.
   iggy-connect:
-    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.8-0
+    image: ghcr.io/aweber-imbi/iggy:0.10.0-0
     ports:
       - 8081
     environment:

@@ -25,7 +25,7 @@ services:
   # Same server version as production, so CI tests the SDK in uv.lock
   # against the server it will talk to.
   iggy:
-    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.8-0
+    image: ghcr.io/aweber-imbi/iggy:0.10.0-0
     ports:
       - "3000"
       - "8090"
@@ -98,7 +98,7 @@ services:
   # creates every TOPICS stream (through imbi's own client) once the
   # server is up. That task starts this afterwards.
   iggy-connect:
-    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.8-0
+    image: ghcr.io/aweber-imbi/iggy:0.10.0-0
     profiles:
       - "connect"
     ports:

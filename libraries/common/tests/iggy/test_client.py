@@ -266,13 +266,19 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
                 common_iggy.TOPICS, {'events': ('gateway',)}, clear=True
             )
         )
+        topic_options = self.enterContext(
+            mock.patch.object(client, 'TopicOptions')
+        )
         iggy = client.Iggy.get_instance()
         self.mock_client.get_stream.return_value = None
         self.mock_client.get_topic.return_value = None
         await iggy.ensure_topic('events', 'gateway')
         self.mock_client.create_stream.assert_awaited_once_with('events')
+        topic_options.assert_called_once_with(
+            partitions_count=client.PARTITIONS_COUNT
+        )
         self.mock_client.create_topic.assert_awaited_once_with(
-            'events', 'gateway', partitions_count=client.PARTITIONS_COUNT
+            'events', 'gateway', topic_options.return_value
         )
 
     async def test_ensure_topic_skips_what_exists(self) -> None:

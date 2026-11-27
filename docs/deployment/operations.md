@@ -35,7 +35,7 @@ In production:
   the image also uses TCP by default.
 
 Use the same Iggy image version for the server and for iggy-connect. The
-examples use `ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0`.
+examples use `ghcr.io/aweber-imbi/iggy:0.10.0-0`.
 
 ### When to restart iggy-connect
 
