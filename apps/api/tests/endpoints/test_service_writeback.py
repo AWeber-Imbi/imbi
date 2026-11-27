@@ -68,9 +68,16 @@ class LookupProjectExistsInTestCase(unittest.TestCase):
         self.assertIsNone(result[1].canonical_url)
         self.assertIsNone(result[1].verified_identifier)
 
-    def test_empty_on_lookup_failure(self) -> None:
+    def test_lookup_failure_raises(self) -> None:
+        # An error must not look like "no edges".
         db = mock.AsyncMock()
         db.execute.side_effect = RuntimeError('boom')
+        with self.assertRaises(RuntimeError):
+            asyncio.run(_helpers.lookup_project_exists_in(db, 'proj-1'))
+
+    def test_empty_when_no_edges(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = []
         result = asyncio.run(_helpers.lookup_project_exists_in(db, 'proj-1'))
         self.assertEqual(result, [])
 

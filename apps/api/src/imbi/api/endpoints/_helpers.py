@@ -635,9 +635,12 @@ async def lookup_project_exists_in(
     One :class:`ServiceConnection` per
     ``(:Project)-[:EXISTS_IN]->(:Integration)`` edge, carrying the
     integration slug, the edge ``identifier``, and the canonical API
-    URL. Returns ``[]`` on lookup failure or when the project exists in
-    no integrations. Populated onto :attr:`PluginContext.service_connections`
-    so plugins can read the relationship without re-querying the graph.
+    URL. Returns ``[]`` when the project exists in no integrations. A
+    failed query raises, so that a caller cannot take a database error
+    for "not connected" (a plugin would then write a new edge or report
+    the project as unlinked). Populated onto
+    :attr:`PluginContext.service_connections` so plugins can read the
+    relationship without re-querying the graph.
     """
     query: typing.LiteralString = (
         'MATCH (p:Project {{id: {project_id}}}) '
@@ -647,20 +650,16 @@ async def lookup_project_exists_in(
         'ei.canonical_url AS canonical_url, '
         'ei.verified_identifier AS verified_identifier'
     )
-    try:
-        records = await db.execute(
-            query,
-            {'project_id': project_id},
-            [
-                'integration_slug',
-                'identifier',
-                'canonical_url',
-                'verified_identifier',
-            ],
-        )
-    except Exception:  # noqa: BLE001
-        LOGGER.debug('Project EXISTS_IN lookup failed', exc_info=True)
-        return []
+    records = await db.execute(
+        query,
+        {'project_id': project_id},
+        [
+            'integration_slug',
+            'identifier',
+            'canonical_url',
+            'verified_identifier',
+        ],
+    )
     connections: list[ServiceConnection] = []
     for r in records:
         slug = graph.parse_agtype(r.get('integration_slug'))
