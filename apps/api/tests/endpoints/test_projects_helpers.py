@@ -5,6 +5,7 @@ Covers the private helpers added in the release-committish work:
 ``_fetch_current_releases`` and ``lookup_ops_log_performed_by``.
 """
 
+import asyncio
 import datetime
 import unittest
 from unittest import mock
@@ -336,3 +337,92 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
                 [('p1', 'prod', '1.0.0', None)]
             )
         self.assertEqual(result, {})
+
+
+_PROD = _state(
+    env_slug='prod',
+    tag='1.0.0',
+    committish='abcdef0',
+    timestamp=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
+)
+
+
+class ShadowStateReadTestCase(unittest.IsolatedAsyncioTestCase):
+    """The phase-3 shadow read counts and logs differences."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(projects, '_shadow_last', 0.0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _count(self, result: str) -> float:
+        return projects._SHADOW_READS.labels(result)._value.get()
+
+    async def _run(
+        self,
+        stored: list[deployment_nodes.EnvironmentReleaseState],
+        result: str,
+        *,
+        reread: list[deployment_nodes.EnvironmentReleaseState] | None = None,
+    ) -> float:
+        before = self._count(result)
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_from_state',
+                mock.AsyncMock(side_effect=[stored, reread or stored]),
+            ),
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[_PROD]),
+            ),
+        ):
+            projects._shadow_state_read(mock.AsyncMock(), ['p1'], [_PROD])
+            await asyncio.gather(*projects._SHADOW_TASKS)
+        return self._count(result) - before
+
+    async def test_counts_and_logs_a_difference(self) -> None:
+        with self.assertLogs(projects.LOGGER, 'WARNING') as logs:
+            self.assertEqual(1, await self._run([], 'differ'))
+        self.assertIn('differs for 1 environments', logs.output[0])
+        self.assertIn('p1/prod', logs.output[0])
+
+    async def test_logs_every_differing_environment(self) -> None:
+        states = [
+            _PROD._replace(
+                environment={'slug': f'env-{n:02d}', 'name': 'e'},
+            )
+            for n in range(11)
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_from_state',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=states),
+            ),
+            self.assertLogs(projects.LOGGER, 'WARNING') as logs,
+        ):
+            projects._shadow_state_read(mock.AsyncMock(), ['p1'], states)
+            await asyncio.gather(*projects._SHADOW_TASKS)
+        for n in range(11):
+            self.assertIn(f'p1/env-{n:02d}', logs.output[0])
+
+    async def test_a_difference_gone_on_reread_is_a_match(self) -> None:
+        # A deployment written between the two reads.
+        self.assertEqual(1, await self._run([], 'match', reread=[_PROD]))
+
+    async def test_a_different_release_is_a_difference(self) -> None:
+        assert _PROD.current is not None
+        other = _PROD._replace(
+            current=_PROD.current._replace(release={'id': 'r-other'})
+        )
+        self.assertEqual(1, await self._run([other], 'differ'))
+
+    async def test_counts_a_match(self) -> None:
+        self.assertEqual(1, await self._run([_PROD], 'match'))
+
+    async def test_runs_at_most_once_a_minute(self) -> None:
+        self.assertEqual(1, await self._run([_PROD], 'match'))
+        self.assertEqual(0, await self._run([_PROD], 'match'))

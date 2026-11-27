@@ -1201,6 +1201,100 @@ class DeploymentStateTests(DeploymentNodeTestCase):
         self.assertEqual(before, await self.stored())
 
 
+class StateReaderTests(DeploymentNodeTestCase):
+    """``current_and_latest_from_state`` answers like the reader."""
+
+    async def both(
+        self,
+    ) -> tuple[
+        list[deployments.EnvironmentReleaseState],
+        list[deployments.EnvironmentReleaseState],
+    ]:
+        return (
+            await deployments.current_and_latest_by_project(
+                self.graph, [PROJECT_ID]
+            ),
+            await deployments.current_and_latest_from_state(
+                self.graph, [PROJECT_ID]
+            ),
+        )
+
+    async def test_matches_the_reader(self) -> None:
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='failed',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        old, new = await self.both()
+        self.assertEqual(old, new)
+
+    async def test_in_flight_orphan_keeps_its_recorded_release(self) -> None:
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='in_progress',
+            release_id=None,
+            release_tag='1.0.0',
+            release_committish='abc1234',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        old, new = await self.both()
+        self.assertEqual(old, new)
+        self.assertEqual(
+            {'tag': '1.0.0', 'committish': 'abc1234'}, new[0].latest.release
+        )
+
+    async def test_two_releases_keep_the_highest_release_id(self) -> None:
+        await self.add_release(OTHER_RELEASE_ID, tag='2.0.0')
+        await self.upsert(status='success', external_run_id='1')
+        # The single-release rule stops writers doing this; build it raw
+        # to check the tie-break both readers share.
+        await self.graph.execute(
+            'MATCH (r:Release), (d:Deployment)'
+            ' WHERE r.id = {release_id} AND d.external_run_id = {run}'
+            ' MERGE (r)-[:HAS_DEPLOYMENT]->(d) RETURN d.id AS id',
+            {'release_id': OTHER_RELEASE_ID, 'run': '1'},
+            ['id'],
+        )
+        old, new = await self.both()
+        self.assertEqual(old, new)
+        assert new[0].current is not None and new[0].current.release
+        self.assertEqual(
+            max(RELEASE_ID, OTHER_RELEASE_ID), new[0].current.release['id']
+        )
+
+    async def test_deleted_environment_does_not_show(self) -> None:
+        await self.upsert(status='success', external_run_id='1')
+        await self.graph.execute(
+            'MATCH (e:Environment) WHERE e.slug = {env}'
+            ' DETACH DELETE e RETURN 1 AS ok',
+            {'env': ENV},
+            ['ok'],
+        )
+        old, new = await self.both()
+        self.assertEqual([], old)
+        self.assertEqual([], new)
+
+    async def test_project_without_state_falls_back(self) -> None:
+        await self.upsert(status='success', external_run_id='1')
+        await self.graph.execute(
+            'MATCH (p:Project) WHERE p.id = {project_id}'
+            ' REMOVE p.deployment_state RETURN p.id AS id',
+            {'project_id': PROJECT_ID},
+            ['id'],
+        )
+        old, new = await self.both()
+        self.assertEqual(1, len(new))
+        self.assertEqual(old, new)
+
+    async def test_no_projects(self) -> None:
+        self.assertEqual(
+            [],
+            await deployments.current_and_latest_from_state(self.graph, []),
+        )
+
+
 class FieldsTests(DeploymentNodeTestCase):
     """The blueprint properties of a ``Deployment`` node."""
 

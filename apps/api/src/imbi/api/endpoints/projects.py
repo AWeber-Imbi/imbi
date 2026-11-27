@@ -9,10 +9,12 @@ import collections.abc
 import datetime
 import json
 import logging
+import time
 import typing
 
 import fastapi
 import nanoid
+import prometheus_client
 import psycopg
 import pydantic
 
@@ -774,6 +776,98 @@ class CurrentReleaseState(typing.NamedTuple):
     latest: dict[str, dict[str, LatestDeployment]]
 
 
+#: Background shadow reads, held so the event loop does not drop them.
+_SHADOW_TASKS: set[asyncio.Task[None]] = set()
+#: At most one shadow read a minute, so it adds little graph load.
+_SHADOW_INTERVAL = 60.0
+_shadow_last = 0.0
+_SHADOW_READS = prometheus_client.Counter(
+    'imbi_deployment_state_shadow_reads',
+    'Projects-list shadow reads of the stored deployment state, by result',
+    ['result'],
+)
+
+
+def _shadow_state_read(
+    db: graph.Graph,
+    project_ids: list[str],
+    states: list[deployment_nodes.EnvironmentReleaseState],
+) -> None:
+    """Compare the stored deployment state with the reader in a
+    background task, at most once a minute, and count the result in
+    ``imbi_deployment_state_shadow_reads_total{result=match|differ|error}``.
+    A difference also logs a WARNING that names the environments.
+
+    ponytail: shadow mode for issue #998 phase 3.  After one week with
+    no ``differ`` or ``error``, the list reads the stored state and this
+    goes.
+    """
+    global _shadow_last
+    now = time.monotonic()
+    if _SHADOW_TASKS or now - _shadow_last < _SHADOW_INTERVAL:
+        return
+    _shadow_last = now
+
+    def differences(
+        old: list[deployment_nodes.EnvironmentReleaseState],
+        new: list[deployment_nodes.EnvironmentReleaseState],
+    ) -> list[str]:
+        """The ``project/environment`` keys whose two answers differ in
+        the deployment or the release of either attempt."""
+
+        def ids(
+            found: list[deployment_nodes.EnvironmentReleaseState],
+        ) -> dict[str, tuple[object, ...]]:
+            return {
+                f'{s.project_id}/{s.environment.get("slug") or ""}': (
+                    deployment_nodes.state_ids(s),
+                    (s.current.release or {}).get('id') if s.current else None,
+                    (s.latest.release or {}).get('id'),
+                )
+                for s in found
+            }
+
+        a, b = ids(old), ids(new)
+        return sorted(k for k in a.keys() | b.keys() if a.get(k) != b.get(k))
+
+    async def run() -> None:
+        try:
+            found = differences(
+                states,
+                await deployment_nodes.current_and_latest_from_state(
+                    db, project_ids
+                ),
+            )
+            if found:
+                # The two reads do not share a snapshot, so a deployment
+                # written between them shows as a difference.  Read the
+                # projects concerned again, both ways, and count only a
+                # difference that remains.
+                again = sorted({key.split('/', 1)[0] for key in found})
+                old, new = await asyncio.gather(
+                    deployment_nodes.current_and_latest_by_project(db, again),
+                    deployment_nodes.current_and_latest_from_state(db, again),
+                )
+                found = differences(old, new)
+        except Exception:  # noqa: BLE001
+            _SHADOW_READS.labels('error').inc()
+            LOGGER.warning(
+                'Deployment state shadow read failed', exc_info=True
+            )
+            return
+        _SHADOW_READS.labels('differ' if found else 'match').inc()
+        if found:
+            LOGGER.warning(
+                'Deployment state shadow read differs for %d environments: %s',
+                len(found),
+                ', '.join(found),
+            )
+
+    task = asyncio.create_task(run())
+    _SHADOW_TASKS.add(task)
+    task.add_done_callback(_SHADOW_TASKS.discard)
+
+
 async def _fetch_current_releases(
     db: graph.Graph,
     project_ids: list[str],
@@ -812,6 +906,7 @@ async def _fetch_current_releases(
             'Failed to fetch deployment nodes for projects', exc_info=True
         )
         return CurrentReleaseState({}, {})
+    _shadow_state_read(db, project_ids, states)
     current: dict[str, dict[str, ReleaseInfo]] = {}
     latest: dict[str, dict[str, LatestDeployment]] = {}
     for state in states:

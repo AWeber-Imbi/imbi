@@ -708,10 +708,9 @@ async def sync_deployment_state(
 
     async def work(execute: graph.CypherExecute) -> bool:
         rows = await execute(
-            'MATCH (p:Project) WHERE p.id = {project_id}'
-            ' RETURN p.deployment_state AS state',
-            {'project_id': project_id},
-            ['state'],
+            _STATE_QUERY,
+            {'project_ids': [project_id]},
+            ['project_id', 'state'],
         )
         params = _reader_params([project_id])
         state: dict[str, dict[str, str | None]] = {}
@@ -731,10 +730,7 @@ async def sync_deployment_state(
                     f'A deployment of project {project_id} in environment '
                     f'{slug!r} has no id'
                 )
-            state[slug] = {
-                'current': entry.current.id if entry.current else None,
-                'latest': entry.latest.id,
-            }
+            state[slug] = state_ids(entry)
         if rows and _decode(rows[0]['state']) == state:
             return False
         if not dry_run:
@@ -762,6 +758,109 @@ async def refresh_deployment_state(db: graph.Graph, project_id: str) -> None:
         LOGGER.exception(
             'Could not refresh the deployment state of project %s', project_id
         )
+
+
+_STATE_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project) WHERE p.id IN {project_ids}
+RETURN p.id AS project_id, p.deployment_state AS state
+"""
+
+#: ``WHERE d.id IN`` and not ``{id: ...}``: only the ``WHERE`` form uses
+#: the index on ``Deployment.id``.  A deployment with no ``Release`` is
+#: an in-flight orphan; its release holds what the node recorded, as in
+#: :data:`_IN_FLIGHT_UNRELEASED_QUERY`.
+_BY_ID_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (d:Deployment) WHERE d.id IN {ids}
+MATCH (p:Project)<-[:BELONGS_TO]-(d)-[:TARGETS]->(e:Environment)
+OPTIONAL MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d)
+RETURN p.id AS project_id,
+       e{{.slug, .name, .sort_order}} AS env,
+       CASE WHEN r IS NULL
+            THEN {{tag: d.release_tag, committish: d.release_committish}}
+            ELSE r{{.*}} END AS release,
+       d AS deployment
+"""
+
+
+async def current_and_latest_from_state(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+) -> list[EnvironmentReleaseState]:
+    """:func:`current_and_latest_by_project`, from the stored state.
+
+    Reads the ids that :func:`sync_deployment_state` stored on each
+    project, then those nodes by id, instead of every ``Deployment`` of
+    the projects (issue #998).  Each environment comes from the node's
+    ``TARGETS`` edge, not from the stored key, so a deleted or renamed
+    environment cannot show.  A project with no stored state -- no
+    deployments, or not yet backfilled -- is answered by
+    :func:`current_and_latest_by_project`.
+    """
+    if not project_ids:
+        return []
+    stored: dict[str, dict[str, dict[str, str | None]]] = {}
+    for row in await db.execute(
+        _STATE_QUERY,
+        {'project_ids': list(project_ids)},
+        ['project_id', 'state'],
+    ):
+        project_id = graph.parse_agtype(row['project_id'])
+        state = _decode(row['state'])
+        if isinstance(project_id, str) and state:
+            stored[project_id] = state
+    ids = list(
+        {
+            node_id
+            for state in stored.values()
+            for pair in state.values()
+            for node_id in pair.values()
+            if node_id
+        }
+    )
+    missing = [pid for pid in project_ids if pid not in stored]
+    rows: list[dict[str, typing.Any]]
+    fallback: list[EnvironmentReleaseState]
+    rows, fallback = await asyncio.gather(
+        db.execute(_BY_ID_QUERY, {'ids': ids}, _READER_COLUMNS)
+        if ids
+        else asyncio.sleep(0, []),
+        current_and_latest_by_project(db, missing),
+    )
+    # A node with two ``HAS_DEPLOYMENT`` edges comes back as two rows;
+    # keep the highest release id, as :func:`_newest_per_environment`
+    # does for the reader.
+    nodes: dict[str | None, ProjectDeployment] = {}
+    for node in _to_project_deployments(rows):
+        kept = nodes.get(node.id)
+        if kept is None or _release_id(node) > _release_id(kept):
+            nodes[node.id] = node
+    out: list[EnvironmentReleaseState] = []
+    for project_id, state in stored.items():
+        for pair in state.values():
+            latest = nodes.get(pair.get('latest'))
+            if latest is not None:
+                out.append(
+                    EnvironmentReleaseState(
+                        project_id,
+                        latest.environment,
+                        nodes.get(pair.get('current')),
+                        latest,
+                    )
+                )
+    return out + fallback
+
+
+def _release_id(node: ProjectDeployment) -> str:
+    return str((node.release or {}).get('id') or '')
+
+
+def state_ids(entry: EnvironmentReleaseState) -> dict[str, str | None]:
+    """The ids of the current and latest attempt of one environment,
+    as :func:`sync_deployment_state` stores them."""
+    return {
+        'current': entry.current.id if entry.current else None,
+        'latest': entry.latest.id,
+    }
 
 
 def started_at(deployment: ProjectDeployment) -> datetime.datetime:
