@@ -69,11 +69,10 @@ The page has two tabs: **Operations** and **Activity**.
 <!-- END GENERATED -->
 
 The descriptions come from the code. Imbi runs only **Sync Agent
-Marketplaces**, **Sync CVE Catalog**, **Prune AI Model Calls**, and
-**Prune Plugin Step Calls** on a schedule, as system jobs (see
-[Scheduled jobs](scheduled-jobs.md)). It runs no other operation
-on a schedule, **Close Out Stuck Deployments** included. Deployments stay
-`pending` until an administrator runs it or schedules it. See
+Marketplaces**, **Sync CVE Catalog**, **Prune AI Model Calls**,
+**Prune Plugin Step Calls**, and **Close Out Stuck Deployments** on a
+schedule, as system jobs (see [Scheduled jobs](scheduled-jobs.md)). It
+runs no other operation on a schedule. To run one now, see
 [Run an operation](#run-an-operation).
 
 The **Report ... (dry run)** operations change nothing. Run them before

@@ -56,7 +56,7 @@ When Imbi cannot read the verdict store, it also shows drift.
 |---|---|
 | The gateway action **Update Release Drift from Notes Push** | On each push to the notes ref, when an administrator configured the webhook rule. See [Gateway](../gateway/index.md) |
 | **Sync Commits & Tags** | When you run it. It reads the whole notes ref again and records the verdicts that Imbi does not have yet |
-| The **Close Out Stuck Deployments** maintenance operation (`deployment-sweep`) | When an administrator runs it from **Admin > Global Admin > Maintenance**. It reads all the notes of a project one time. Then, on each run, it asks for at most 10 releases with no verdict, and asks again for one release at most every 24 hours |
+| The **Close Out Stuck Deployments** maintenance operation (`deployment-sweep`) | Every 6 hours, as a system job, and when an administrator runs it from **Admin > Global Admin > Maintenance**. It reads all the notes of a project one time. Then, on each run, it asks for at most 10 releases with no verdict, and asks again for one release at most every 24 hours |
 
 If a webhook delivery was lost, a commit stays with no verdict and shows
 drift. To repair it, open the **Doctor** tab (the stethoscope icon) and
