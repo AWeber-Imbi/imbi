@@ -26,7 +26,10 @@ import type { Project, ProjectRelationship } from '@/types'
 
 // A project offered in the list: either from the project list, or a
 // dependency taken from the relationships (which carry no project_types).
-type Candidate = ProjectRelationship['project'] & {
+type Candidate = Pick<
+  ProjectRelationship['project'],
+  'id' | 'name' | 'slug'
+> & {
   project_types?: Project['project_types']
 }
 
