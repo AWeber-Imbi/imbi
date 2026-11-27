@@ -163,3 +163,31 @@ class MigrateTestCase(unittest.IsolatedAsyncioTestCase):
             ['model_id', 'enabled', 'model_type'],
         )
         self.assertGreaterEqual(len(records), 2)
+
+    async def test_a_multi_org_lookup_prefers_an_enabled_model(self) -> None:
+        """The same slug in two orgs: the enabled copy wins, whatever
+        the order of the orgs."""
+        await ai_catalog_orgs.migrate(self.graph)
+        await self.graph.execute(
+            'MATCH (m:AIModel {{name: {name}, org_id: {org}}})'
+            ' SET m.enabled = false, m.model_id = {model_id}',
+            {'name': self.name, 'org': self.orgs[0], 'model_id': 'off'},
+        )
+        for org_ids in (self.orgs, self.orgs[::-1]):
+            info = await resolve.model_info(
+                self.graph, 'default-chat', org_ids=org_ids
+            )
+            assert info is not None
+            self.assertTrue(info.enabled)
+            self.assertEqual(info.model_id, 'claude-x')
+        # With both enabled, the org with the first slug wins.
+        await self.graph.execute(
+            'MATCH (m:AIModel {{name: {name}, org_id: {org}}})'
+            ' SET m.enabled = true',
+            {'name': self.name, 'org': self.orgs[0]},
+        )
+        info = await resolve.model_info(
+            self.graph, 'default-chat', org_ids=self.orgs[::-1]
+        )
+        assert info is not None
+        self.assertEqual(info.model_id, 'off')

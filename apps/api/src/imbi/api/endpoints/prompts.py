@@ -357,6 +357,7 @@ MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
 WHERE {org} IS NULL OR o.slug = {org}
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type
+ORDER BY o.slug
 """
 
 _RUN_MODEL_QUERY: typing.LiteralString = """
@@ -661,17 +662,18 @@ async def _model_id_for(
     )
     if not records:
         raise _unprocessable(f'AI model {model!r} is not in the catalog')
-    if graph.parse_agtype(records[0]['enabled']) is False:
+    record = prompt_resolve.first_enabled(records)
+    if graph.parse_agtype(record['enabled']) is False:
         raise _unprocessable(f'AI model {model!r} is disabled')
     # A missing value predates model_type, when every model was
     # generative.
-    model_type = graph.parse_agtype(records[0].get('model_type'))
+    model_type = graph.parse_agtype(record.get('model_type'))
     if (model_type or 'generative') != kind:
         raise _unprocessable(
             f'AI model {model!r} is a {model_type or "generative"} model; '
             f'a {kind} prompt needs a {kind} model'
         )
-    return str(graph.parse_agtype(records[0]['model_id']))
+    return str(graph.parse_agtype(record['model_id']))
 
 
 #: The namespace of the prompts of workflow steps:

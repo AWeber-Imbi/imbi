@@ -48,6 +48,7 @@ WHERE o.id IN {org_ids}
 MATCH (m)-[:SERVED_BY]->(p:AIProvider)
 RETURN m.model_id AS model_id, m.enabled AS enabled, p.driver AS driver,
        m.access_scope AS access_scope
+ORDER BY o.slug
 """
 
 ALLOWED_MEMBER_QUERY: typing.LiteralString = """
@@ -77,6 +78,20 @@ RETURN o.id AS id
 
 #: The organization ids of one catalog lookup.
 OrgIds = collections.abc.Sequence[str]
+
+
+def first_enabled(
+    records: list[dict[str, typing.Any]],
+) -> dict[str, typing.Any]:
+    """The first enabled row, else the first row.
+
+    The same slug can be in more than one organization. The query
+    orders the rows by organization slug, so the choice is stable.
+    """
+    return next(
+        (r for r in records if graph.parse_agtype(r['enabled']) is not False),
+        records[0],
+    )
 
 
 class PromptError(Exception):
@@ -236,7 +251,7 @@ async def model_info(
     )
     if not records:
         return None
-    record = records[0]
+    record = first_enabled(records)
     return ModelInfo(
         model_id=str(graph.parse_agtype(record['model_id'])),
         enabled=graph.parse_agtype(record['enabled']) is not False,
