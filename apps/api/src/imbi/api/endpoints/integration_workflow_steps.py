@@ -255,10 +255,14 @@ async def run_workflow_step(
         await org_auth.member_project_org_id(
             org_slug, data.project_id, db, org_id
         )
-        slugs, edges = await asyncio.gather(
-            _helpers.lookup_project_slugs(db, data.project_id),
-            _helpers.lookup_project_exists_in(db, data.project_id),
-        )
+        try:
+            slugs, edges = await asyncio.gather(
+                _helpers.lookup_project_slugs(db, data.project_id),
+                _helpers.lookup_project_exists_in(db, data.project_id),
+            )
+        except Exception:  # Recorded below as project_lookup_failed.
+            LOGGER.exception('Project lookup for step %s failed', step_type)
+            slugs = ('', None)
         project_slug, team_slug = slugs
     elif descriptor.project_scoped:
         raise fastapi.HTTPException(
