@@ -90,6 +90,19 @@ class TranslateErrorsTestCase(unittest.TestCase):
                         raise RuntimeError(message)
                 owner.discard.assert_called_once_with(failed)
 
+    def test_a_pending_operation_discards_the_owner_client(self) -> None:
+        # The SDK cannot construct its own PendingOperationError, so a
+        # stand-in takes its place. The message matches no fragment.
+        class Pending(RuntimeError):
+            pass
+
+        owner, failed = mock.Mock(), mock.Mock()
+        with mock.patch.object(client, 'PendingOperationError', Pending):
+            with self.assertRaises(client.PublishError):
+                with client._translate_errors('publish', owner, failed):
+                    raise Pending('Operation 7 has an uncertain outcome')
+        owner.discard.assert_called_once_with(failed)
+
     def test_a_refused_request_keeps_the_owner_client(self) -> None:
         owner = mock.Mock()
         with self.assertRaises(client.PublishError):

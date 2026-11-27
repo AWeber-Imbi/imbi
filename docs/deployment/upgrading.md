@@ -123,14 +123,28 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
           consumer-offset get <stream> <stream> <topic> 0 --kind consumer-group
         ```
 
-        The consumer group has the name of the stream.
-    3. Stop iggy-connect and the Iggy server, and delete the Iggy data
+        The consumer group has the name of the stream. The output shows
+        the two offsets: the stored offset is the offset of the consumer
+        group, and the current offset is the offset of the last message of
+        partition 0. The **Iggy topics** card on the admin overview and
+        the `imbi_iggy_topic_current_offset` metric also show the current
+        offset.
+
+        The same offsets do not prove that the rows are in ClickHouse.
+        When an insert fails, the sink can store the new offset without
+        the rows (see the warning in
+        [Read a stream again](operations.md#read-a-stream-again-replay)).
+        Before you continue, examine the iggy-connect log for failed
+        inserts, and replay a stream that has one.
+    3. Back up the Iggy data directory. Keep the backup until you have
+       validated that the rows are in ClickHouse.
+    4. Stop iggy-connect and the Iggy server, and delete the Iggy data
        directory (on Kubernetes, the PersistentVolumeClaim).
-    4. Start the Iggy server with the new image. Iggy 0.10.0 does not
+    5. Start the Iggy server with the new image. Iggy 0.10.0 does not
        generate a root password, so `IGGY_ROOT_USERNAME` and
        `IGGY_ROOT_PASSWORD` must be set (see
        [Run the Iggy server](operations.md#run-the-iggy-server)).
-    5. Deploy this release, then start iggy-connect with the new image.
+    6. Deploy this release, then start iggy-connect with the new image.
        imbi-api creates the streams and topics again at startup.
 
 ## 2.65.0
