@@ -937,7 +937,21 @@ async def _deliver(
         raise
     try:
         await tasks.set_outcome(
-            task['organization_id'], task['short_id'], outcome, reason, _SYSTEM
+            task['organization_id'],
+            task['short_id'],
+            outcome,
+            reason,
+            _SYSTEM,
+            attempt=chain['attempt'],
+        )
+    except ticket_store.AttemptStale:
+        # The lease expired and a newer attempt holds the task: this
+        # claim cannot close it.
+        LOGGER.info(
+            'Attempt %s of %s is stale; outcome %s not written',
+            chain['attempt'],
+            task['id'],
+            outcome,
         )
     finally:
         # Also when the outcome write fails: the runner gets no claim.

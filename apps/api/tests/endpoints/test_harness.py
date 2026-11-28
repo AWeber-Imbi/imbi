@@ -737,6 +737,54 @@ class FailedClaimTests(RunnerTestCase):
         self.assertEqual((await self.runner_row(runner))['state'], 'idle')
         self.assertEqual((await self.task_row())['status'], 'queued')
 
+    async def test_stale_claim_does_not_close_the_newer_attempt(
+        self,
+    ) -> None:
+        task_id = uuid.UUID(self.task['id'])
+        newer = await self.register()
+
+        async def newer_attempt(*_args: typing.Any) -> typing.NoReturn:
+            # The lease of this claim expires, and a newer attempt on
+            # another runner claims the task before the model error is
+            # written.
+            async with self.pool.connection() as conn:
+                await conn.execute(
+                    'UPDATE harness.chains SET attempt = attempt + 1,'
+                    ' runner_id = %s WHERE root_ticket_id = %s',
+                    (uuid.UUID(newer['runner_id']), task_id),
+                )
+                await conn.execute(
+                    'UPDATE harness.claims SET attempt = attempt + 1'
+                    ' WHERE ticket_id = %s',
+                    (task_id,),
+                )
+            raise harness_api.llm_resolve.ModelUnusable(
+                'not_found', 'x', 'gone'
+            )
+
+        runner = await self.register()
+        with mock.patch.object(
+            harness_api, '_task_model', side_effect=newer_attempt
+        ):
+            self.assertIsNone(await self.claim(runner))
+        task = await self.task_row()
+        self.assertNotEqual(task['status'], 'closed')
+        self.assertIsNone(task['outcome'])
+        chain = await self.harness.chain(task_id)
+        assert chain is not None
+        # The outcome of the newer attempt still closes the task.
+        await self.store.set_outcome(
+            self.org,
+            'T-1',
+            'failed_external',
+            'model_not_found',
+            harness_api._SYSTEM,
+            attempt=chain['attempt'],
+        )
+        task = await self.task_row()
+        self.assertEqual(task['status'], 'closed')
+        self.assertEqual(task['outcome_reason'], 'model_not_found')
+
     async def test_failed_response_releases_the_claim(self) -> None:
         runner = await self.register()
         with (
