@@ -12,6 +12,7 @@ uniformly covers project / project-type ``USES {capability}`` edges
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 import json
 import logging
@@ -59,8 +60,10 @@ from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
     PluginContext,
+    ProjectDependency,
     RemediationOffer,
     RemediationResult,
+    ServiceConnection,
 )
 from imbi.common.plugins.errors import PluginRemediationNotSupported
 
@@ -119,36 +122,70 @@ def _handler(resolved: ResolvedCapability) -> AnalysisCapability:
     return typing.cast('AnalysisCapability', resolved.capability_cls())
 
 
-async def _build_context(
+@dataclasses.dataclass(frozen=True)
+class _ProjectData:
+    """The project lookups that all plugin contexts of one run share."""
+
+    project_slug: str
+    team_slug: str | None
+    project_links: dict[str, str]
+    project_type_slugs: list[str]
+    service_connections: list[ServiceConnection]
+    #: ``None`` when the dependency lookup failed.
+    dependencies: list[ProjectDependency] | None
+    project_facts: dict[str, typing.Any]
+
+
+async def _load_project_data(
     db: graph.Graph,
-    org_slug: str,
     project_id: str,
-    resolved: ResolvedCapability,
-) -> PluginContext:
+    project_type_slugs: list[str] | None = None,
+) -> _ProjectData:
+    """Run the project lookups one time for all plugins.
+
+    Give ``project_type_slugs`` when the caller has them already.
+    """
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
-    project_type_slugs = await lookup_project_type_slugs(db, project_id)
+    if project_type_slugs is None:
+        project_type_slugs = await lookup_project_type_slugs(db, project_id)
     try:
         service_connections = await lookup_project_exists_in(db, project_id)
     except Exception as exc:
         LOGGER.exception('EXISTS_IN lookup for project %s failed', project_id)
         raise ProjectLookupFailed from exc
-    dependencies = await lookup_project_dependencies(db, project_id)
-    project_facts = await fetch_project_props(db, project_id)
+    return _ProjectData(
+        project_slug=project_slug,
+        team_slug=team_slug,
+        project_links=project_links,
+        project_type_slugs=project_type_slugs,
+        service_connections=service_connections,
+        dependencies=await lookup_project_dependencies(db, project_id),
+        project_facts=await fetch_project_props(db, project_id),
+    )
+
+
+def _build_context(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    project: _ProjectData,
+    resolved: ResolvedCapability,
+) -> PluginContext:
     return PluginContext(
         project_id=project_id,
-        project_slug=project_slug,
+        project_slug=project.project_slug,
         org_slug=org_slug,
-        team_slug=team_slug,
+        team_slug=project.team_slug,
         assignment_options=resolved.capability_options,
         integration_options=resolved.integration_options,
         capability_options=resolved.capability_options,
-        project_links=project_links,
-        project_facts=project_facts,
-        project_type_slugs=project_type_slugs,
+        project_links=project.project_links,
+        project_facts=project.project_facts,
+        project_type_slugs=project.project_type_slugs,
         integration_slug=resolved.integration_slug,
-        service_connections=service_connections,
-        dependencies=dependencies or [],
+        service_connections=project.service_connections,
+        dependencies=project.dependencies or [],
         # The same canonical UI link the lifecycle dispatcher hands to
         # plugins, so a doctor can verify what the lifecycle sync wrote
         # (e.g. the GitHub repo ``homepage``).  ``None`` when
@@ -158,7 +195,7 @@ async def _build_context(
         # not remove remote state on partial data.
         resolve_linked_identifiers=(
             None
-            if dependencies is None
+            if project.dependencies is None
             else linked_identifier_resolver(
                 db, org_slug, resolved.integration_slug
             )
@@ -223,6 +260,7 @@ async def _run_one(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
+    project: _ProjectData,
     resolved: ResolvedCapability,
     auth: permissions.AuthContext,
 ) -> list[AnalysisResult]:
@@ -232,15 +270,13 @@ async def _run_one(
     one misbehaving plugin can't sink the whole report.
     """
     try:
-        ctx = await _build_context(db, org_slug, project_id, resolved)
+        ctx = _build_context(db, org_slug, project_id, project, resolved)
         ctx = await _hydrate_identity_optional(db, resolved, ctx, auth)
         credentials = await _resolve_credentials(resolved, ctx)
         handler = _handler(resolved)
         items: list[AnalysisResultItem] = await call_with_timeout(
             handler.analyze(ctx, credentials)
         )
-    except ProjectLookupFailed:
-        raise
     except Exception:
         # The traceback (and any URLs / query fragments / credentials
         # the plugin might have embedded in the exception message) is
@@ -533,11 +569,18 @@ async def _collect_results(
         for item in compliance_items
     ]
     plugins = await resolve_all_capabilities(db, project_id, 'analysis')
-    per_plugin = await asyncio.gather(
-        *(_run_one(db, org_slug, project_id, rp, auth) for rp in plugins)
-    )
-    for batch in per_plugin:
-        results.extend(batch)
+    if plugins:
+        # Look up the project one time for all plugins, so that a failed
+        # lookup raises one time, before a plugin runs.
+        project = await _load_project_data(db, project_id, type_slugs)
+        per_plugin = await asyncio.gather(
+            *(
+                _run_one(db, org_slug, project_id, project, rp, auth)
+                for rp in plugins
+            )
+        )
+        for batch in per_plugin:
+            results.extend(batch)
     results.sort(key=lambda r: (-_STATUS_RANK.get(r.status, 0), r.title))
     return results
 
@@ -652,7 +695,8 @@ async def _remediate_one(
             detail=f'Analysis plugin {plugin_id!r} is not assigned',
         )
 
-    ctx = await _build_context(db, org_slug, project_id, resolved)
+    project = await _load_project_data(db, project_id, type_slugs)
+    ctx = _build_context(db, org_slug, project_id, project, resolved)
     ctx = await _hydrate_identity_optional(db, resolved, ctx, auth)
     handler = _handler(resolved)
     # The context of the last call carries the plugin's write-backs.
