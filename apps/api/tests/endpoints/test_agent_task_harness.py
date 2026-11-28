@@ -1516,6 +1516,14 @@ class UsageTests(HarnessTestCase):
             provider=cheap,
             output_cost_per_million='1',
         )
+        # The same provider has another model with that id. Without the
+        # model pin, the slug order would choose 'a-same-provider'.
+        await self.make_model(
+            'a-same-provider',
+            'claude-shared',
+            provider=pinned,
+            output_cost_per_million='2',
+        )
         ai_model_id = await self.make_model(
             'b-pinned', 'claude-shared', provider=pinned
         )
