@@ -41,6 +41,7 @@ MaintenanceSlug = typing.Literal[
     'plugin-step-calls-prune',
     'mcp-server-org-backfill',
     'conversation-org-backfill',
+    'deployment-array-drop',
 ]
 
 
@@ -371,6 +372,21 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_one_run,
             execute=operations.execute_conversation_org_backfill,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='deployment-array-drop',
+            label='Remove Legacy Deployment Arrays',
+            description=(
+                'Remove the legacy deployments array from each release '
+                'to environment (DEPLOYED_TO) edge. Deployments are '
+                'Deployment nodes now, and nothing reads the array. It '
+                'deletes no edge and no node. Run it one time after the '
+                'upgrade. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_one_run,
+            execute=operations.execute_deployment_array_drop,
             items_are_projects=False,
         ),
     )

@@ -18,8 +18,9 @@ This module lives in ``imbi.common`` because both the API (writes and
 the release-train reads) and the scoring engine (which derives a
 project's per-environment status) need it.
 
-Nothing reads or writes the legacy array any more.  The property stays
-on the stored edges until a later change removes it.
+Nothing reads or writes the legacy array any more.  The
+``deployment-array-drop`` maintenance operation removes it from the
+stored edges.
 
 """
 

@@ -215,6 +215,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    the project links now open the alert rules list in that
    organization (`orgId=<org_id>`), and the doctor reports an old link
    until it is written again.
+8. **After you deploy imbi-api**, run **Remove Legacy Deployment Arrays**
+   (`deployment-array-drop`) one time. It removes the old `deployments`
+   array from each `DEPLOYED_TO` edge. Nothing reads the array: the
+   `Deployment` nodes hold the deployments. The operation deletes no
+   edge and no node, and it is safe to run again.
 
 ## 2.65.0
 
