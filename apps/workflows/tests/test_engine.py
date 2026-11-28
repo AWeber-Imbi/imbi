@@ -717,28 +717,46 @@ class ManualRunTestCase(EngineTestCase):
 
     async def test_timeout_retry_resumes_the_deployment(self) -> None:
         # #829: the retry polls the run that attempt 1 started. It does
-        # not resolve the version again or post a new deployment.
+        # not resolve the version again or post a new deployment. The
+        # lease limits a call to 1s, so the first poll times out with
+        # time left in the step.
+        self.config.lease_seconds = 31
+        original = FakeApi.__call__
+        polls: list[str] = []
+
+        async def hang() -> httpx.Response:
+            await asyncio.sleep(5)
+            return httpx.Response(500)
+
+        def hang_once(
+            api: FakeApi, request: httpx.Request
+        ) -> httpx.Response | abc.Awaitable[httpx.Response]:
+            if '/runs/' in request.url.path:
+                polls.append(request.url.path)
+                if len(polls) == 1:
+                    return hang()
+            return original(api, request)
+
         workflow_id = await self._workflow(
             [
                 _node('start', 'manual'),
-                {
-                    **_node(
-                        'ship',
-                        'deploy',
-                        {
-                            'project_id': 'p1',
-                            'environment': 'staging',
-                            'version': '1.0.0',
-                        },
-                    ),
-                    # The poll is due after 1s, so the timeout comes first.
-                    'timeout_seconds': 1,
-                },
+                _node(
+                    'ship',
+                    'deploy',
+                    {
+                        'project_id': 'p1',
+                        'environment': 'staging',
+                        'version': '1.0.0',
+                    },
+                ),
             ],
             [_edge('start', 'ship')],
         )
         run_id = await self._start(workflow_id)
-        with mock.patch.object(engine, 'RETRY_BACKOFF', 0):
+        with (
+            mock.patch.object(FakeApi, '__call__', hang_once),
+            mock.patch.object(engine, 'RETRY_BACKOFF', 0),
+        ):
             run = await self._drive(run_id)
         self.assertEqual(run['status'], 'succeeded', run['error'])
         self.assertEqual(run['steps']['ship']['attempt'], 2)
@@ -3457,37 +3475,16 @@ class LLMCallStepTestCase(EngineTestCase):
         self.assertEqual(self._keys()[:2], ['sum:1', 'sum:1'])
         self.assertEqual(run['steps']['sum']['attempt'], 1)
 
-    async def test_timeout_retry_keeps_the_key(self) -> None:
-        # The call of attempt 1 can still run in imbi-api when the step
-        # times out. A new key could pay twice; with the same key,
-        # imbi-api returns the outcome of the first call. Only a known
-        # failure gets a new key. Timeout 1s: the call of attempt 1 runs
-        # until attempt 2 starts, then fails with a known error.
-        attempts: list[int] = []
-        llm_call = executors.Executors._llm_call
-
-        async def tracked(
-            self_: executors.Executors, call: executors.Call
-        ) -> executors.Outcome:
-            attempts.append(call.attempt)
-            return await llm_call(self_, call)
-
-        def run(request: httpx.Request) -> httpx.Response:
-            self.calls.append(request)
-            key = self._keys()[-1]
-            if key.startswith('then:') or key == 'sum:3':
-                return self._answer()
-            if 2 not in attempts:
-                return self._error(409, 'call_in_progress', True)
-            return self._error(503, 'rate_limited', True)
-
-        self.api.llm_call = run
-        with mock.patch.object(executors.Executors, '_llm_call', tracked):
-            run_ = await self._drive_llm_call(timeout_seconds=1)
-        self.assertEqual(run_['status'], 'succeeded', run_['error'])
-        self.assertEqual(run_['steps']['sum']['attempt'], 3)
-        sum_keys = [k for k in self._keys() if k.startswith('sum:')]
-        self.assertEqual(sorted(set(sum_keys)), ['sum:1', 'sum:3'])
+    async def test_step_timeout_does_not_retry(self) -> None:
+        # #990: the step timeout counts all attempts, so a step that used
+        # it has no time for a retry. Timeout 1s: the call of attempt 1
+        # is still in progress when the timeout ends.
+        self.answers = [self._error(409, 'call_in_progress', True)]
+        run = await self._drive_llm_call(timeout_seconds=1)
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['steps']['sum']['error'], 'timeout')
+        self.assertEqual(run['steps']['sum']['attempt'], 1)
+        self.assertEqual(set(self._keys()), {'sum:1'})
 
     async def test_provider_outcome_unknown_fails(self) -> None:
         self.answers = [self._error(502, 'provider_outcome_unknown', False)]
@@ -3693,6 +3690,101 @@ class PluginStepTestCase(EngineTestCase):
             [c.headers['Idempotency-Key'] for c in self.calls],
             [f'{run_id}:gate:1:0', f'{run_id}:gate:2:0'],
         )
+
+    async def test_retry_does_not_reset_the_step_timeout(self) -> None:
+        # #990: the step timeout counts the calls of all attempts. Mark
+        # attempt 1 as 295s of 300s, so attempt 2 has 5s. Its call does
+        # not answer, so only the step timeout can end it.
+        self.answers = [
+            httpx.Response(
+                502, json={'detail': {'error': 'plugin_error', 'retry': True}}
+            ),
+            self._result(output={'value': 1}, port='Pass'),
+        ]
+        run_id = await self._gate(timeout_seconds=300, retries=3)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 3600):
+            await self._drive(
+                run_id,
+                lambda r: r['steps'].get('gate', {}).get('attempt') == 2,
+            )
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE workflow_runtime.step_runs SET started_at = NOW(),'
+                " used_seconds = 295 WHERE run_id = %s AND node_id = 'gate'",
+                (run_id,),
+            )
+            await conn.execute(
+                'UPDATE workflow_runtime.runs SET due_at = NOW()'
+                ' WHERE id = %s',
+                (run_id,),
+            )
+        self.delay = 60
+        run = await self._drive(run_id)
+        self.assertEqual(run['steps']['gate']['error'], 'timeout', run)
+        self.assertEqual(run['steps']['gate']['port'], 1)
+        self.assertEqual(run['steps']['gate']['attempt'], 2)
+        self.assertEqual(len(self.calls), 2)
+        body = json.loads(self.calls[1].content)
+        self.assertLessEqual(body['time_limit_seconds'], 5)
+
+    async def test_error_after_the_step_timeout_does_not_retry(self) -> None:
+        # #990: a retryable error that comes when the step timeout has
+        # ended fails the step. The clock moves 400s past the 300s
+        # timeout before the call answers.
+        now = engine._now
+        late = mock.patch.object(
+            engine, '_now', lambda: now() + datetime.timedelta(seconds=400)
+        )
+        self.addCleanup(late.stop)
+
+        async def answer(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            late.start()
+            return httpx.Response(
+                502, json={'detail': {'error': 'plugin_error', 'retry': True}}
+            )
+
+        self.api.plugin_step = answer
+        run_id = await self._gate(timeout_seconds=300, retries=3)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 3600):
+            run = await self._drive(
+                run_id,
+                lambda r: r['steps'].get('gate', {}).get('status') == 'failed'
+                or r['steps'].get('gate', {}).get('attempt') == 2,
+            )
+        late.stop()
+        self.assertEqual(run['steps']['gate']['status'], 'failed', run)
+        self.assertEqual(run['steps']['gate']['attempt'], 1)
+        self.assertEqual(len(self.calls), 1)
+
+    async def test_slow_marker_write_fails_before_the_call(self) -> None:
+        # #990: the write of call_started_at can use the rest of the
+        # step timeout. Then the step fails and does not make the call.
+        now = engine._now
+        late = mock.patch.object(
+            engine, '_now', lambda: now() + datetime.timedelta(seconds=400)
+        )
+        self.addCleanup(late.stop)
+        update = store.update
+
+        async def slow_update(*args: typing.Any, **kwargs: typing.Any) -> None:
+            await update(*args, **kwargs)
+            if kwargs.get('call_started_at') is not None:
+                late.start()
+
+        run_id = await self._gate(timeout_seconds=300, retries=3)
+        with (
+            mock.patch.object(store, 'update', slow_update),
+            mock.patch.object(engine, 'RETRY_BACKOFF', 3600),
+        ):
+            run = await self._drive(
+                run_id,
+                lambda r: r['steps'].get('gate', {}).get('status') == 'failed',
+            )
+        late.stop()
+        self.assertEqual(run['steps']['gate']['error'], 'timeout', run)
+        self.assertEqual(run['steps']['gate']['attempt'], 1)
+        self.assertEqual(self.calls, [])
 
     async def test_client_error_fails(self) -> None:
         self.answers = [httpx.Response(404, json={'detail': 'not found'})]

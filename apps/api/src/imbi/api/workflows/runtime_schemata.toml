@@ -145,8 +145,14 @@ port = "INTEGER"
 # Progress of a step that spans claims: a wait, a deployment poll.
 state = "JSONB NOT NULL DEFAULT '{}'"
 call_started_at = "TIMESTAMP WITH TIME ZONE"
+# The start of the current attempt. After a retry, the end of its
+# backoff.
 started_at = "TIMESTAMP WITH TIME ZONE"
 finished_at = "TIMESTAMP WITH TIME ZONE"
+# The seconds that the attempts before the current one used. The step
+# timeout counts them; it does not count the retry backoff. Only the
+# engine writes it, so a step cannot change its timeout.
+used_seconds = "DOUBLE PRECISION NOT NULL DEFAULT 0"
 
 [tables.primary_key]
 columns = ["run_id", "node_id"]

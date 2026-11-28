@@ -692,7 +692,8 @@ async def _reopen(conn: typing.Any, run_id: uuid.UUID, node_id: str) -> int:
     step = await conn.execute(
         "UPDATE workflow_runtime.step_runs SET status = 'running',"
         " error = NULL, port = NULL, state = '{}',"
-        ' call_started_at = NULL, finished_at = NULL, started_at = NOW()'
+        ' call_started_at = NULL, finished_at = NULL, started_at = NOW(),'
+        ' used_seconds = 0'
         ' WHERE run_id = %s AND node_id = %s'
         " AND status = 'failed' AND error = 'outcome_unknown'",
         (run_id, node_id),

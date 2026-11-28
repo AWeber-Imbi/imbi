@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import datetime
 import logging
+import math
 import typing
 from collections import abc
 
@@ -446,17 +447,19 @@ class Engine:
             return _now()
         timeout = node.timeout_seconds or step_type.timeout_seconds
         limit = float(self.config.lease_seconds - 30)
+        remaining = math.inf
+        deadline = None
         if timeout is not None:
-            remaining = (
-                step['started_at']
-                + datetime.timedelta(seconds=timeout)
-                - _now()
-            ).total_seconds()
+            # The earlier attempts used part of the timeout (#990).
+            deadline = started_at + datetime.timedelta(
+                seconds=timeout - step['used_seconds']
+            )
+            remaining = (deadline - _now()).total_seconds()
             if remaining <= 0:
+                # No time is left for a retry.
                 return await self._error(
-                    run, node, step, slug, 'timeout', True
+                    run, node, step, slug, 'timeout', False
                 )
-            limit = min(limit, remaining)
         async with self.store.write(run['id']) as conn:
             await store.update(
                 conn,
@@ -464,6 +467,14 @@ class Engine:
                 {'run_id': run['id'], 'node_id': node_id},
                 call_started_at=_now(),
             )
+        if deadline is not None:
+            # The marker write used part of the time that is left.
+            remaining = (deadline - _now()).total_seconds()
+            if remaining <= 0:
+                return await self._error(
+                    run, node, step, slug, 'timeout', False
+                )
+            limit = min(limit, remaining)
         try:
             async with asyncio.timeout(limit):
                 outcome = await self.steps.run(
@@ -500,7 +511,16 @@ class Engine:
                 unreachable=e.unreachable,
             )
         except TimeoutError:
-            return await self._error(run, node, step, slug, 'timeout', True)
+            # Retry only when the lease, not the step timeout, ended the
+            # call, and time is left before the step deadline.
+            return await self._error(
+                run,
+                node,
+                step,
+                slug,
+                'timeout',
+                limit < remaining and (deadline is None or _now() < deadline),
+            )
         except Exception as e:
             LOGGER.exception('Run %s: %s raised', run['id'], node.key)
             return await self._error(
@@ -516,13 +536,10 @@ class Engine:
                     state=outcome.state,
                     call_started_at=None,
                 )
-                if timeout is None:
+                if deadline is None:
                     return outcome.resume_at
                 # A poll past the step timeout wakes at the timeout.
-                return min(
-                    outcome.resume_at,
-                    started_at + datetime.timedelta(seconds=timeout),
-                )
+                return min(outcome.resume_at, deadline)
             await store.update(
                 conn,
                 'step_runs',
@@ -572,52 +589,74 @@ class Engine:
         fail = not (retry and step['attempt'] <= retries)
         if fail:
             await self._cancel_agent_tasks(run, {step['node_id']: step}, slug)
+        timeout = node.timeout_seconds or step_type.timeout_seconds
         async with self.store.write(run['id']) as conn:
-            if fail:
+            # The timeout counts the time of this attempt (#990), the
+            # wait for the write lock included. A step that used all of
+            # its timeout has no retry.
+            used = (_now() - step['started_at']).total_seconds()
+            exhausted = (
+                not fail
+                and timeout is not None
+                and step['used_seconds'] + used >= timeout
+            )
+            if fail or exhausted:
                 await self._fail(conn, run, step, code)
-                return _now()
-            attempt = step['attempt'] + 1
-            # The state stays: a deploy or rollback resumes its run.
-            # After a timeout, a lost response, or a 5xx with no error
-            # code (for example, an HTML 502 page of a proxy), the outcome
-            # of the last call is unknown. ``key_attempt`` lets a step
-            # (LLM Call, a plugin step) send the key of that call again;
-            # after a known error it sends a new one. A failed token
-            # refresh or an engine error does not answer for that key, so
-            # the key stays.
-            state = {
-                k: v for k, v in step['state'].items() if k != 'key_attempt'
-            }
-            if (
-                code == 'timeout'
-                or code.startswith(('http_5', 'token_http_'))
-                or unreachable
-                or unknown
-            ):
-                state['key_attempt'] = step['state'].get(
-                    'key_attempt', step['attempt']
+            else:
+                attempt = step['attempt'] + 1
+                # The state stays: a deploy or rollback resumes its run.
+                # After a timeout, a lost response, or a 5xx with no
+                # error code (for example, an HTML 502 page of a proxy),
+                # the outcome of the last call is unknown.
+                # ``key_attempt`` lets a step (LLM Call, a plugin step)
+                # send the key of that call again; after a known error
+                # it sends a new one. A failed token refresh or an
+                # engine error does not answer for that key, so the key
+                # stays.
+                state = {
+                    k: v
+                    for k, v in step['state'].items()
+                    if k != 'key_attempt'
+                }
+                if (
+                    code == 'timeout'
+                    or code.startswith(('http_5', 'token_http_'))
+                    or unreachable
+                    or unknown
+                ):
+                    state['key_attempt'] = step['state'].get(
+                        'key_attempt', step['attempt']
+                    )
+                backoff = UNREACHABLE_BACKOFF if unreachable else RETRY_BACKOFF
+                resume_at = _now() + datetime.timedelta(
+                    seconds=backoff * 2 ** (attempt - 2)
                 )
-            backoff = UNREACHABLE_BACKOFF if unreachable else RETRY_BACKOFF
-            resume_at = _now() + datetime.timedelta(
-                seconds=backoff * 2 ** (attempt - 2)
-            )
-            # The next attempt starts when its backoff ends, so the step
-            # timeout does not count the backoff: a timeout shorter than
-            # UNREACHABLE_BACKOFF still leaves time for the request.
-            await store.update(
-                conn,
-                'step_runs',
-                {'run_id': run['id'], 'node_id': step['node_id']},
-                attempt=attempt,
-                error=code,
-                state=state,
-                call_started_at=None,
-                started_at=resume_at,
-            )
-            await runtime.append_step_event(
-                conn, run['id'], step['node_id'], 'step.started', retry_of=code
-            )
-        return resume_at
+                # The next attempt starts when its backoff ends, so the
+                # step timeout does not count the backoff: a timeout
+                # shorter than UNREACHABLE_BACKOFF still leaves time for
+                # the request.
+                await store.update(
+                    conn,
+                    'step_runs',
+                    {'run_id': run['id'], 'node_id': step['node_id']},
+                    attempt=attempt,
+                    error=code,
+                    state=state,
+                    call_started_at=None,
+                    started_at=resume_at,
+                    used_seconds=step['used_seconds'] + used,
+                )
+                await runtime.append_step_event(
+                    conn,
+                    run['id'],
+                    step['node_id'],
+                    'step.started',
+                    retry_of=code,
+                )
+                return resume_at
+        if exhausted:
+            await self._cancel_agent_tasks(run, {step['node_id']: step}, slug)
+        return _now()
 
     async def _fail(
         self, conn: store.Conn, run: store.Row, step: store.Row, code: str
