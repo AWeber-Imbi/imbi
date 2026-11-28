@@ -30,7 +30,6 @@ Project = _common.Project
 ProjectType = _common.ProjectType
 RelationshipLink = _common.RelationshipLink
 Release = _common.Release
-ReleaseDeploymentEdge = _common.ReleaseDeploymentEdge
 ReleaseLink = _common.ReleaseLink
 Schema = _common.Schema
 Team = _common.Team

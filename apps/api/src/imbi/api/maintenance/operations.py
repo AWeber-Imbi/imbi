@@ -1214,3 +1214,37 @@ async def execute_plugin_step_calls_prune(
         deleted=deleted,
     )
     return 'succeeded'
+
+
+#: Deployments were once JSON entries in this array property.  They are
+#: ``Deployment`` nodes now, and nothing reads the array.  The edges
+#: stay: :mod:`imbi.api.orphan_releases` counts them.
+_DROP_DEPLOYMENT_ARRAYS_QUERY: typing.LiteralString = """
+MATCH (:Release)-[e:DEPLOYED_TO]->(:Environment)
+WHERE e.deployments IS NOT NULL
+REMOVE e.deployments
+RETURN count(e) AS removed
+"""
+
+
+async def execute_deployment_array_drop(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Remove the legacy ``deployments`` array from ``DEPLOYED_TO`` edges.
+
+    Removes only the property.  It deletes no edge and no node.  A
+    second run finds no edge with the property and changes nothing.
+    """
+    rows = await db.execute(_DROP_DEPLOYMENT_ARRAYS_QUERY, {}, ['removed'])
+    removed = int(graph.parse_agtype(rows[0]['removed'])) if rows else 0
+    ctx.log.record(
+        'succeeded',
+        'deployment-array-drop',
+        f'Removed the deployments array from {removed} DEPLOYED_TO edges',
+        removed=removed,
+    )
+    return 'succeeded'

@@ -77,7 +77,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
 ## Unreleased
 
 1. **Before you upgrade from a release older than 2.65.0**, upgrade to
-   2.65.0 first. Do the steps of each release up to 2.65.0 in the order
+   2.65.0 first. If your install is on 2.28.x or older and did not run
+   **Migrate Deployment History** (`deployment-migration`), upgrade to
+   2.28.x and run it before you upgrade past 2.28.x. 2.29.0 removed it,
+   and **Remove Legacy Deployment Arrays** (`deployment-array-drop`)
+   discards the deployment entries that it did not copy.
+   Do the steps of each release up to 2.65.0 in the order
    that the upgrade procedure gives, including the steps that you must
    do before you deploy. This release removes these maintenance
    operations:
@@ -286,6 +291,20 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    a task whose agent has no prompt, not the model that imbi-api
    resolved. `IMBI_HARNESS_MODEL` stays only as the fallback of a
    runner that talks to an older imbi-api.
+9. **After you deploy imbi-api**, run **Remove Legacy Deployment Arrays**
+   (`deployment-array-drop`) one time. It removes the old `deployments`
+   array from each `DEPLOYED_TO` edge. Nothing reads the array. The
+   operation deletes no edge and no node, and it is safe to run again.
+   - The operation does not copy array entries into `Deployment` nodes.
+     It discards each entry that only the array holds, and a rollback
+     cannot restore it.
+   - **Migrate Deployment History** (`deployment-migration`, 2.26.0 to
+     2.28.x) copied the entries of each project into `Deployment` nodes.
+     Step 1 tells an install on 2.28.x or older to run it first. An
+     install on 2.29.0 or later that did not run it cannot run it now,
+     and this operation discards those entries.
+   - That operation did not copy the entries of a release that no project
+     owns. This operation discards them.
 
 ## 2.65.0
 

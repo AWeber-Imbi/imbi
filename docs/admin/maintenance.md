@@ -68,6 +68,7 @@ The page has two tabs: **Operations** and **Activity**.
 | **Link MCP Servers to an Organization** | `mcp-server-org-backfill` | Link each MCP server that has no organization (one made before MCP servers had an organization) to the organization, when the install has exactly one. With more than one organization it links none and logs each server. Run it one time after the upgrade. Safe to re-run. |
 | **Put Assistant Conversations in an Organization** | `conversation-org-backfill` | Put each assistant conversation that has no organization in its owner's organization: the only one, else the first by slug. A conversation of a user in no organization stays without one and is logged. Run it one time after the upgrade. Safe to re-run. |
 | **Copy the AI Model Catalog to Each Organization** | `ai-catalog-org-copy` | Copy each AI provider and model that has no organization (one made before the catalog was per organization) to every organization, then delete it. Until it runs, the AI features see an empty catalog. Run it one time right after the upgrade. Safe to re-run. |
+| **Remove Legacy Deployment Arrays** | `deployment-array-drop` | Remove the legacy deployments array from each release to environment (DEPLOYED_TO) edge. Deployments are Deployment nodes now, and nothing reads the array. It copies no entry to a Deployment node, so an entry that only the array holds is lost. It deletes no edge and no node. Run it one time after the upgrade. Safe to re-run. |
 
 <!-- END GENERATED -->
 

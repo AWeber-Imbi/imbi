@@ -83,7 +83,6 @@ __all__ = [
     'ReleaseComponentBatch',
     'ReleaseComponentEdge',
     'ReleaseComponentRecord',
-    'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
     'ScoreQuestion',
@@ -2364,10 +2363,6 @@ class Release(GraphModel):
         Project,
         Edge(rel_type='HAS_RELEASE', direction='INCOMING'),
     ]
-    environments: typing.Annotated[
-        list[Environment],
-        Edge(rel_type='DEPLOYED_TO', direction='OUTGOING'),
-    ] = []
     component_releases: typing.Annotated[
         list[ComponentRelease],
         Edge(rel_type='USES_COMPONENT_RELEASE', direction='OUTGOING'),
@@ -2439,17 +2434,6 @@ class Blocker(GraphModel):
     resolution_note: str | None = None
 
 
-class ReleaseDeploymentEdge(RelationshipEdge):
-    """Edge properties for ``Release -[:DEPLOYED_TO]-> Environment``.
-
-    Carries the append-only history of status transitions for the
-    release within the target environment.
-
-    """
-
-    deployments: list[DeploymentEvent] = []
-
-
 class ProjectEnvironmentEdge(RelationshipEdge):
     """Edge properties for ``Project -[:DEPLOYED_IN]-> Environment``.
 
@@ -2457,7 +2441,7 @@ class ProjectEnvironmentEdge(RelationshipEdge):
     deployed to the environment for this project. It is updated by the
     API on every ``success`` deployment event, letting the current
     release per environment be read as a single edge-property lookup
-    rather than derived from the ``DEPLOYED_TO`` deployment history.
+    rather than derived from the ``Deployment`` nodes.
 
     ``current_release_at`` is the UTC timestamp of the success event
     that set ``current_release``. The API only advances

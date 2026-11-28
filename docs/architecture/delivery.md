@@ -56,7 +56,9 @@ later.
 
 Older deployments were entries in a `deployments` array on a
 `(Release)-[:DEPLOYED_TO]->(Environment)` edge. Nothing reads or writes
-that array now. All read paths use the `Deployment` nodes.
+that array now. All read paths use the `Deployment` nodes. The
+`deployment-array-drop` maintenance operation removes the array from the
+stored edges.
 
 ### In ClickHouse
 
