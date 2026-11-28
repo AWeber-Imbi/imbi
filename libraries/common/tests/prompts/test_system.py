@@ -255,38 +255,20 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result.model_id)
         self.assertIsNone(result.max_tokens)
 
-    async def test_stale_model_id_is_checked(self) -> None:
-        # A catalog edit moved the slug to a new id; the version keeps
-        # the old one, and the old one is what is sent, with the same
-        # checks of the resolver.
+    async def test_slug_uses_the_catalog_model_id(self) -> None:
+        # The version stores the id of another organization; the run
+        # uses the id of the slug in the catalog of the user (ADR 0018).
         found = _version(model='opus', model_id='claude-opus-old')
         resolved = _model('opus', 'claude-opus-5-5')
-        # The row of the old id has its own provider.
-        old = _model('opus-old', 'claude-opus-old')
-        error = llm_resolve.ModelUnusable('not_allowed', 'opus', 'no')
-        for stale in (old, error):
-            with (
-                self.subTest(stale=stale),
-                self.patch_resolve(found),
-                self.patch_model(None) as resolver,
-            ):
-                resolver.side_effect = [resolved, stale]
-                if stale is old:
-                    result = await self.load(email='dev@example.com')
-                    self.assertEqual(result.model_id, 'claude-opus-old')
-                    assert old.model is not None
-                    self.assertIs(result.provider, old.model.provider)
-                else:
-                    with self.assertRaises(llm_resolve.ModelUnusable):
-                        await self.load(email='dev@example.com')
-                resolver.assert_awaited_with(
-                    mock.ANY,
-                    ['org-1'],
-                    model_id='claude-opus-old',
-                    email='dev@example.com',
-                    admin=False,
-                    drivers=('anthropic',),
-                )
+        with (
+            self.patch_resolve(found),
+            self.patch_model(resolved) as resolver,
+        ):
+            result = await self.load(email='dev@example.com')
+        self.assertEqual(result.model_id, 'claude-opus-5-5')
+        assert resolved.model is not None
+        self.assertIs(result.provider, resolved.model.provider)
+        resolver.assert_awaited_once()
 
     async def test_graph_error_in_the_model_check_falls_back(self) -> None:
         found = _version(model='opus', model_id='claude-opus-5-5')

@@ -310,21 +310,9 @@ async def _model(
         drivers=_DRIVERS,
     )
     model = typing.cast('models.AIModel', resolved.model)
-    model_id = version.model_id or model.model_id
-    # The stored id can differ from the catalog row of the slug after a
-    # catalog edit, so the id that is sent gets the same checks. The row
-    # of the stored id gives the provider, which can differ.
-    if model_id != model.model_id:
-        stored = await llm_resolve.resolve_model(
-            db,
-            [model.organization.id],
-            model_id=model_id,
-            email=email,
-            admin=admin,
-            drivers=_DRIVERS,
-        )
-        model = typing.cast('models.AIModel', stored.model)
-    return ConsumerModel(model_id, model.provider)
+    # The slug names the model: a run uses the id of the slug in the
+    # catalog, not the id stored with a global prompt (ADR 0018).
+    return ConsumerModel(model.model_id, model.provider)
 
 
 async def load_model(
