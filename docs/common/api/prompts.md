@@ -109,7 +109,7 @@ needs one.
 
 ::: imbi.common.prompts.system.load_system_prompt
 
-::: imbi.common.prompts.system.load_model_id
+::: imbi.common.prompts.system.load_model
 
 ::: imbi.common.prompts.system.SystemPrompt
 
