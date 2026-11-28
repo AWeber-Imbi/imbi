@@ -265,9 +265,12 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    In each organization:
     1. In **Admin > &lt;Org&gt; Admin > AI Models**, have an enabled
        provider with the driver `anthropic`, or `openai_compatible` for a
-       gateway such as LiteLLM, with a key or a workload identity. The
-       old model key is in a secret provider, so copy it into the AI
-       provider yourself.
+       gateway such as LiteLLM, with a key or a workload identity. For
+       agents, an `openai_compatible` gateway must serve the Anthropic
+       Messages API (`/v1/messages`) at the root of its URL. A provider
+       that serves only chat completions is valid for other features,
+       but agent tasks cannot use it. The old model key is in a secret
+       provider, so copy it into the AI provider yourself.
     2. Set the default model of the organization.
     3. The provider URL must use `https://`, unless the provider is
        `openai_compatible` and has **Allow http:// for agents**

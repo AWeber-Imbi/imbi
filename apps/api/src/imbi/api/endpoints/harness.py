@@ -2372,7 +2372,9 @@ async def create_harness_secret_resolution(
 
     Imbi takes the organization, agent, project, task, and runner from
     the agent token, the chain, and the task. Exactly one grant must
-    allow the request. A repeat with the same ``Idempotency-Key`` gives
+    allow the request, except for ``secret://imbi/model``: that request
+    needs no grant, and the model that the claim pinned for the task
+    decides it. A repeat with the same ``Idempotency-Key`` gives
     the unused resolution a new handle.
 
     Raises:

@@ -1481,7 +1481,9 @@ export interface paths {
          *
          *     Imbi takes the organization, agent, project, task, and runner from
          *     the agent token, the chain, and the task. Exactly one grant must
-         *     allow the request. A repeat with the same ``Idempotency-Key`` gives
+         *     allow the request, except for ``secret://imbi/model``: that request
+         *     needs no grant, and the model that the claim pinned for the task
+         *     decides it. A repeat with the same ``Idempotency-Key`` gives
          *     the unused resolution a new handle.
          *
          *     Raises:
@@ -2524,6 +2526,7 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
+         *         409: ``allow_insecure_http`` changed after the read.
          */
         put: operations["set_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_put"];
         post?: never;
@@ -2539,6 +2542,7 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
+         *         409: ``allow_insecure_http`` changed after the read.
          */
         delete: operations["delete_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_delete"];
         options?: never;
@@ -2609,7 +2613,8 @@ export interface paths {
          *     Raises:
          *         403: No ``secret_provider:write`` in the organization.
          *         404: No such provider.
-         *         409: The provider has a stored key.
+         *         409: The provider has a stored key, or
+         *             ``allow_insecure_http`` changed after the read.
          *         422: The driver cannot use workload identity, the provider has a
          *             ``base_url``, no exchanger is installed for the vendor, or
          *             the target is not valid.
@@ -2622,6 +2627,7 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
+         *         409: ``allow_insecure_http`` changed after the read.
          */
         delete: operations["delete_ai_provider_workload_identity_api_organizations__org_slug__ai_providers__id__workload_identity_delete"];
         options?: never;
