@@ -33,12 +33,17 @@ FIELDS = [{'name': 'severity', 'type': 'string', 'required': True}]
 WF_PROMPT = f'{base.ORG}.deploy.summary'
 
 
+#: The organization of the run, as the provider row returns it.
+ORG_ROW = {'id': 'org-1', 'name': 'Acme', 'slug': base.ORG}
+
+
 def provider_row(**overrides: typing.Any) -> list[dict[str, typing.Any]]:
     return [
         {
             'p': provider_tests.provider_props(
                 credentials_encrypted='ciphertext', **overrides
-            )
+            ),
+            'o': ORG_ROW,
         }
     ]
 
@@ -116,9 +121,14 @@ class GenerativeRunTestCase(base.PromptTestBase):
         )
 
     def test_runs_a_saved_version(self) -> None:
-        self.route_run()
+        router = self.route_run()
         response = self.run_ref()
         self.assertEqual(response.status_code, 200, response.text)
+        # The model and its provider come from the catalog of the org.
+        run_model = router.params_for(prompts._RUN_MODEL_QUERY)
+        self.assertEqual(run_model['org_id'], 'org-1')
+        get_provider = router.params_for(ai_providers._GET_QUERY)
+        self.assertEqual(get_provider['org_id'], 'org-1')
         data = response.json()
         self.assertEqual(data['ref'], 'mender/core@1')
         self.assertEqual(data['n'], 1)
@@ -567,7 +577,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
             await asyncio.sleep(1)
 
         self.decrypt.return_value = None
-        self._patch(model_generate, '_sigv4', slow)
+        self._patch(model_generate, 'sigv4', slow)
         self.route_run()
         self.mock_db.execute.side_effect.rules.insert(
             0,
@@ -634,7 +644,7 @@ class GenerativeRunTestCase(base.PromptTestBase):
         self.decrypt.return_value = None
         signer = mock.Mock(spec=httpx.Auth)
         self._patch(
-            model_generate, '_sigv4', mock.AsyncMock(return_value=signer)
+            model_generate, 'sigv4', mock.AsyncMock(return_value=signer)
         )
         self.route_run()
         self.mock_db.execute.side_effect.rules.insert(
@@ -664,7 +674,7 @@ class SigV4TestCase(base.PromptTestBase):
             ),
             self.assertRaises(generate.GenerateError) as ctx,
         ):
-            asyncio.run(model_generate._sigv4('us-east-1'))
+            asyncio.run(model_generate.sigv4('us-east-1'))
         self.assertEqual(ctx.exception.code, 'credentials_unavailable')
         self.assertTrue(ctx.exception.retry)
 
@@ -686,6 +696,19 @@ class SigV4TestCase(base.PromptTestBase):
             r'^AWS4-HMAC-SHA256 Credential=AKID/\d{8}/us-east-1/bedrock/',
         )
         self.assertIn('X-Amz-Date', signed.headers)
+
+    def test_signs_a_get_without_content_type(self) -> None:
+        from botocore import credentials
+
+        auth = model_generate.SigV4(
+            credentials.ReadOnlyCredentials('AKID', 'secret', None),
+            'us-east-1',
+        )
+        request = httpx.Request(
+            'GET', 'https://bedrock.us-east-1.amazonaws.com/foundation-models'
+        )
+        signed = next(auth.auth_flow(request))
+        self.assertIn('Credential=AKID/', signed.headers['Authorization'])
 
 
 class DispatchTestCase(unittest.IsolatedAsyncioTestCase):
@@ -724,3 +747,30 @@ class DispatchTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(answer, result)
         self.assertEqual(seen, [False, False])
         self.assertTrue(dispatched.is_set())
+
+    async def test_request_bearer_and_auth_stay_without_a_credential(
+        self,
+    ) -> None:
+        auth = mock.Mock()
+        call = mock.AsyncMock(
+            return_value=generate.Result('ok', None, {}, None)
+        )
+        provider = mock.Mock(workload_identity=None, driver='anthropic')
+        request = generate.Request(
+            driver='anthropic',
+            model_id='claude-opus-5',
+            messages=[],
+            credential='token',
+            bearer=True,
+            auth=auth,
+        )
+        with (
+            mock.patch.object(
+                model_generate, 'decrypt_config_value', return_value=None
+            ),
+            mock.patch.object(generate, 'generate', call),
+        ):
+            await model_generate.call(mock.Mock(), provider, request)
+        sent = call.await_args.args[0]
+        self.assertTrue(sent.bearer)
+        self.assertIs(sent.auth, auth)

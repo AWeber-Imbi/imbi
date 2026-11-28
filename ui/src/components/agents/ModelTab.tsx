@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
 
-import { useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 
-import { listAIModels } from '@/api/endpoints'
 import {
   Command,
   CommandEmpty,
@@ -27,7 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { queryKeys } from '@/lib/queryKeys'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAIModels } from '@/hooks/useOrgResources'
 import { cn } from '@/lib/utils'
 import type { AIModel } from '@/types'
 
@@ -83,10 +82,8 @@ const PARAMS: { control: ParamControl; key: ParamKey; label: string }[] = [
  * version in the prompt CMS, not on the agent.
  */
 export function ModelTab({ errors, onChange, value }: ModelTabProps) {
-  const { data: catalog = [] } = useQuery({
-    queryFn: ({ signal }) => listAIModels(signal),
-    queryKey: queryKeys.aiModels(),
-  })
+  const orgSlug = useOrganization().selectedOrganization?.slug ?? ''
+  const { data: catalog = [] } = useAIModels(orgSlug)
   const models = useMemo(
     () =>
       catalog.filter(
@@ -101,8 +98,13 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
   const [provider, setProvider] = useState<string>(
     () => selected?.provider_name ?? '',
   )
+  // An organization switch can leave a provider that the new catalog
+  // does not have.
   const activeProvider =
-    provider || selected?.provider_name || providers[0] || ''
+    (providers.includes(provider) ? provider : '') ||
+    selected?.provider_name ||
+    providers[0] ||
+    ''
   const [advanced, setAdvanced] = useState(() =>
     Object.values(value.params).some((p) => p.on),
   )
@@ -121,6 +123,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
 
   const selectModel = (slug: null | string) => {
     const model = models.find((m) => m.slug === slug)
+    if (model) setProvider(model.provider_name)
     onChange({
       ...value,
       effort: isClaudeModel(model?.model_id)

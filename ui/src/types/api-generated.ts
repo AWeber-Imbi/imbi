@@ -113,167 +113,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/ai-models/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Ai Models
-         * @description List the model catalog, ordered by name.
-         *
-         *     Returns:
-         *         Every configured model with its provider and allowed teams.
-         */
-        get: operations["list_ai_models_api_ai_models__get"];
-        put?: never;
-        /**
-         * Create Ai Model
-         * @description Add a model to the catalog.
-         *
-         *     ``allowed_team_ids`` is still validated when ``access_scope`` is
-         *     ``organization``, but no ``ALLOWED_FOR`` edge is written: the model
-         *     is available to everyone and the response reports an empty
-         *     ``allowed_teams``.
-         *
-         *     Parameters:
-         *         data: Model configuration.
-         *
-         *     Returns:
-         *         The created model.
-         *
-         *     Raises:
-         *         404: The provider does not exist.
-         *         409: The slug is taken, or the provider already serves this
-         *             ``model_id``.
-         *         422: A team does not exist, or ``restricted`` was requested with
-         *             no teams.
-         */
-        post: operations["create_ai_model_api_ai_models__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ai-models/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Ai Model
-         * @description Get one model.
-         *
-         *     Parameters:
-         *         id: Model id.
-         *
-         *     Returns:
-         *         The model with its provider and allowed teams.
-         *
-         *     Raises:
-         *         404: No such model.
-         */
-        get: operations["get_ai_model_api_ai_models__id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Ai Model
-         * @description Delete a model.
-         *
-         *     Parameters:
-         *         id: Model id.
-         *
-         *     Raises:
-         *         404: No such model.
-         */
-        delete: operations["delete_ai_model_api_ai_models__id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Ai Model
-         * @description Partially update a model using JSON Patch (RFC 6902).
-         *
-         *     ``provider_id`` and ``allowed_team_ids`` are patchable alongside the
-         *     properties; the team list is replaced as a set, so patching it to
-         *     ``[]`` removes every ``ALLOWED_FOR`` edge. Patching ``access_scope``
-         *     to ``organization`` clears them too, whatever the team list holds.
-         *
-         *     Parameters:
-         *         id: Model id.
-         *         operations: JSON Patch operations.
-         *
-         *     Returns:
-         *         The updated model.
-         *
-         *     Raises:
-         *         400: Invalid patch or a read-only path.
-         *         404: No such model, or no such new provider.
-         *         409: The new slug or ``model_id`` collides.
-         *         422: A team does not exist, ``restricted`` was left
-         *             with no teams, or the patched values are invalid.
-         */
-        patch: operations["patch_ai_model_api_ai_models__id__patch"];
-        trace?: never;
-    };
-    "/api/ai-models/price-sync/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Preview Price Sync
-         * @description Compare catalog prices with the LiteLLM list prices.
-         *
-         *     Nothing is written. A model matches on its exact ``model_id``, or on
-         *     ``<driver>/<model_id>`` for the ``anthropic`` and ``openai`` drivers.
-         *     Only the models and the prices that differ are returned.
-         *
-         *     Raises:
-         *         502: The LiteLLM price file could not be downloaded.
-         */
-        post: operations["preview_price_sync_api_ai_models_price_sync_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ai-models/price-sync/apply": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Apply Price Sync
-         * @description Write LiteLLM list prices to the requested models.
-         *
-         *     A missing price is filled. A set price that differs changes only
-         *     when the request sets ``overwrite`` for that model, because a
-         *     contract rate can differ from the list price.
-         *
-         *     Raises:
-         *         502: The LiteLLM price file could not be downloaded.
-         */
-        post: operations["apply_price_sync_api_ai_models_price_sync_apply_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/ai-provider-drivers": {
         parameters: {
             query?: never;
@@ -292,278 +131,6 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ai-providers/{id}/import-models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import Ai Models
-         * @description Create models from a discovery result.
-         *
-         *     Every imported model lands enabled, ``chat``, and available to
-         *     everyone;
-         *     an admin narrows it afterwards. A ``model_id`` the provider already
-         *     serves is reported in ``skipped`` rather than failing the batch, so
-         *     re-importing after adding one model is not an error. Each model
-         *     takes the LiteLLM list prices it has; when the price file cannot be
-         *     downloaded, the models are imported without prices.
-         *
-         *     Answers 201 when at least one model was created and 200 when every
-         *     requested model was skipped, since nothing came into existence.
-         *
-         *     Parameters:
-         *         id: Provider id.
-         *         data: The models selected from the discovery result.
-         *
-         *     Returns:
-         *         The models created, and the ``model_id`` values skipped.
-         *
-         *     Raises:
-         *         404: No such provider.
-         */
-        post: operations["import_ai_models_api_ai_providers__id__import_models_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ai-providers/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Ai Providers
-         * @description List the configured providers, ordered by name.
-         *
-         *     Returns:
-         *         Every configured provider, without credentials.
-         */
-        get: operations["list_ai_providers_api_ai_providers__get"];
-        put?: never;
-        /**
-         * Create Ai Provider
-         * @description Configure a provider.
-         *
-         *     Parameters:
-         *         data: Provider configuration. ``api_key`` is plaintext and is
-         *             encrypted before persistence.
-         *
-         *     Returns:
-         *         The created provider, without credentials.
-         *
-         *     Raises:
-         *         409: A provider with the same slug exists.
-         *         422: Invalid configuration (bad ``base_url``, or
-         *             ``openai_compatible`` without one).
-         */
-        post: operations["create_ai_provider_api_ai_providers__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ai-providers/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Ai Provider
-         * @description Get one configured provider.
-         *
-         *     Parameters:
-         *         id: Provider id.
-         *
-         *     Returns:
-         *         The provider, without credentials.
-         *
-         *     Raises:
-         *         404: No such provider.
-         */
-        get: operations["get_ai_provider_api_ai_providers__id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Ai Provider
-         * @description Delete a provider that serves no models.
-         *
-         *     There is deliberately no cascade: models outlive the provider row an
-         *     operator happens to be editing, so they must be deleted or moved
-         *     first.
-         *
-         *     Parameters:
-         *         id: Provider id.
-         *
-         *     Raises:
-         *         404: No such provider.
-         *         409: The provider still serves models.
-         */
-        delete: operations["delete_ai_provider_api_ai_providers__id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Ai Provider
-         * @description Partially update a provider using JSON Patch (RFC 6902).
-         *
-         *     Only the configuration fields are patchable; credentials are
-         *     reachable solely through the credentials routes, which carry their
-         *     own permission.
-         *
-         *     Parameters:
-         *         id: Provider id.
-         *         operations: JSON Patch operations.
-         *
-         *     Returns:
-         *         The updated provider, without credentials.
-         *
-         *     Raises:
-         *         400: Invalid patch or a read-only path.
-         *         404: No such provider.
-         *         409: The new slug is taken, or the new driver does not serve
-         *             the model type of a model of this provider.
-         *         422: The patched configuration is invalid.
-         */
-        patch: operations["patch_ai_provider_api_ai_providers__id__patch"];
-        trace?: never;
-    };
-    "/api/ai-providers/{id}/credentials": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Ai Provider Credentials
-         * @description Set or replace a provider's API key.
-         *
-         *     The plaintext key is encrypted immediately and never echoed; only
-         *     its last four characters are retained, as ``credential_hint``.
-         *
-         *     Parameters:
-         *         id: Provider id.
-         *         data: The plaintext API key.
-         *
-         *     Returns:
-         *         The provider, with refreshed credential metadata.
-         *
-         *     Raises:
-         *         404: No such provider.
-         */
-        put: operations["set_ai_provider_credentials_api_ai_providers__id__credentials_put"];
-        post?: never;
-        /**
-         * Delete Ai Provider Credentials
-         * @description Remove a provider's stored API key.
-         *
-         *     Parameters:
-         *         id: Provider id.
-         *
-         *     Returns:
-         *         The provider, with credential metadata cleared.
-         *
-         *     Raises:
-         *         404: No such provider.
-         */
-        delete: operations["delete_ai_provider_credentials_api_ai_providers__id__credentials_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ai-providers/{id}/discover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Discover Ai Provider Models
-         * @description Pull a provider's model list using its stored credentials.
-         *
-         *     Doubles as a connection test. Nothing is written: the caller picks
-         *     from the result and posts to ``/import-models``, so the route shares
-         *     that route's ``ai_model:create`` gate. ``ai_model:read`` alone must
-         *     not let every default-role user spend the provider's key against
-         *     an admin-supplied endpoint. Errors from the provider are sanitized to
-         *     a status line so a failing call can never surface the key.
-         *
-         *     Parameters:
-         *         id: Provider id.
-         *
-         *     Returns:
-         *         The provider's models, each flagged with whether it is already
-         *         configured.
-         *
-         *     Raises:
-         *         404: No such provider.
-         *         409: The provider has no stored credentials.
-         *         422: The driver does not support discovery.
-         *         502: The provider rejected or failed the call, or no workload
-         *             identity token could be minted.
-         */
-        post: operations["discover_ai_provider_models_api_ai_providers__id__discover_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ai-providers/{id}/workload-identity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Ai Provider Workload Identity
-         * @description Use workload identity for a provider (WIF plan 4.6, O7).
-         *
-         *     The caller must be a member of the organization with
-         *     ``secret_provider:write`` there: the provider then uses the identity
-         *     source of that organization. No token is minted here.
-         *
-         *     Raises:
-         *         403: Not a member, or no ``secret_provider:write`` there.
-         *         404: No such provider or organization.
-         *         409: The provider has a stored key.
-         *         422: The driver cannot use workload identity, the provider has a
-         *             ``base_url``, no exchanger is installed for the vendor, or
-         *             the target is not valid.
-         */
-        put: operations["set_ai_provider_workload_identity_api_ai_providers__id__workload_identity_put"];
-        post?: never;
-        /**
-         * Delete Ai Provider Workload Identity
-         * @description Stop using workload identity for a provider.
-         *
-         *     Raises:
-         *         404: No such provider.
-         */
-        delete: operations["delete_ai_provider_workload_identity_api_ai_providers__id__workload_identity_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2818,6 +2385,442 @@ export interface paths {
          *         404: Membership not found
          */
         delete: operations["remove_team_member_api_organizations__org_slug__teams__slug__members__email__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-providers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ai Providers
+         * @description List the configured providers, ordered by name.
+         *
+         *     Returns:
+         *         Every configured provider, without credentials.
+         */
+        get: operations["list_ai_providers_api_organizations__org_slug__ai_providers__get"];
+        put?: never;
+        /**
+         * Create Ai Provider
+         * @description Configure a provider.
+         *
+         *     Parameters:
+         *         data: Provider configuration. ``api_key`` is plaintext and is
+         *             encrypted before persistence.
+         *
+         *     Returns:
+         *         The created provider, without credentials.
+         *
+         *     Raises:
+         *         409: A provider of the organization has the same slug.
+         *         422: Invalid configuration (bad ``base_url``, or
+         *             ``openai_compatible`` without one).
+         */
+        post: operations["create_ai_provider_api_organizations__org_slug__ai_providers__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Provider
+         * @description Get one configured provider.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Returns:
+         *         The provider, without credentials.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        get: operations["get_ai_provider_api_organizations__org_slug__ai_providers__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Ai Provider
+         * @description Delete a provider that serves no models.
+         *
+         *     There is deliberately no cascade: models outlive the provider row an
+         *     operator happens to be editing, so they must be deleted or moved
+         *     first.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Raises:
+         *         404: No such provider.
+         *         409: The provider still serves models.
+         */
+        delete: operations["delete_ai_provider_api_organizations__org_slug__ai_providers__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Ai Provider
+         * @description Partially update a provider using JSON Patch (RFC 6902).
+         *
+         *     Only the configuration fields are patchable; credentials are
+         *     reachable solely through the credentials routes, which carry their
+         *     own permission.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *         operations: JSON Patch operations.
+         *
+         *     Returns:
+         *         The updated provider, without credentials.
+         *
+         *     Raises:
+         *         400: Invalid patch or a read-only path.
+         *         404: No such provider.
+         *         409: The new slug is taken, or the new driver does not serve
+         *             the model type of a model of this provider.
+         *         422: The patched configuration is invalid.
+         */
+        patch: operations["patch_ai_provider_api_organizations__org_slug__ai_providers__id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-providers/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Ai Provider Credentials
+         * @description Set or replace a provider's API key.
+         *
+         *     The plaintext key is encrypted immediately and never echoed; only
+         *     its last four characters are retained, as ``credential_hint``.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *         data: The plaintext API key.
+         *
+         *     Returns:
+         *         The provider, with refreshed credential metadata.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        put: operations["set_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_put"];
+        post?: never;
+        /**
+         * Delete Ai Provider Credentials
+         * @description Remove a provider's stored API key.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Returns:
+         *         The provider, with credential metadata cleared.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        delete: operations["delete_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-providers/{id}/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover Ai Provider Models
+         * @description Pull a provider's model list using its stored credentials.
+         *
+         *     Doubles as a connection test. Nothing is written: the caller picks
+         *     from the result and posts to ``/import-models``, so the route shares
+         *     that route's ``ai_model:create`` gate. ``ai_model:read`` alone must
+         *     not let every default-role user spend the provider's key against
+         *     an admin-supplied endpoint. Errors from the provider are sanitized to
+         *     a status line so a failing call can never surface the key.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Returns:
+         *         The provider's models, each flagged with whether it is already
+         *         configured.
+         *
+         *     Raises:
+         *         404: No such provider.
+         *         409: The provider has no stored credentials (Bedrock uses the
+         *             AWS credentials of the process instead).
+         *         422: The driver does not support discovery, or Vertex refused
+         *             to list models for the key.
+         *         502: The provider rejected or failed the call, or no workload
+         *             identity token could be minted.
+         */
+        post: operations["discover_ai_provider_models_api_organizations__org_slug__ai_providers__id__discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-providers/{id}/workload-identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Ai Provider Workload Identity
+         * @description Use workload identity for a provider (WIF plan 4.6, O7).
+         *
+         *     The provider uses the identity source of its own organization: each
+         *     organization sets up its own identity. The caller must also have
+         *     ``secret_provider:write`` in the organization. No token is minted
+         *     here.
+         *
+         *     Raises:
+         *         403: No ``secret_provider:write`` in the organization.
+         *         404: No such provider.
+         *         409: The provider has a stored key.
+         *         422: The driver cannot use workload identity, the provider has a
+         *             ``base_url``, no exchanger is installed for the vendor, or
+         *             the target is not valid.
+         */
+        put: operations["set_ai_provider_workload_identity_api_organizations__org_slug__ai_providers__id__workload_identity_put"];
+        post?: never;
+        /**
+         * Delete Ai Provider Workload Identity
+         * @description Stop using workload identity for a provider.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        delete: operations["delete_ai_provider_workload_identity_api_organizations__org_slug__ai_providers__id__workload_identity_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-providers/{id}/import-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ai Models
+         * @description Create models from a discovery result.
+         *
+         *     Every imported model lands enabled, ``chat``, and available to
+         *     everyone;
+         *     an admin narrows it afterwards. A ``model_id`` the provider already
+         *     serves is reported in ``skipped`` rather than failing the batch, so
+         *     re-importing after adding one model is not an error. Each model
+         *     takes the LiteLLM list prices it has; when the price file cannot be
+         *     downloaded, the models are imported without prices.
+         *
+         *     Answers 201 when at least one model was created and 200 when every
+         *     requested model was skipped, since nothing came into existence.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *         data: The models selected from the discovery result.
+         *
+         *     Returns:
+         *         The models created, and the ``model_id`` values skipped.
+         *
+         *     Raises:
+         *         404: No such provider in the organization.
+         */
+        post: operations["import_ai_models_api_organizations__org_slug__ai_providers__id__import_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-models/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ai Models
+         * @description List the model catalog of the organization, ordered by name.
+         *
+         *     Returns:
+         *         Every configured model with its provider and allowed teams.
+         */
+        get: operations["list_ai_models_api_organizations__org_slug__ai_models__get"];
+        put?: never;
+        /**
+         * Create Ai Model
+         * @description Add a model to the catalog.
+         *
+         *     ``allowed_team_ids`` is still validated when ``access_scope`` is
+         *     ``organization``, but no ``ALLOWED_FOR`` edge is written: the model
+         *     is available to everyone and the response reports an empty
+         *     ``allowed_teams``.
+         *
+         *     Parameters:
+         *         data: Model configuration.
+         *
+         *     Returns:
+         *         The created model.
+         *
+         *     Raises:
+         *         404: The provider does not exist in the organization.
+         *         409: The slug is taken, or the provider already serves this
+         *             ``model_id``.
+         *         422: A team does not exist in the organization, or
+         *             ``restricted`` was requested with no teams.
+         */
+        post: operations["create_ai_model_api_organizations__org_slug__ai_models__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-models/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Model
+         * @description Get one model.
+         *
+         *     Parameters:
+         *         id: Model id.
+         *
+         *     Returns:
+         *         The model with its provider and allowed teams.
+         *
+         *     Raises:
+         *         404: No such model.
+         */
+        get: operations["get_ai_model_api_organizations__org_slug__ai_models__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Ai Model
+         * @description Delete a model.
+         *
+         *     Parameters:
+         *         id: Model id.
+         *
+         *     Raises:
+         *         404: No such model.
+         */
+        delete: operations["delete_ai_model_api_organizations__org_slug__ai_models__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Ai Model
+         * @description Partially update a model using JSON Patch (RFC 6902).
+         *
+         *     ``provider_id`` and ``allowed_team_ids`` are patchable alongside the
+         *     properties; the team list is replaced as a set, so patching it to
+         *     ``[]`` removes every ``ALLOWED_FOR`` edge. Patching ``access_scope``
+         *     to ``organization`` clears them too, whatever the team list holds.
+         *
+         *     Parameters:
+         *         id: Model id.
+         *         operations: JSON Patch operations.
+         *
+         *     Returns:
+         *         The updated model.
+         *
+         *     Raises:
+         *         400: Invalid patch or a read-only path.
+         *         404: No such model or new provider in the organization.
+         *         409: The new slug or ``model_id`` collides.
+         *         422: A team does not exist in the organization, ``restricted``
+         *             was left with no teams, or the patched values are invalid.
+         */
+        patch: operations["patch_ai_model_api_organizations__org_slug__ai_models__id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-models/price-sync/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Price Sync
+         * @description Compare catalog prices with the LiteLLM list prices.
+         *
+         *     Nothing is written. A model matches on its exact ``model_id``, or on
+         *     ``<driver>/<model_id>`` for the ``anthropic`` and ``openai`` drivers.
+         *     Only the models and the prices that differ are returned.
+         *
+         *     Raises:
+         *         502: The LiteLLM price file could not be downloaded.
+         */
+        post: operations["preview_price_sync_api_organizations__org_slug__ai_models_price_sync_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/ai-models/price-sync/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Price Sync
+         * @description Write LiteLLM list prices to the requested models.
+         *
+         *     A missing price is filled. A set price that differs changes only
+         *     when the request sets ``overwrite`` for that model, because a
+         *     contract rate can differ from the list price.
+         *
+         *     Raises:
+         *         502: The LiteLLM price file could not be downloaded.
+         */
+        post: operations["apply_price_sync_api_organizations__org_slug__ai_models_price_sync_apply_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -11524,12 +11527,10 @@ export interface components {
          * AIProviderWorkloadIdentityPut
          * @description Request body for the workload identity of a provider.
          *
-         *     ``organization`` is the slug of the organization whose identity
-         *     source signs the JWT. ``target`` holds the vendor ids.
+         *     ``target`` holds the vendor ids. The identity source of the
+         *     organization of the provider signs the JWT.
          */
         AIProviderWorkloadIdentityPut: {
-            /** Organization */
-            organization: string;
             /** Target */
             target: {
                 [key: string]: unknown;
@@ -15728,6 +15729,11 @@ export interface components {
              * @default false
              */
             supports_iam: boolean;
+            /**
+             * Ambient Auth
+             * @default false
+             */
+            ambient_auth: boolean;
             /**
              * Requires Base Url
              * @default false
@@ -25540,207 +25546,6 @@ export interface operations {
             };
         };
     };
-    list_ai_models_api_ai_models__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"][];
-                };
-            };
-        };
-    };
-    create_ai_model_api_ai_models__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AIModelCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ai_model_api_ai_models__id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_model_api_ai_models__id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_ai_model_api_ai_models__id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchOperation"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_price_sync_api_ai_models_price_sync_preview_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PriceSyncPreview"];
-                };
-            };
-        };
-    };
-    apply_price_sync_api_ai_models_price_sync_apply_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PriceSyncApplyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PriceSyncApplyResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_ai_provider_drivers_api_ai_provider_drivers_get: {
         parameters: {
             query?: never;
@@ -25757,352 +25562,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriverInfo"][];
-                };
-            };
-        };
-    };
-    import_ai_models_api_ai_providers__id__import_models_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImportModelsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_ai_providers_api_ai_providers__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"][];
-                };
-            };
-        };
-    };
-    create_ai_provider_api_ai_providers__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AIProviderCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ai_provider_api_ai_providers__id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_provider_api_ai_providers__id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_ai_provider_api_ai_providers__id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchOperation"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_ai_provider_credentials_api_ai_providers__id__credentials_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AIProviderCredentials"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_provider_credentials_api_ai_providers__id__credentials_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    discover_ai_provider_models_api_ai_providers__id__discover_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscoveryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_ai_provider_workload_identity_api_ai_providers__id__workload_identity_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AIProviderWorkloadIdentityPut"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_provider_workload_identity_api_ai_providers__id__workload_identity_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -29078,6 +28537,613 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ai_providers_api_organizations__org_slug__ai_providers__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_provider_api_organizations__org_slug__ai_providers__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_provider_api_organizations__org_slug__ai_providers__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_provider_api_organizations__org_slug__ai_providers__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_ai_provider_api_organizations__org_slug__ai_providers__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCredentials"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_ai_provider_models_api_organizations__org_slug__ai_providers__id__discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ai_provider_workload_identity_api_organizations__org_slug__ai_providers__id__workload_identity_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderWorkloadIdentityPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_provider_workload_identity_api_organizations__org_slug__ai_providers__id__workload_identity_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_ai_models_api_organizations__org_slug__ai_providers__id__import_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Each model is in the catalog; none is created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ai_models_api_organizations__org_slug__ai_models__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_model_api_organizations__org_slug__ai_models__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIModelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_model_api_organizations__org_slug__ai_models__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_model_api_organizations__org_slug__ai_models__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_ai_model_api_organizations__org_slug__ai_models__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_price_sync_api_organizations__org_slug__ai_models_price_sync_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceSyncPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_price_sync_api_organizations__org_slug__ai_models_price_sync_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceSyncApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceSyncApplyResult"];
+                };
             };
             /** @description Validation Error */
             422: {

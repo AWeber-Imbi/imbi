@@ -409,6 +409,7 @@ def _check_trigger_project(
 
 _LLM_CALL_MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 RETURN m.supports_structured_output AS structured, m.kind AS kind,
        m.access_scope AS access_scope
 """
@@ -427,6 +428,7 @@ MIN_LLM_CALL_TIMEOUT = int(prompts.STALE_AFTER) + 10
 
 async def _check_llm_call(
     db: graph.Graph,
+    org_id: str,
     org_slug: str,
     slug: str,
     wf_graph: wf.Graph,
@@ -434,6 +436,8 @@ async def _check_llm_call(
     owner_team_id: str,
 ) -> None:
     """Check each LLM Call node and its prompt.
+
+    The model is a model of the organization ``org_id``.
 
     The node timeout is at least :data:`MIN_LLM_CALL_TIMEOUT`. The
     prompt is the node's own (see :func:`_llm_call_ref`) and is
@@ -480,9 +484,15 @@ async def _check_llm_call(
             raise _llm_call_error(node, 'the prompt must be generative')
         records = await db.execute(
             _LLM_CALL_MODEL_QUERY,
-            {'slug': version.model or ''},
+            {'slug': version.model or '', 'org_id': org_id},
             ['structured', 'kind', 'access_scope'],
         )
+        # The run refuses a model that is not in the organization's
+        # catalog, so the save refuses it too.
+        if version.model and not records:
+            raise _llm_call_error(
+                node, f'the model {version.model!r} is not in the catalog'
+            )
         model = (
             {k: graph.parse_agtype(v) for k, v in records[0].items()}
             if records
@@ -503,13 +513,14 @@ async def _check_llm_call(
             )
         if model.get('access_scope') == 'restricted':
             await _check_model_teams(
-                db, auth, version.model or '', owner_team_id, node
+                db, auth, org_id, version.model or '', owner_team_id, node
             )
 
 
 async def _check_model_teams(
     db: graph.Graph,
     auth: permissions.AuthContext,
+    org_id: str,
     model: str,
     owner_team_id: str,
     node: wf.Node,
@@ -527,7 +538,12 @@ async def _check_model_teams(
     else:
         email = auth.user.email
     await prompt_resolve.check_model_teams(
-        db, model, message, email=email, team_id=owner_team_id
+        db,
+        model,
+        message,
+        org_ids=[org_id],
+        email=email,
+        team_id=owner_team_id,
     )
 
 
@@ -911,7 +927,7 @@ async def create_workflow(
             },
         )
     await _check_llm_call(
-        db, org_slug, slug, data.graph, auth, definition.owner_team_id
+        db, org_id, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
     definition = dataclasses.replace(
         definition,
@@ -1010,7 +1026,7 @@ async def save_workflow(
             },
         )
     await _check_llm_call(
-        db, org_slug, slug, data.graph, auth, definition.owner_team_id
+        db, org_id, org_slug, slug, data.graph, auth, definition.owner_team_id
     )
     outline = _outline(definition.name, definition.graph)
     description = current['description']

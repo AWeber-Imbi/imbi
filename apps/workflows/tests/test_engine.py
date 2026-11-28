@@ -342,12 +342,14 @@ class EngineTestCase(unittest.IsolatedAsyncioTestCase):
             CREATE (u)-[:MEMBER_OF]->(t)
             CREATE (p:AIProvider {{id: {provider}, slug: {provider},
                                    name: 'TypeSafe', driver: 'typesafe',
-                                   enabled: true,
+                                   enabled: true, org_id: {org},
                                    credentials_encrypted: {key}}})
             CREATE (m:AIModel {{id: {model}, slug: {model}, name: 'Jev',
-                                model_id: 'jev-latest',
+                                model_id: 'jev-latest', org_id: {org},
                                 model_type: 'decision', enabled: true}})
             CREATE (m)-[:SERVED_BY]->(p)
+            CREATE (p)-[:BELONGS_TO]->(o)
+            CREATE (m)-[:BELONGS_TO]->(o)
             RETURN o.id AS id
             """,
             {

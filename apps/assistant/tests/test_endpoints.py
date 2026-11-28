@@ -454,7 +454,9 @@ class CreateConversationEndpointTestCase(
         mock_create.return_value = _make_conversation()
         opus = 'claude-opus-5-5'
         default = 'claude-sonnet-4-6'
-        restricted = [{'slug': 'opus', 'access_scope': 'restricted'}]
+        restricted = [
+            {'slug': 'opus', 'access_scope': 'restricted', 'org_id': 'org-1'}
+        ]
         disabled_twin = {
             'slug': 'opus-b',
             'access_scope': None,
@@ -506,7 +508,7 @@ class CreateConversationEndpointTestCase(
                 if not is_admin:
                     self.assertEqual(
                         db.execute.await_args_list[0].args[1],
-                        {'model_id': model},
+                        {'model_id': model, 'org_ids': ['org-1']},
                     )
 
     @mock.patch(
@@ -533,7 +535,10 @@ class CreateConversationEndpointTestCase(
                 body=None,
             )
         load.assert_awaited_once_with(
-            mock.ANY, 'imbi-assistant/system@stable', 'test@example.com'
+            mock.ANY,
+            'imbi-assistant/system@stable',
+            'test@example.com',
+            org_ids=['org-1'],
         )
         mock_create.assert_called_once_with(
             mock.ANY,
@@ -1076,6 +1081,7 @@ class SendMessageEndpointTestCase(
             mock_get_conv.return_value.model,
             'test@example.com',
             mock.ANY,
+            org_ids=mock.ANY,
         )
         mock_add.assert_not_called()
 

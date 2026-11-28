@@ -1162,28 +1162,37 @@ class LLMCallStepTestCase(WorkflowTestCase):
         self.completion = f'text-c-{suffix}'
         await self.graph.execute(
             """
+            MATCH (o:Organization {{id: {org}}})
             CREATE (p:AIProvider {{id: {provider}, slug: {provider},
                                    name: 'P', driver: 'anthropic',
-                                   enabled: true}})
+                                   enabled: true, org_id: {org}}})
             CREATE (s:AIModel {{id: {structured}, slug: {structured},
                                 name: 'S', model_id: 's',
                                 model_type: 'generative', enabled: true,
-                                supports_structured_output: true}})
+                                supports_structured_output: true,
+                                org_id: {org}}})
             CREATE (m:AIModel {{id: {plain}, slug: {plain}, name: 'M',
                                 model_id: 'm', model_type: 'generative',
                                 enabled: true,
-                                supports_structured_output: false}})
+                                supports_structured_output: false,
+                                org_id: {org}}})
             CREATE (c:AIModel {{id: {completion}, slug: {completion},
                                 name: 'C', model_id: 'c',
                                 model_type: 'generative', kind: 'completion',
                                 enabled: true,
-                                supports_structured_output: false}})
+                                supports_structured_output: false,
+                                org_id: {org}}})
             CREATE (s)-[:SERVED_BY]->(p)
             CREATE (m)-[:SERVED_BY]->(p)
             CREATE (c)-[:SERVED_BY]->(p)
+            CREATE (p)-[:BELONGS_TO]->(o)
+            CREATE (s)-[:BELONGS_TO]->(o)
+            CREATE (m)-[:BELONGS_TO]->(o)
+            CREATE (c)-[:BELONGS_TO]->(o)
             RETURN p.id AS id
             """,
             {
+                'org': self.org,
                 'provider': self.provider,
                 'structured': self.structured,
                 'plain': self.plain,
@@ -1275,6 +1284,20 @@ class LLMCallStepTestCase(WorkflowTestCase):
             ['at'],
         )
         return graph.parse_agtype(records[0]['at']) is not None
+
+    async def test_model_missing_from_the_catalog_is_refused(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {id}}})
+            DETACH DELETE m
+            RETURN 1 AS ok
+            """,
+            {'id': self.plain},
+            ['ok'],
+        )
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('is not in the catalog', response.json()['detail'])
 
     async def test_save_checks(self) -> None:
         fields = [{'name': 'risk', 'type': 'string'}]

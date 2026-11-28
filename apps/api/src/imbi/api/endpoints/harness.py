@@ -773,10 +773,26 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
+    if prompt is not None and prompt.model is not None:
+        # A global prompt stores the id of the slug in the first
+        # organization that has it. The run uses the model with that slug
+        # in the organization of the task. Without one, the run fails:
+        # the stored id can match a different model of that
+        # organization.
+        info = await prompt_resolve.model_info(
+            db, prompt.model, org_ids=[task['organization_id']]
+        )
+        if info is None or not info.enabled:
+            raise prompt_resolve.ModelNotAllowed(
+                f'The organization has no enabled model {prompt.model!r}'
+            )
+        prompt = prompt.model_copy(update={'model_id': info.model_id})
     # The runner sends prompt.model_id. Without one it uses its own
     # configured model, which is not checked (like IMBI_ASSISTANT_MODEL).
     if prompt is not None and prompt.model_id is not None:
-        await _check_model_teams(db, task['agent_id'], prompt.model_id)
+        await _check_model_teams(
+            db, task['organization_id'], task['agent_id'], prompt.model_id
+        )
     return bundle.model_copy(
         update={
             'prompt': prompt,
@@ -812,11 +828,12 @@ class _NoServiceAccount(LookupError):
 
 
 async def _check_model_teams(
-    db: graph.Graph, agent_id: str, model_id: str
+    db: graph.Graph, org_id: str, agent_id: str, model_id: str
 ) -> None:
     """Refuse the provider model id ``model_id`` when the owner team of
-    the agent may not use it now (#788): no enabled catalog model has
-    the id, or each one is restricted to other teams. The agent save
+    the agent may not use it now (#788): no enabled model in the catalog
+    of the organization has the id, or each one is restricted to other
+    teams. The agent save
     checks this too, but the catalog and the prompt label can change
     after the save.
 
@@ -827,7 +844,9 @@ async def _check_model_teams(
     """
     records = await db.execute(_AGENT_TEAM_QUERY, {'id': agent_id}, ['id'])
     team_id = str(graph.parse_agtype(records[0]['id'])) if records else ''
-    if not await prompt_resolve.team_may_use_model_id(db, model_id, team_id):
+    if not await prompt_resolve.team_may_use_model_id(
+        db, model_id, team_id, org_ids=[org_id]
+    ):
         raise prompt_resolve.ModelNotAllowed(
             f'The owner team may not use the model {model_id!r}'
         )

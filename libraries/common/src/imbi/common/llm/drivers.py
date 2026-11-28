@@ -7,6 +7,7 @@ unconfigured driver as a "Set up" row and hide actions the driver does
 not support.
 """
 
+import re
 import typing
 
 import pydantic
@@ -15,6 +16,7 @@ __all__ = [
     'DRIVERS',
     'DRIVERS_BY_SLUG',
     'DriverInfo',
+    'check_location',
     'get_driver',
     'resolve_base_url',
 ]
@@ -36,6 +38,9 @@ class DriverInfo(pydantic.BaseModel):
     #: The driver can authenticate from ambient cloud credentials, so a
     #: provider with no API key is still usable.
     supports_iam: bool = False
+    #: Imbi can call the driver with the cloud credentials of its own
+    #: process (Bedrock: SigV4 with the runtime IAM role).
+    ambient_auth: bool = False
     #: ``base_url`` must be supplied when configuring this driver.
     requires_base_url: bool = False
     #: A model list can be pulled from the provider (see the
@@ -85,6 +90,8 @@ DRIVERS: tuple[DriverInfo, ...] = (
             'API key or the runtime IAM role.'
         ),
         supports_iam=True,
+        ambient_auth=True,
+        supports_discovery=True,
         icon='Cloud',
     ),
     DriverInfo(
@@ -92,6 +99,7 @@ DRIVERS: tuple[DriverInfo, ...] = (
         name='Google Vertex AI',
         description='Models served through Google Cloud Vertex AI.',
         supports_iam=True,
+        supports_discovery=True,
         icon='Cloud',
     ),
     DriverInfo(
@@ -125,3 +133,32 @@ def resolve_base_url(driver: str, base_url: str | None) -> str | None:
         return base_url.rstrip('/')
     info = DRIVERS_BY_SLUG.get(driver)
     return info.default_base_url if info else None
+
+
+#: ``region`` and ``project_id`` become part of a host name or a path.
+#: Only these shapes are allowed, so that a value cannot send the
+#: credential to a different host.
+_AWS_REGION = re.compile(r'[a-z]{2}(-gov|-iso[a-z]*)?-[a-z]+-\d+')
+_GCP_REGION = re.compile(r'global|[a-z]+-[a-z]+\d+')
+_GCP_PROJECT = re.compile(r'[a-z][a-z0-9-]{4,28}[a-z0-9]')
+
+
+def check_location(
+    driver: str, region: str | None, project_id: str | None
+) -> None:
+    """Make sure that ``region`` and ``project_id`` are safe in a URL.
+
+    Raises:
+        ValueError: A value has an incorrect shape for ``driver``.
+
+    """
+    if driver == 'bedrock' and region and not _AWS_REGION.fullmatch(region):
+        raise ValueError(f'{region!r} is not a valid AWS region')
+    if driver != 'vertex':
+        return
+    if region and not _GCP_REGION.fullmatch(region):
+        raise ValueError(f'{region!r} is not a valid Google Cloud region')
+    if project_id and not _GCP_PROJECT.fullmatch(project_id):
+        raise ValueError(
+            f'{project_id!r} is not a valid Google Cloud project ID'
+        )

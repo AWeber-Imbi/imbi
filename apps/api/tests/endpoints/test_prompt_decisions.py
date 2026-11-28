@@ -16,6 +16,8 @@ RENDER_URL = base.RENDER_URL
 RUN_URL = f'/organizations/{ORG}/prompts/run'
 GET_PROVIDER = ai_providers._GET_QUERY
 RUN_MODEL = prompts._RUN_MODEL_QUERY
+#: The organization of the run, as the provider row returns it.
+ORG_ROW = {'id': 'org-1', 'name': 'Acme', 'slug': ORG}
 
 QUESTIONS: dict[str, typing.Any] = {
     'urgent': {
@@ -50,7 +52,8 @@ TYPESAFE_PROVIDER = [
             name='TypeSafe',
             driver='typesafe',
             credentials_encrypted='ciphertext',
-        )
+        ),
+        'o': ORG_ROW,
     }
 ]
 ANSWERS = {
@@ -355,7 +358,12 @@ class DecisionRunTestCase(base.PromptTestBase):
         self.route_run(
             (
                 GET_PROVIDER,
-                [{'p': provider_tests.provider_props(id='prv-ts')}],
+                [
+                    {
+                        'p': provider_tests.provider_props(id='prv-ts'),
+                        'o': ORG_ROW,
+                    }
+                ],
             )
         )
         self.assertEqual(self.run_ref().status_code, 422)
@@ -372,7 +380,8 @@ class DecisionRunTestCase(base.PromptTestBase):
                             driver='typesafe',
                             enabled=False,
                             credentials_encrypted='ciphertext',
-                        )
+                        ),
+                        'o': ORG_ROW,
                     }
                 ],
             )

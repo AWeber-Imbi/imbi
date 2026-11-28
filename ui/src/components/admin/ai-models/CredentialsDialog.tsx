@@ -29,10 +29,7 @@ interface CredentialsDialogProps {
   onRemove: () => void
   onRemoveWorkloadIdentity: () => void
   onSave: (apiKey: string) => void
-  onSaveWorkloadIdentity: (body: {
-    organization: string
-    target: Record<string, unknown>
-  }) => void
+  onSaveWorkloadIdentity: (body: { target: Record<string, unknown> }) => void
   open: boolean
   provider: AIProvider
 }
@@ -222,13 +219,7 @@ export function CredentialsDialog({
             <button
               className="border-tertiary text-primary rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
               disabled={isPending || target === null}
-              onClick={() =>
-                target &&
-                onSaveWorkloadIdentity({
-                  organization: selectedOrganization.slug,
-                  target,
-                })
-              }
+              onClick={() => target && onSaveWorkloadIdentity({ target })}
               type="button"
             >
               Use workload identity

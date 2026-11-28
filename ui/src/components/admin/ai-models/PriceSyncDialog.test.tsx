@@ -52,7 +52,13 @@ vi.mock('@/api/endpoints', () => ({
 describe('PriceSyncDialog', () => {
   it('fills missing prices and overwrites only opted-in models', async () => {
     const onApplied = vi.fn()
-    render(<PriceSyncDialog onApplied={onApplied} onClose={vi.fn()} />)
+    render(
+      <PriceSyncDialog
+        onApplied={onApplied}
+        onClose={vi.fn()}
+        orgSlug="acme"
+      />,
+    )
 
     expect(
       await screen.findByText(/2 to update, 3 up to date, 1 not in LiteLLM/),
@@ -70,7 +76,8 @@ describe('PriceSyncDialog', () => {
 
     fireEvent.click(apply)
     await waitFor(() => expect(onApplied).toHaveBeenCalled())
-    expect(vi.mocked(applyAIModelPrices).mock.calls[0][0]).toEqual({
+    expect(vi.mocked(applyAIModelPrices).mock.calls[0][0]).toBe('acme')
+    expect(vi.mocked(applyAIModelPrices).mock.calls[0][1]).toEqual({
       models: [
         { id: 'mdl-1', overwrite: false },
         { id: 'mdl-2', overwrite: true },

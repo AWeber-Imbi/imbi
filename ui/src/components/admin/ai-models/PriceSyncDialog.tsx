@@ -15,7 +15,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { extractApiErrorDetail } from '@/lib/apiError'
-import type { AIPriceSyncApplyResult, AIPriceSyncModel } from '@/types'
+import type {
+  AIPriceSyncApplyRequest,
+  AIPriceSyncApplyResult,
+  AIPriceSyncModel,
+} from '@/types'
 
 const FIELD_LABELS: Record<string, string> = {
   cache_read_cost_per_million: 'Cache read',
@@ -28,23 +32,29 @@ const FIELD_LABELS: Record<string, string> = {
 interface PriceSyncDialogProps {
   onApplied: (result: AIPriceSyncApplyResult) => void
   onClose: () => void
+  orgSlug: string
 }
 
-export function PriceSyncDialog({ onApplied, onClose }: PriceSyncDialogProps) {
+export function PriceSyncDialog({
+  onApplied,
+  onClose,
+  orgSlug,
+}: PriceSyncDialogProps) {
   const [overwrite, setOverwrite] = useState<Set<string>>(new Set())
 
   // Each open downloads the price file once; never refetch behind the
   // admin's back while they review the diff.
   const preview = useQuery({
     gcTime: 0,
-    queryFn: previewAIModelPrices,
-    queryKey: ['ai-model-price-sync'],
+    queryFn: () => previewAIModelPrices(orgSlug),
+    queryKey: ['ai-model-price-sync', orgSlug],
     refetchOnWindowFocus: false,
     retry: false,
     staleTime: Infinity,
   })
   const apply = useMutation({
-    mutationFn: applyAIModelPrices,
+    mutationFn: (body: AIPriceSyncApplyRequest) =>
+      applyAIModelPrices(orgSlug, body),
     onSuccess: onApplied,
   })
 

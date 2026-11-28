@@ -8,6 +8,7 @@ import { useAgentList } from '@/components/agents/agentQueries'
 import { AdminTable } from '@/components/ui/admin-table'
 import { Button } from '@/components/ui/button'
 import { useClipboard } from '@/hooks/useClipboard'
+import { queryKeys } from '@/lib/queryKeys'
 
 import { anthropicCondition, PROVIDER_VALUES } from './wifVendorValues'
 
@@ -39,10 +40,11 @@ export function VendorSetup({ orgId, orgSlug, roleArn }: Props) {
       (ok) => ok || toast.error('Could not copy to the clipboard'),
     )
   const agentsQuery = useAgentList(orgSlug)
-  // AI Providers are global; a caller without read access sees none.
+  // The AI Providers of the organization; a caller without read access
+  // sees none.
   const providersQuery = useQuery({
-    queryFn: ({ signal }) => listAIProviders(signal),
-    queryKey: ['ai-providers'],
+    queryFn: ({ signal }) => listAIProviders(orgSlug, signal),
+    queryKey: queryKeys.aiProviders(orgSlug),
     retry: false,
   })
   const exchangersQuery = useQuery({

@@ -136,13 +136,20 @@ describe('AgentsArea', () => {
     expect(result.current.map((item) => item.label)).toEqual([
       'Dashboard',
       'Agents',
-      'AI Models',
       'Egress Destinations',
       'Platform',
       'Runners',
       'Secrets',
       'Workflows',
     ])
+  })
+
+  it('sends an old AI Models link to Admin', async () => {
+    renderAt('/agents/ai-models/x/edit?provider=p1')
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/admin/ai-models/x/edit'),
+    )
+    expect(window.location.search).toBe('?provider=p1')
   })
 
   it('sends a runner reader away from Egress Destinations', async () => {

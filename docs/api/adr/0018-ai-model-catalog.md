@@ -102,9 +102,10 @@ indistinguishable from a missing node. Cross-organization probing is therefore
 not possible through these routes.
 
 `slug` remains a stable org-scoped alias. Agent configuration can name
-`default-chat` instead of a vendor model id. Both uniqueness rules are scoped,
-so both are enforced in the endpoint rather than by a graph index: model
-`slug` is unique per organization, and `model_id` is unique per provider.
+`default-chat` instead of a vendor model id. Both uniqueness rules are scoped.
+Model `slug` is unique per organization; the `(org_id, slug)` unique index
+enforces it (see the amendment below). `model_id` is unique per provider; the
+endpoint enforces it, because no graph index covers it.
 
 ### Deleting a provider does not cascade
 
@@ -134,9 +135,17 @@ credential and returns the models it reports. It writes nothing.
 `anthropic` uses the `anthropic` SDK, which is already a dependency, and maps
 `max_input_tokens` and `max_tokens` into `context_window` and
 `max_output_tokens` when the provider supplies them. `openai` and
-`openai_compatible` call `GET {base_url}/models` over httpx. `bedrock` and
-`vertex` are not supported, and `supports_discovery` on the driver lets the UI
-hide the action.
+`openai_compatible` call `GET {base_url}/models` over httpx. `bedrock` calls
+`ListFoundationModels` on `bedrock.{region}.amazonaws.com` over httpx, with
+the stored key as a bearer token or SigV4 from the runtime IAM role, and keeps
+active text models with on-demand inference. It also calls
+`ListInferenceProfiles` for system-defined profiles and keeps the active
+profiles of text models by profile ID, because current Claude models are
+available only through a profile. `vertex` calls the
+`v1beta1` `publishers/google/models` list with the express key and keeps the
+Gemini models. The express mode API reference does not include that method,
+so a 401 or 403 for `vertex` is a 422 that tells the admin to add models by
+ID. `supports_discovery` on the driver lets the UI hide the action.
 
 Discovery doubles as the connection test for a stored key. Every failure is
 normalized to a message that names the driver and the transport error or HTTP
@@ -194,6 +203,47 @@ installed. Four characters of a key are not enough to use it.
 - Providers can be edited and deleted through the API only. The admin UI
   creates providers, manages their credentials, and manages their models.
 
+## Amendment: the catalog becomes per organization (2026-11-27)
+
+The first implementation did not follow this ADR. `AIProvider` and `AIModel`
+were global, with no `BELONGS_TO` edge, slugs unique across the installation,
+and routes at `/ai-providers` and `/ai-models`. The code now follows the
+decision above:
+
+- Each `AIProvider` and `AIModel` has a `BELONGS_TO` edge to one organization
+  and an `org_id` property. The `(org_id, slug)` unique index makes the slug
+  unique in the organization. The global slug indexes are dropped.
+- The routes are under `/organizations/{org_slug}/ai-providers` and
+  `/organizations/{org_slug}/ai-models`. The caller must be a member, and the
+  `ai_model:*` permissions of the caller's role in that organization apply.
+- Every consumer reads only the catalog of its organization: prompt runs,
+  workflow steps, agent saves, task claims, and usage prices. A global prompt
+  names a model by slug, and a run uses the model with that slug in the
+  organization of the run.
+- The assistant and the Slack bot still take their model from the
+  environment (`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`). Only the model
+  of their CMS system prompt comes from a catalog: the catalog of the
+  organization of the conversation for the assistant, and the catalogs of
+  the organizations of the user for the Slack bot. Model selection through
+  an organization catalog is a follow-up (the resolver below).
+- `IMBI_AI_PROVIDER_<SERVICE>` names a provider as
+  `<org-slug>/<provider-slug>`, not by id.
+
+Migration: the `ai-catalog-org-copy` maintenance operation copies each
+global provider (with its encrypted
+key, hint, workload identity, and timestamps) and each global model to every
+organization, as new nodes with new ids. A copy of a model keeps the
+`ALLOWED_FOR` edges only to the teams of its organization. Only the copy in
+the organization of a workload identity keeps it; each other organization
+sets up its own: the API sets the identity of the organization of the
+provider. Then it
+deletes the global nodes. Slugs do not change. The copy runs in one
+transaction under an advisory lock, and does nothing when no global node is
+left. With no organization, the global nodes stay.
+
+The spend cap is per organization per model, because each organization has
+its own copy of a model.
+
 ## Follow-ups
 
 - A resolver in `imbi.common.llm` that the harness, assistant, and Slack bot
@@ -201,8 +251,9 @@ installed. Four characters of a key are not enough to use it.
   organization default, then the environment fallback. A disabled provider or
   model is a hard configuration error.
 - `Organization -[:USES_DEFAULT_MODEL]-> AIModel`, and the per-team equivalent.
-- Discovery for `bedrock` and `vertex`. Both need client libraries that are
-  not dependencies today.
+- Vertex discovery with service account credentials. They need
+  `google-auth`, which is not a dependency. Bedrock application inference
+  profiles are not listed.
 - Spend tracking against `monthly_spend_cap`, and pricing history.
 - A capability set on models, such as `tool_use`, `vision`, and
   `structured_output`, replacing the coarse `kind` field.

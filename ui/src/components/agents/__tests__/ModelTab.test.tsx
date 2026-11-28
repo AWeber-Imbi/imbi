@@ -10,6 +10,12 @@ import { type PromptDraft, promptDraftFromVersion } from '../agentDraft'
 import { ModelTab } from '../ModelTab'
 
 // fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/OrganizationContext', () => ({
+  useOrganization: () => ({
+    selectedOrganization: { id: 'org-1', name: 'Acme', slug: 'acme' },
+  }),
+}))
+
 vi.mock('@/api/endpoints', () => ({
   listAIModels: vi.fn(),
 }))

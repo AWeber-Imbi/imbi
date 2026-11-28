@@ -237,6 +237,8 @@ class CreatePromptTestCase(PromptTestBase):
         self.assertEqual(params['v_model_id'], 'claude-opus-5')
         self.assertEqual(json.loads(params['labels'])[0]['name'], 'stable')
         self.assertEqual(len(params['v_content_sha256']), 64)
+        # A global prompt can name a model of any organization.
+        self.assertIsNone(router.params_for(MODEL)['org'])
 
     def test_create_without_promote_sets_no_label(self) -> None:
         # A developer may create a prompt, but pointing a label at a

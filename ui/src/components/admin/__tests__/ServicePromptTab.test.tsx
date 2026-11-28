@@ -4,6 +4,12 @@ import { ApiError } from '@/api/client'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
 // fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/OrganizationContext', () => ({
+  useOrganization: () => ({
+    selectedOrganization: { id: 'org-1', name: 'Acme', slug: 'acme' },
+  }),
+}))
+
 vi.mock('@/api/endpoints', () => ({
   createPrompt: vi.fn(),
   getPrompt: vi.fn(),

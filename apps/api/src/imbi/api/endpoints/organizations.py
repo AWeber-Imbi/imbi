@@ -24,6 +24,8 @@ from .agent_platform import (
 )
 from .agent_usage import agent_usage_router
 from .agents import agents_router
+from .ai_models import ai_models_router, ai_provider_imports_router
+from .ai_providers import ai_providers_router
 from .comments import attention_router, comments_router
 from .components import (
     component_releases_router,
@@ -115,6 +117,18 @@ organizations_router = fastapi.APIRouter(
 organizations_router.include_router(
     teams_router,
     prefix='/{org_slug}/teams',
+)
+organizations_router.include_router(
+    ai_providers_router,
+    prefix='/{org_slug}/ai-providers',
+)
+organizations_router.include_router(
+    ai_provider_imports_router,
+    prefix='/{org_slug}/ai-providers',
+)
+organizations_router.include_router(
+    ai_models_router,
+    prefix='/{org_slug}/ai-models',
 )
 # Prompts are global; only rendering is org-scoped, because the
 # ``project()`` template provider reads organization data.

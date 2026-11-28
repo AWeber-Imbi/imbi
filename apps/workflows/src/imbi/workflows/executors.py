@@ -269,8 +269,10 @@ class Api:
         return typing.cast('dict[str, typing.Any]', response.json())
 
 
+#: A model of the organization of the run, by id or slug.
 _MODEL_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{id: {org}}})
+MATCH (m)-[:SERVED_BY]->(p:AIProvider)
 WHERE m.id = {ref} OR m.slug = {ref}
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type, p.driver AS driver,
@@ -412,7 +414,7 @@ class Executors:
         found = await _values(
             self.db,
             _MODEL_QUERY,
-            {'ref': params.model_id},
+            {'ref': params.model_id, 'org': call.organization_id},
             [
                 'model_id',
                 'enabled',

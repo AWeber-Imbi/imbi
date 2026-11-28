@@ -132,14 +132,14 @@ async def anthropic_hook() -> abc.AsyncGenerator[AnthropicClient]:
     endpoints that depend on this still resolve but their completions
     return ``degraded=True`` with a fallback payload.
     """
-    provider_id = settings.get_ai_providers().api
-    if provider_id:
+    provider_ref = settings.get_ai_providers().api
+    if provider_ref:
         anthropic_settings = AnthropicSettings()
         client = AnthropicClient(
             anthropic_settings,
             client=llm_tokens.bearer_client(
                 tokens.ProviderToken(
-                    provider_id, lambda: _graph, secret_broker.get_store
+                    provider_ref, lambda: _graph, secret_broker.get_store
                 ),
                 timeout=anthropic_settings.timeout,
                 max_retries=anthropic_settings.max_retries,

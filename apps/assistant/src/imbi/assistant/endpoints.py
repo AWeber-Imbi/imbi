@@ -90,12 +90,21 @@ def _require_assistant() -> None:
 
 
 async def _check_model(
-    db: graph.Graph, auth_ctx: AuthDep, model: str, default: str
+    db: graph.Graph,
+    auth_ctx: AuthDep,
+    org_id: str,
+    model: str,
+    default: str,
 ) -> None:
-    """Raise 403 when a non-admin user may not use ``model`` (#788)."""
+    """Raise 403 when a non-admin user may not use ``model`` (#788).
+
+    The catalog of the organization of the conversation applies.
+    """
     user = auth_ctx.require_user
-    if not user.is_admin and not await resolve.member_may_use_model_id(
-        db, model, user.email, default
+    if user.is_admin:
+        return
+    if not await resolve.member_may_use_model_id(
+        db, model, user.email, default, org_ids=[org_id]
     ):
         raise resolve.ModelNotAllowed(
             f'The model {model!r} is not in the catalog or is restricted '
@@ -129,10 +138,11 @@ async def create_conversation(
                 db,
                 assistant_settings.prompt_ref,
                 auth_ctx.require_user.email,
+                org_ids=[org_id],
             )
             or assistant_settings.model
         )
-    await _check_model(db, auth_ctx, model, assistant_settings.model)
+    await _check_model(db, auth_ctx, org_id, model, assistant_settings.model)
     conv = await age_ops.create_conversation(
         db,
         user_email=auth_ctx.require_user.email,
@@ -945,7 +955,9 @@ async def send_message(
             ),
         )
     # The allowed teams can change after the conversation starts.
-    await _check_model(db, auth_ctx, conv.model, assistant_settings.model)
+    await _check_model(
+        db, auth_ctx, org_id, conv.model, assistant_settings.model
+    )
 
     await age_ops.add_message(
         db,

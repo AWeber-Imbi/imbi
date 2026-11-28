@@ -52,7 +52,7 @@ const handlers = () => ({
 })
 
 describe('CredentialsDialog workload identity', () => {
-  it('sets workload identity for the selected organization', async () => {
+  it('sets workload identity for the organization of the provider', async () => {
     const on = handlers()
     render(
       <CredentialsDialog {...on} isPending={false} open provider={provider} />,
@@ -67,7 +67,6 @@ describe('CredentialsDialog workload identity', () => {
     })
     fireEvent.click(use)
     expect(on.onSaveWorkloadIdentity).toHaveBeenCalledWith({
-      organization: 'acme',
       target: { service_account_id: 'svc-1' },
     })
   })

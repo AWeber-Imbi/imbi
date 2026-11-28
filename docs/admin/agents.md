@@ -17,7 +17,6 @@ The area has these pages:
 | Dashboard | **Agents > Dashboard** | Agent activity at a glance |
 | Tickets | **Tickets** (top bar) | The ticket list. It is a top-level page, not in the Agents area. See [Tickets](tickets.md) |
 | Agents | **Agents > Settings > Agents** | The agent list, the agent detail, and the editor |
-| AI Models | **Agents > Settings > AI Models** | See [AI Models](ai-models.md). Platform administrators only |
 | Platform | **Agents > Settings > Platform** | The base configuration and the plugin marketplaces |
 | Secrets | **Agents > Settings > Secrets** | See [Secrets](secrets.md). Platform administrators only |
 | Workflows | **Agents > Settings > Workflows** | See [Workflows](workflows.md) |

@@ -4,11 +4,14 @@ The credential comes from the provider, in this order:
 
 1. The stored key.
 2. A workload identity token (one retry with a new token after a 401).
-3. Bedrock only: the AWS credentials of this process (the runtime IAM
-   role), which sign each request with SigV4.
+3. A driver with ``ambient_auth`` (Bedrock): the AWS credentials of
+   this process (the runtime IAM role), which sign each request with
+   SigV4.
 
-A Vertex provider with no key fails with ``provider_misconfigured``:
-Google credentials need ``google-auth``, which imbi-api does not have.
+:func:`with_credentials` is this chain; model calls and model discovery
+use it. A Vertex provider with no key fails with
+``provider_misconfigured``: Google credentials need ``google-auth``,
+which imbi-api does not have.
 """
 
 import asyncio
@@ -32,7 +35,7 @@ from imbi.api.llm import tokens
 from imbi.api.secret_broker import store
 from imbi.common import models
 from imbi.common.auth.encryption import decrypt_config_value
-from imbi.common.llm import generate
+from imbi.common.llm import drivers, generate
 from imbi.common.plugins.identity import IdentityError
 
 
@@ -53,7 +56,12 @@ class SigV4(httpx.Auth):
             method=request.method,
             url=str(request.url),
             data=request.content,
-            headers={'Content-Type': request.headers['Content-Type']},
+            # A GET (model discovery) has no Content-Type.
+            headers={
+                k: v
+                for k, v in request.headers.items()
+                if k.lower() == 'content-type'
+            },
         )
         self._signer.add_auth(signed)
         request.headers.update(dict(signed.headers.items()))
@@ -67,8 +75,12 @@ def _aws_session() -> typing.Any:
     return aws.get_session()
 
 
-async def _sigv4(region: str | None) -> SigV4:
-    """Return a signer with the AWS credentials of this process."""
+async def sigv4(region: str | None) -> SigV4:
+    """Return a signer with the AWS credentials of this process.
+
+    ``region`` is only the scope of the signature: the URL builders
+    check it.
+    """
 
     def frozen() -> object:
         # The credential chain can read files and call the instance
@@ -86,6 +98,49 @@ async def _sigv4(region: str | None) -> SigV4:
     if not credentials or not region:
         raise generate.GenerateError('provider_misconfigured')
     return SigV4(credentials, region)
+
+
+@dataclasses.dataclass(frozen=True)
+class Credential:
+    """The credential of one request. All empty: the provider has none."""
+
+    key: str = ''
+    #: ``key`` is a workload identity token.
+    bearer: bool = False
+    #: Signs the request (ambient SigV4).
+    auth: httpx.Auth | None = None
+
+
+async def with_credentials[T](
+    secrets: store.SecretStore,
+    provider: models.AIProvider,
+    fn: collections.abc.Callable[[Credential], collections.abc.Awaitable[T]],
+    unauthorized: collections.abc.Callable[[Exception], bool],
+) -> T:
+    """Return ``fn(credential)`` with the first credential of the chain.
+
+    A workload identity token gets one retry with a new token when
+    ``unauthorized(exc)`` is true.
+
+    Raises:
+        IdentityError: No workload identity token could be minted.
+        generate.GenerateError: No ambient credential could be read.
+
+    """
+    key = decrypt_config_value(provider.credentials_encrypted)
+    if key:
+        return await fn(Credential(key))
+    if provider.workload_identity is not None:
+        return await tokens.call(
+            secrets,
+            provider,
+            lambda token: fn(Credential(token, bearer=True)),
+            unauthorized,
+        )
+    info = drivers.get_driver(provider.driver)
+    if info is not None and info.ambient_auth:
+        return await fn(Credential(auth=await sigv4(provider.region)))
+    return await fn(Credential())
 
 
 async def call(
@@ -126,28 +181,28 @@ async def call(
             dispatched.clear()
         return True
 
-    key = decrypt_config_value(provider.credentials_encrypted)
-    if key:
-        return await send(dataclasses.replace(request, credential=key))
-    if provider.workload_identity is not None:
-        try:
-            return await tokens.call(
-                secrets,
-                provider,
-                lambda token: send(
-                    dataclasses.replace(request, credential=token, bearer=True)
+    async def with_credential(credential: Credential) -> generate.Result:
+        if credential == Credential() and provider.driver == 'vertex':
+            raise generate.GenerateError('provider_misconfigured')
+        return await send(
+            dataclasses.replace(
+                request,
+                credential=credential.key or request.credential,
+                # Keep the request's values when the credential sets none.
+                bearer=(
+                    credential.bearer if credential.key else request.bearer
                 ),
-                unauthorized,
+                auth=credential.auth or request.auth,
             )
-        except IdentityError as exc:
-            if exc.retryable:
-                raise generate.GenerateError(
-                    'credentials_unavailable', retry=True
-                ) from None
-            raise generate.GenerateError('credentials_failed') from None
-    if provider.driver == 'bedrock':
-        auth = await _sigv4(provider.region)
-        return await send(dataclasses.replace(request, auth=auth))
-    if provider.driver == 'vertex':
-        raise generate.GenerateError('provider_misconfigured')
-    return await send(request)
+        )
+
+    try:
+        return await with_credentials(
+            secrets, provider, with_credential, unauthorized
+        )
+    except IdentityError as exc:
+        if exc.retryable:
+            raise generate.GenerateError(
+                'credentials_unavailable', retry=True
+            ) from None
+        raise generate.GenerateError('credentials_failed') from None
