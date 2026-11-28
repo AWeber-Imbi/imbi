@@ -123,6 +123,7 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
 
   const selectModel = (slug: null | string) => {
     const model = models.find((m) => m.slug === slug)
+    if (model) setProvider(model.provider_name)
     onChange({
       ...value,
       effort: isClaudeModel(model?.model_id)

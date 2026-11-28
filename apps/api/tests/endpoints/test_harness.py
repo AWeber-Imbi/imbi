@@ -526,8 +526,16 @@ class FailedClaimTests(RunnerTestCase):
 
     async def test_restricted_model_of_another_team_is_closed(self) -> None:
         runner = await self.register()
+        info = harness_api.prompt_resolve.ModelInfo(
+            model_id='claude-opus-5', enabled=True, driver='anthropic'
+        )
         with (
             self.patch_prompt('claude-opus-5'),
+            mock.patch.object(
+                harness_api.prompt_resolve,
+                'model_info',
+                mock.AsyncMock(return_value=info),
+            ),
             mock.patch.object(
                 harness_api.prompt_resolve,
                 'team_may_use_model_id',
@@ -571,10 +579,22 @@ class FailedClaimTests(RunnerTestCase):
             mock.ANY, 'claude-opus-org', '', org_ids=[mock.ANY]
         )
 
-    async def test_model_id_missing_from_the_catalog_is_closed(self) -> None:
+    async def test_model_slug_missing_from_the_catalog_is_closed(
+        self,
+    ) -> None:
+        # The task organization has no 'opus' model. The stored id is not
+        # used, even when another model of the organization has it.
         runner = await self.register()
-        with self.patch_prompt('claude-renamed-away'):
+        with (
+            self.patch_prompt('claude-renamed-away'),
+            mock.patch.object(
+                harness_api.prompt_resolve,
+                'team_may_use_model_id',
+                mock.AsyncMock(return_value=True),
+            ) as check,
+        ):
             self.assertIsNone(await self.claim(runner))
+        check.assert_not_awaited()
         await self.assert_model_not_allowed(runner)
 
     async def test_failed_outcome_write_releases_the_claim(self) -> None:

@@ -184,12 +184,21 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
                 result = await self.load(email=email)
                 self.assertEqual(result.model_id, expected)
 
-    async def test_stale_model_id_is_checked(self) -> None:
-        # A catalog edit moved the slug to a new id; the version keeps
-        # the old one, and the old one is what is sent.
+    async def test_slug_uses_the_catalog_model_id(self) -> None:
+        # The version stores the id of another organization; the run
+        # uses the id of the slug in the catalog of the user.
         found = _version(model='opus', model_id='claude-opus-old')
         info = resolve.ModelInfo('claude-opus-5-5', True, 'anthropic')
-        for allowed, expected in ((False, None), (True, 'claude-opus-old')):
+        with self.patch_resolve(found), self.patch_model(info):
+            result = await self.load(email='dev@example.com')
+        self.assertEqual(result.model_id, 'claude-opus-5-5')
+
+    async def test_restricted_catalog_model_id_is_checked(self) -> None:
+        found = _version(model='opus', model_id='claude-opus-old')
+        info = resolve.ModelInfo(
+            'claude-opus-5-5', True, 'anthropic', 'restricted'
+        )
+        for allowed, expected in ((False, None), (True, 'claude-opus-5-5')):
             with (
                 self.subTest(allowed=allowed),
                 self.patch_resolve(found),
@@ -210,7 +219,7 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
                 # A global prompt reads the catalogs of the user's orgs.
                 check.assert_awaited_once_with(
                     mock.ANY,
-                    'claude-opus-old',
+                    'claude-opus-5-5',
                     'dev@example.com',
                     org_ids=['org-1'],
                 )

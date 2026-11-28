@@ -225,10 +225,10 @@ async def _model_id(
             _SUPPORTED_DRIVER,
         )
         return None
-    model_id = version.model_id or info.model_id
-    # The stored id can differ from the catalog row of the slug after a
-    # catalog edit, so the check is on the id that is sent.
-    if info.access_scope != 'restricted' and model_id == info.model_id:
+    # The slug names the model: a run uses the id of the slug in the
+    # catalog, not the id stored with a global prompt (ADR 0018).
+    model_id = info.model_id
+    if info.access_scope != 'restricted':
         return model_id
     try:
         allowed = email is not None and await resolve.member_may_use_model_id(

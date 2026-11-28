@@ -133,7 +133,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    up workload identity or a key there. If the organization of the
    identity no longer exists, no copy keeps the identity. The AI Models
    page is now at **Admin > &lt;Org&gt; Admin > AI Models**. If the
-   operation fails, run it again: the copy is one transaction.
+   operation fails, run it again: the copy is one transaction. If you
+   use model discovery for an AWS Bedrock provider without a stored
+   key, give `bedrock:ListInferenceProfiles` to the runtime IAM role
+   (in addition to `bedrock:ListFoundationModels`). Without it,
+   discovery fails.
 4. Run `imbi-api setup-permissions`. It adds
    `admin:maintenance:deployment-sweep` and gives it to the
    `imbi-scheduler` role. imbi-scheduler now creates the
