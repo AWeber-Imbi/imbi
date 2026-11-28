@@ -3727,6 +3727,36 @@ class PluginStepTestCase(EngineTestCase):
         body = json.loads(self.calls[1].content)
         self.assertLessEqual(body['time_limit_seconds'], 5)
 
+    async def test_error_after_the_step_timeout_does_not_retry(self) -> None:
+        # #990: a retryable error that comes when the step timeout has
+        # ended fails the step. The clock moves 400s past the 300s
+        # timeout before the call answers.
+        now = engine._now
+        late = mock.patch.object(
+            engine, '_now', lambda: now() + datetime.timedelta(seconds=400)
+        )
+        self.addCleanup(late.stop)
+
+        async def answer(request: httpx.Request) -> httpx.Response:
+            self.calls.append(request)
+            late.start()
+            return httpx.Response(
+                502, json={'detail': {'error': 'plugin_error', 'retry': True}}
+            )
+
+        self.api.plugin_step = answer
+        run_id = await self._gate(timeout_seconds=300, retries=3)
+        with mock.patch.object(engine, 'RETRY_BACKOFF', 3600):
+            run = await self._drive(
+                run_id,
+                lambda r: r['steps'].get('gate', {}).get('status') == 'failed'
+                or r['steps'].get('gate', {}).get('attempt') == 2,
+            )
+        late.stop()
+        self.assertEqual(run['steps']['gate']['status'], 'failed', run)
+        self.assertEqual(run['steps']['gate']['attempt'], 1)
+        self.assertEqual(len(self.calls), 1)
+
     async def test_client_error_fails(self) -> None:
         self.answers = [httpx.Response(404, json={'detail': 'not found'})]
         run = await self._drive(await self._gate())
