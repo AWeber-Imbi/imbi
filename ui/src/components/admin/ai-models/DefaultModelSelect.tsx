@@ -39,11 +39,13 @@ export function DefaultModelSelect({
       setDefaultAIModel(vars.orgSlug, vars.slug, vars.teamSlug),
     onError: (err: unknown) => toast.error(extractApiErrorDetail(err)),
     // The scope of the request, which can differ from the current props.
-    onSuccess: (result, vars) =>
-      queryClient.setQueryData(
-        queryKeys.defaultAIModel(vars.orgSlug, vars.teamSlug),
-        result,
-      ),
+    // Cancel a read in flight, so that its older result does not
+    // overwrite the saved value.
+    onSuccess: async (result, vars) => {
+      const queryKey = queryKeys.defaultAIModel(vars.orgSlug, vars.teamSlug)
+      await queryClient.cancelQueries({ queryKey })
+      queryClient.setQueryData(queryKey, result)
+    },
   })
   if (isError && data === undefined) {
     return (
