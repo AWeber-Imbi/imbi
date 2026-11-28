@@ -570,6 +570,7 @@ class CreateConversationEndpointTestCase(
                 self.assertRaises(fastapi.HTTPException) as raised,
             ):
                 await endpoints.create_conversation(
+                    org_id='org-1',
                     db=mock.AsyncMock(),
                     auth_ctx=_make_auth_context(is_admin=True),
                     body=None,
