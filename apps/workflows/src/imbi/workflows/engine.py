@@ -460,7 +460,6 @@ class Engine:
                 return await self._error(
                     run, node, step, slug, 'timeout', False
                 )
-            limit = min(limit, remaining)
         async with self.store.write(run['id']) as conn:
             await store.update(
                 conn,
@@ -468,6 +467,14 @@ class Engine:
                 {'run_id': run['id'], 'node_id': node_id},
                 call_started_at=_now(),
             )
+        if deadline is not None:
+            # The marker write used part of the time that is left.
+            remaining = (deadline - _now()).total_seconds()
+            if remaining <= 0:
+                return await self._error(
+                    run, node, step, slug, 'timeout', False
+                )
+            limit = min(limit, remaining)
         try:
             async with asyncio.timeout(limit):
                 outcome = await self.steps.run(
