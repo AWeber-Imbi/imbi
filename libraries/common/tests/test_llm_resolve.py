@@ -8,6 +8,7 @@ import dotenv
 
 from imbi.common import graph
 from imbi.common.llm import resolve
+from imbi.common.prompts import system
 
 dotenv.load_dotenv()
 
@@ -178,6 +179,31 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.reason, 'not_found')
         await self.assert_unusable('disabled', model='off')
         await self.assert_unusable('provider_disabled', org='org-b', model='q')
+
+    async def test_request_model_outside_the_catalog_only(self) -> None:
+        # A consumer allows its configured model id when it is not in the
+        # catalog. An id that is in the catalog but cannot be used, such
+        # as a restricted model, is refused and never treated as absent.
+        org = self.ids['org-a']
+        self.assertIsNone(
+            await system.request_model(
+                self.graph, self.other, 'claude-absent', org_id=org
+            )
+        )
+        with self.assertRaises(resolve.ModelUnusable) as raised:
+            await system.request_model(
+                self.graph, self.other, 'claude-locked', org_id=org
+            )
+        self.assertEqual(raised.exception.reason, 'not_allowed')
+        await self.graph.execute(
+            'MATCH (:AIModel {{id: {id}}})-[r:SERVED_BY]->() DELETE r',
+            {'id': self.ids['chat']},
+        )
+        with self.assertRaises(resolve.ModelUnusable) as raised:
+            await system.request_model(
+                self.graph, self.member, 'claude-chat', org_id=org
+            )
+        self.assertNotEqual(raised.exception.reason, 'not_found')
 
     async def test_drivers(self) -> None:
         found = await self.resolve(model='chat', drivers=('anthropic',))

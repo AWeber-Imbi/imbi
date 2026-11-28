@@ -242,8 +242,8 @@ async def request_model(
 ) -> ConsumerModel | None:
     """Return the catalog model of the vendor ``model_id`` that a request
     names, in the organization ``org_id`` (else in the organizations of
-    the user ``email``). ``None``: no
-    catalog model has the id.
+    the user ``email``). ``None`` only when no catalog model has the id;
+    a catalog model with the id that cannot be used is an error.
 
     Raises:
         llm_resolve.ModelUnusable: The model cannot be used, or a driver

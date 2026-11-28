@@ -231,8 +231,10 @@ def _parse(record: dict[str, typing.Any], name: str) -> models.AIModel:
     provider = prompt_resolve.vertex_props(record['p'])
     if provider is None:
         name = str(props.get('slug', name))
+        # Not ``not_found``: a caller can treat that as "not in the
+        # catalog" and use another model.
         raise ModelUnusable(
-            'not_found', name, f'AI model {name!r} has no provider'
+            'provider_disabled', name, f'AI model {name!r} has no provider'
         )
     org = prompt_resolve.vertex_props(record['o']) or {}
     return models.AIModel.model_validate(
