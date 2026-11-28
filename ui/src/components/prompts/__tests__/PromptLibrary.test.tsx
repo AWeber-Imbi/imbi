@@ -5,6 +5,12 @@ import { fireEvent, render, screen, waitFor } from '@/test/utils'
 import { prompt, version } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
+vi.mock('@/contexts/OrganizationContext', () => ({
+  useOrganization: () => ({
+    selectedOrganization: { id: 'org-1', name: 'Acme', slug: 'acme' },
+  }),
+}))
+
 vi.mock('@/api/endpoints', () => ({
   createPrompt: vi.fn(),
   createPromptVersion: vi.fn(),

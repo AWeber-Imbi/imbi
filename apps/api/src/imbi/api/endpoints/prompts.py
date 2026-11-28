@@ -17,7 +17,6 @@ a convention only.
 
 import asyncio
 import datetime
-import decimal
 import hashlib
 import json
 import logging
@@ -33,7 +32,7 @@ from psycopg.types import json as pg_json
 
 from imbi.api import model_calls, secret_broker, workflows
 from imbi.api.auth import organizations, permissions
-from imbi.api.endpoints import ai_providers, projects
+from imbi.api.endpoints import projects
 from imbi.api.endpoints._helpers import (
     caller_org_slugs,
     conflict_on_unique_violation,
@@ -47,6 +46,7 @@ from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import decrypt_config_value
 from imbi.common.graph import cypher as graph_cypher
 from imbi.common.llm import drivers, generate, typesafe
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import namespaces, rendering
 from imbi.common.prompts import resolve as prompt_resolve
 from imbi.common.workflows.registry import agent, llm_call
@@ -349,38 +349,16 @@ MATCH (v:PromptVersion)-[:VERSION_OF]->(:Prompt {{id: {prompt_id}}})
 RETURN v
 """
 
+#: A model of the organization ``org`` (a slug). A global prompt
+#: (``org`` null) can name a model of any organization: it runs in the
+#: organization of the run, which must have a model with that slug.
 _MODEL_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{slug: {slug}}})
+MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
+WHERE {org} IS NULL OR o.slug = {org}
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type
+ORDER BY o.slug
 """
-
-_RUN_MODEL_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
-RETURN m.model_id AS model_id, m.enabled AS enabled,
-       m.model_type AS model_type, m.kind AS kind, p.id AS provider_id,
-       m.access_scope AS access_scope,
-       m.supports_structured_output AS structured,
-       m.supports_forced_tool_choice AS forced_tool_choice,
-       m.input_cost_per_million AS input_cost,
-       m.output_cost_per_million AS output_cost,
-       m.cache_read_cost_per_million AS cache_read_cost,
-       m.default_temperature AS default_temperature
-"""
-_RUN_MODEL_COLUMNS = [
-    'model_id',
-    'enabled',
-    'model_type',
-    'kind',
-    'provider_id',
-    'access_scope',
-    'structured',
-    'forced_tool_choice',
-    'input_cost',
-    'output_cost',
-    'cache_read_cost',
-    'default_temperature',
-]
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
 MATCH (v:PromptVersion)-[:VERSION_OF]->(p:Prompt {{id: {id}}})
@@ -636,32 +614,46 @@ def _check_templates(content: PromptVersionContent) -> None:
 
 
 async def _model_id_for(
-    db: graph.Graph, model: str | None, kind: models.PromptKind
+    db: graph.Graph,
+    model: str | None,
+    kind: models.PromptKind,
+    org: str | None,
 ) -> str | None:
     """Return the catalog ``model_id`` for a model slug, or raise 422.
 
+    ``org`` is the organization of the prompt (:func:`_prompt_org`).
     The model's type must match the prompt's kind.
     """
     if model is None:
         return None
     records = await db.execute(
         _MODEL_QUERY,
-        {'slug': model},
+        {'slug': model, 'org': org},
         ['model_id', 'enabled', 'model_type'],
     )
     if not records:
         raise _unprocessable(f'AI model {model!r} is not in the catalog')
-    if graph.parse_agtype(records[0]['enabled']) is False:
+    enabled = [
+        r for r in records if graph.parse_agtype(r['enabled']) is not False
+    ]
+    if not enabled:
         raise _unprocessable(f'AI model {model!r} is disabled')
+
     # A missing value predates model_type, when every model was
     # generative.
-    model_type = graph.parse_agtype(records[0].get('model_type'))
-    if (model_type or 'generative') != kind:
+    def model_type_of(record: dict[str, typing.Any]) -> str:
+        return graph.parse_agtype(record.get('model_type')) or 'generative'
+
+    # A global prompt sees the slug in every organization; use a row of
+    # the prompt's kind when one exists.
+    record = next((r for r in enabled if model_type_of(r) == kind), None)
+    if record is None:
+        model_type = model_type_of(enabled[0])
         raise _unprocessable(
-            f'AI model {model!r} is a {model_type or "generative"} model; '
+            f'AI model {model!r} is a {model_type} model; '
             f'a {kind} prompt needs a {kind} model'
         )
-    return str(graph.parse_agtype(records[0]['model_id']))
+    return str(graph.parse_agtype(record['model_id']))
 
 
 #: The namespace of the prompts of workflow steps:
@@ -1248,7 +1240,9 @@ async def insert_prompt(
     _check_kind(data.kind, data.version)
     _check_tools(data.namespace, data.version)
     _check_templates(data.version)
-    model_id = await _model_id_for(db, data.version.model, data.kind)
+    model_id = await _model_id_for(
+        db, data.version.model, data.kind, _prompt_org(data.namespace, slug)
+    )
     await _assert_ref_free(db, data.namespace, slug)
 
     now = _now()
@@ -1524,35 +1518,24 @@ async def _check_run_permission(
     )
 
 
-async def _check_model_teams(
-    db: graph.Graph,
+async def _model_caller(
     store: workflows.WorkflowStore,
     auth: permissions.AuthContext,
     org_id: str,
     prompt: models.Prompt,
-    model: str,
-) -> None:
-    """A ``restricted`` model runs only for its teams (#782).
+) -> tuple[str | None, str | None]:
+    """Return the user and the team of a run, for the model (#782).
 
-    A user must be a member of an allowed team. The workflows service
-    runs a workflow step prompt, so the owner team of that workflow must
-    be allowed. Another principal without a user is refused.
-
-    Raises:
-        prompt_resolve.ModelNotAllowed: 403 ``model_not_allowed``.
-
+    A ``restricted`` model runs only for its teams. A user must be a
+    member of an allowed team. The workflows service runs a workflow
+    step prompt, so the owner team of that workflow must be allowed,
+    and its default model is used when the version names none. Another
+    principal without a user has neither.
     """
-    if auth.is_admin:
-        return
-    message = (
-        f'The model {model!r} is restricted to teams that do not '
-        'include the caller'
-    )
     account = auth.service_account
-    email = team_id = None
     if auth.user is not None:
-        email = auth.user.email
-    elif (
+        return auth.user.email, None
+    if (
         account is not None
         and account.slug == common_permissions.WORKFLOWS_ACCOUNT
         and prompt.namespace == WORKFLOWS_NAMESPACE
@@ -1560,10 +1543,48 @@ async def _check_model_teams(
         # <org>.<workflow>.<node key>
         slug = prompt.slug.partition('.')[2].rpartition('.')[0]
         row = await store.get(org_id, slug)
-        team_id = row['owner_team_id'] if row is not None else None
-    await prompt_resolve.check_model_teams(
-        db, model, message, email=email, team_id=team_id
-    )
+        return None, row['owner_team_id'] if row is not None else None
+    return None, None
+
+
+async def _run_model(
+    db: graph.Graph,
+    store: workflows.WorkflowStore,
+    auth: permissions.AuthContext,
+    org_id: str,
+    prompt: models.Prompt,
+    version: models.PromptVersion,
+) -> models.AIModel:
+    """Return the model of a run: the version's model, else for a
+    generative prompt the team default, then the organization default.
+
+    Raises:
+        403: The model is restricted to teams that do not include the
+            caller (``model_not_allowed``).
+        422: No model, or the model is missing or disabled, or its
+            provider is disabled.
+
+    """
+    choose = _unprocessable(f'Choose a {prompt.kind} model to run the prompt')
+    if version.model is None and prompt.kind != 'generative':
+        raise choose
+    email, team_id = await _model_caller(store, auth, org_id, prompt)
+    try:
+        resolved = await llm_resolve.resolve_model(
+            db,
+            [org_id],
+            model=version.model,
+            team_id=team_id,
+            email=email,
+            admin=auth.is_admin,
+            # A decision prompt runs on a TypeSafe model only.
+            drivers=None if prompt.kind == 'generative' else ('typesafe',),
+        )
+    except llm_resolve.ModelUnusable as e:
+        raise llm_resolve.http_error(e) from e
+    if resolved.model is None:
+        raise choose
+    return resolved.model
 
 
 @prompt_render_router.post('/run', response_model=RunResponse)
@@ -1645,29 +1666,8 @@ async def run_prompt(
         raise _unprocessable('The prompt has no questions to ask')
     # One model check for each kind of run, so a new kind cannot skip
     # the team check.
-    if version.model is None:
-        raise _unprocessable(f'Choose a {prompt.kind} model to run the prompt')
-    records = await db.execute(
-        _RUN_MODEL_QUERY,
-        {'slug': version.model},
-        _RUN_MODEL_COLUMNS,
-    )
-    if not records:
-        raise _unprocessable(
-            f'AI model {version.model!r} is not in the catalog'
-        )
-    record = {k: graph.parse_agtype(v) for k, v in records[0].items()}
-    if record['enabled'] is False:
-        raise _unprocessable(f'AI model {version.model!r} is disabled')
-    if record.get('access_scope') == 'restricted':
-        await _check_model_teams(
-            db, workflow_store, auth, org_id, prompt, version.model
-        )
-    provider = await ai_providers.fetch_provider(
-        db, str(record['provider_id'])
-    )
-    if not provider.enabled:
-        raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
+    model = await _run_model(db, workflow_store, auth, org_id, prompt, version)
+    provider = model.provider
     if prompt.kind == 'generative':
         return await _run_generative(
             org_slug,
@@ -1680,14 +1680,13 @@ async def run_prompt(
             auth,
             prompt,
             version,
-            record,
-            provider,
+            model,
             ref,
             idempotency_key,
         )
-    if record['model_type'] != 'decision' or provider.driver != 'typesafe':
+    if model.model_type != 'decision':
         raise _unprocessable(
-            f'AI model {version.model!r} is not a TypeSafe decision model'
+            f'AI model {model.slug!r} is not a TypeSafe decision model'
         )
     try:
         decision = await rendering.render_decision(
@@ -1705,7 +1704,7 @@ async def run_prompt(
                 f'AI provider {provider.slug!r} has no stored credentials'
             ),
         )
-    model_id = str(record['model_id'])
+    model_id = model.model_id
     questions = {
         qid: _wire_question(question)
         for qid, question in decision.questions.items()
@@ -1730,7 +1729,7 @@ async def run_prompt(
     return RunResponse(
         ref=ref,
         n=n,
-        model=version.model,
+        model=model.slug,
         model_id=model_id,
         request=RunRequestBody(state=decision.state, questions=questions),
         answers=result['answers'],
@@ -1761,11 +1760,6 @@ def _key_context(key: str | None) -> dict[str, typing.Any]:
         'node_id': node_id or None,
         'attempt': number,
     }
-
-
-def _price(value: object) -> decimal.Decimal | None:
-    """A catalog price as AGE returns it (a number or a string)."""
-    return None if value is None else decimal.Decimal(str(value))
 
 
 def _call_response(row: dict[str, typing.Any]) -> RunResponse:
@@ -1807,27 +1801,27 @@ async def _run_generative(
     auth: permissions.AuthContext,
     prompt: models.Prompt,
     version: models.PromptVersion,
-    record: dict[str, typing.Any],
-    provider: models.AIProvider,
+    model: models.AIModel,
     ref: str,
     idempotency_key: str | None,
 ) -> RunResponse:
-    """Run a generative prompt with the checked catalog model
-    ``record`` and its ``provider``; see :func:`run_prompt`."""
+    """Run a generative prompt with the checked catalog ``model``; see
+    :func:`run_prompt`."""
+    provider = model.provider
     # A missing value predates model_type, when every model was
     # generative.
-    if (record.get('model_type') or 'generative') != 'generative':
+    if model.model_type != 'generative':
         raise _unprocessable(
-            f'AI model {version.model!r} is not a generative model'
+            f'AI model {model.slug!r} is not a generative model'
         )
     # The provider adapters send chat requests only. A missing value
     # predates kind, when every model was a chat model.
-    if (record.get('kind') or 'chat') != 'chat':
+    if model.kind != 'chat':
         raise _unprocessable(
-            f'AI model {version.model!r} is a completion model; '
+            f'AI model {model.slug!r} is a completion model; '
             'a generative run needs a chat model'
         )
-    if data.output_fields and not record.get('structured'):
+    if data.output_fields and not model.supports_structured_output:
         raise _call_error('model_no_structured_output')
     try:
         rendered = await rendering.render(
@@ -1837,12 +1831,12 @@ async def _run_generative(
         )
     except rendering.RenderError as e:
         raise _unprocessable(str(e)) from e
-    model_id = str(record['model_id'])
+    model_id = model.model_id
     params = version.params
     # Compare with None: an explicit temperature of 0 stays.
     if params.temperature is None:
         params = params.model_copy(
-            update={'temperature': record.get('default_temperature')}
+            update={'temperature': model.default_temperature}
         )
     call = generate.Request(
         driver=provider.driver,
@@ -1852,7 +1846,7 @@ async def _run_generative(
         params=params,
         output_fields=data.output_fields,
         # A missing value predates the field: a forced tool choice.
-        forced_tool_choice=record.get('forced_tool_choice') is not False,
+        forced_tool_choice=model.supports_forced_tool_choice,
         base_url=drivers.resolve_base_url(provider.driver, provider.base_url),
         region=provider.region,
         project_id=provider.project_id,
@@ -1867,8 +1861,9 @@ async def _run_generative(
             'prompt_ref': ref,
             'prompt_version': version.n if data.ref is not None else None,
             'content_sha256': version.content_sha256,
-            'model': version.model,
+            'model': model.slug,
             'model_id': model_id,
+            'ai_model_id': model.id,
             'driver': provider.driver,
             'system': rendered.system,
             'messages': [m.model_dump() for m in rendered.messages],
@@ -1913,10 +1908,10 @@ async def _run_generative(
                 'cache_write_1h_tokens': None,
             },
             {
-                'input_cost_per_million': _price(record.get('input_cost')),
-                'output_cost_per_million': _price(record.get('output_cost')),
-                'cache_read_cost_per_million': _price(
-                    record.get('cache_read_cost')
+                'input_cost_per_million': model.input_cost_per_million,
+                'output_cost_per_million': model.output_cost_per_million,
+                'cache_read_cost_per_million': (
+                    model.cache_read_cost_per_million
                 ),
                 'cache_write_cost_per_million': None,
                 'cache_write_1h_cost_per_million': None,
@@ -2230,7 +2225,9 @@ async def create_prompt_version(
                 )
             response.status_code = 200
             return _version_response(newest, prompt)
-    model_id = await _model_id_for(db, data.model, prompt.kind)
+    model_id = await _model_id_for(
+        db, data.model, prompt.kind, _prompt_org(prompt.namespace, prompt.slug)
+    )
     version, props = _version_props(
         prompt, latest + 1, data, model_id, auth.principal_name
     )

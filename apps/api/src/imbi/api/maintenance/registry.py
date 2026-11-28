@@ -41,6 +41,7 @@ MaintenanceSlug = typing.Literal[
     'plugin-step-calls-prune',
     'mcp-server-org-backfill',
     'conversation-org-backfill',
+    'ai-catalog-org-copy',
     'deployment-array-drop',
 ]
 
@@ -372,6 +373,21 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_one_run,
             execute=operations.execute_conversation_org_backfill,
+            items_are_projects=False,
+        ),
+        OperationDefinition(
+            slug='ai-catalog-org-copy',
+            label='Copy the AI Model Catalog to Each Organization',
+            description=(
+                'Copy each AI provider and model that has no organization '
+                '(one made before the catalog was per organization) to '
+                'every organization, then delete it. Until it runs, the AI '
+                'features see an empty catalog. Run it one time right '
+                'after the upgrade. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_one_run,
+            execute=operations.execute_ai_catalog_org_copy,
             items_are_projects=False,
         ),
         OperationDefinition(

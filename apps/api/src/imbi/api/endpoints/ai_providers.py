@@ -1,8 +1,10 @@
-"""Global CRUD for configured LLM providers.
+"""CRUD for the configured LLM providers of an organization.
 
-Providers are global: one Imbi installation serves every organization
-from the same AI services (the assistant, the slackbot), and a provider
-holds one API key for the company account.
+A provider belongs to one organization (ADR 0018) and is served under
+``/organizations/{org_slug}/ai-providers``. The caller must be a member
+of the organization, and each permission check uses the role of the
+caller in that organization. A provider of another organization is
+not found (404). ``slug`` is unique in the organization.
 
 An :class:`imbi.common.models.AIProvider` is one configured instance of
 a *driver* — the drivers themselves are static code
@@ -21,7 +23,10 @@ A provider of a WIF driver can use workload identity instead of a key
 short-lived token with the identity source of that organization
 (:mod:`imbi.api.llm.tokens`). A key and workload identity are exclusive.
 ``POST /ai-providers/token`` gives the assistant and the slackbot the
-token of their fixed provider.
+token of their fixed provider, or of a catalog provider in an
+organization of the user they call the model for. That route is not in
+an organization: ``IMBI_AI_PROVIDER_<SERVICE>`` names the fixed provider
+as ``<org-slug>/<provider-slug>``.
 """
 
 import datetime
@@ -37,16 +42,18 @@ from imbi.api import secret_broker, settings
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.llm import generate as llm_generate
 from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import (
-    decrypt_config_value,
     encrypt_config_value,
 )
-from imbi.common.llm import discovery, drivers
+from imbi.common.llm import discovery, drivers, generate
 from imbi.common.plugins import identity as plugin_identity
+from imbi.common.prompts import resolve as prompt_resolve
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,9 +63,18 @@ ai_provider_drivers_router = fastapi.APIRouter(
 )
 
 ai_providers_router = fastapi.APIRouter(
+    tags=['AI Models'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
+
+#: ``POST /ai-providers/token``, for the services. Not in an
+#: organization.
+ai_provider_tokens_router = fastapi.APIRouter(
     prefix='/ai-providers',
     tags=['AI Models'],
 )
+
+OrgId = organizations.MemberOrgId
 
 AuthKind = typing.Literal['api_key', 'iam', 'none', 'workload_identity']
 
@@ -150,11 +166,10 @@ class AIProviderCredentials(pydantic.BaseModel):
 class AIProviderWorkloadIdentityPut(pydantic.BaseModel):
     """Request body for the workload identity of a provider.
 
-    ``organization`` is the slug of the organization whose identity
-    source signs the JWT. ``target`` holds the vendor ids.
+    ``target`` holds the vendor ids. The identity source of the
+    organization of the provider signs the JWT.
     """
 
-    organization: str = pydantic.Field(min_length=1)
     target: dict[str, typing.Any]
 
 
@@ -231,34 +246,47 @@ def to_response(
 
 
 _LIST_QUERY: typing.LiteralString = """
-MATCH (p:AIProvider)
-RETURN p
+MATCH (p:AIProvider)-[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
+RETURN p, o
 """
 
 _GET_QUERY: typing.LiteralString = """
 MATCH (p:AIProvider {{id: {id}}})
-RETURN p
+      -[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
+RETURN p, o
+"""
+
+_SERVICE_QUERY: typing.LiteralString = """
+MATCH (p:AIProvider {{slug: {slug}}})
+      -[:BELONGS_TO]->(o:Organization {{slug: {org}}})
+RETURN p, o
 """
 
 _SLUG_TAKEN_QUERY: typing.LiteralString = """
 MATCH (p:AIProvider {{slug: {slug}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 RETURN p.id AS id
 """
 
 _COUNTS_QUERY: typing.LiteralString = """
 MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider)
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 RETURN p.id AS provider_id, m.enabled AS enabled
 """
 
 
-async def model_counts(db: graph.Graph) -> dict[str, tuple[int, int]]:
+async def model_counts(
+    db: graph.Graph, org_id: str
+) -> dict[str, tuple[int, int]]:
     """Return ``{provider_id: (model_count, enabled_model_count)}``.
 
     Counted in Python from one flat row set rather than with Cypher
     aggregation: AGE drops ``ORDER BY`` ahead of an aggregate and the
     volume here is a handful of rows.
     """
-    records = await db.execute(_COUNTS_QUERY, {}, ['provider_id', 'enabled'])
+    records = await db.execute(
+        _COUNTS_QUERY, {'org_id': org_id}, ['provider_id', 'enabled']
+    )
     counts: dict[str, tuple[int, int]] = {}
     for record in records:
         provider_id = graph.parse_agtype(record['provider_id'])
@@ -270,28 +298,51 @@ async def model_counts(db: graph.Graph) -> dict[str, tuple[int, int]]:
     return counts
 
 
-def _parse(raw: typing.Any) -> models.AIProvider:
-    """Parse an agtype vertex into an ``AIProvider``."""
-    props: typing.Any = graph.parse_agtype(raw)
-    return models.AIProvider.model_validate(props)
+def _parse(record: dict[str, typing.Any]) -> models.AIProvider:
+    """Parse a ``p, o`` row into an ``AIProvider``."""
+    props: typing.Any = graph.parse_agtype(record['p'])
+    return models.AIProvider.model_validate(
+        {**props, 'organization': graph.parse_agtype(record['o'])}
+    )
 
 
-async def fetch_provider(db: graph.Graph, id: str) -> models.AIProvider:
-    """Fetch a provider or raise 404."""
-    records = await db.execute(_GET_QUERY, {'id': id}, ['p'])
+async def fetch_provider(
+    db: graph.Graph, org_id: str, id: str
+) -> models.AIProvider:
+    """Fetch a provider of the organization or raise 404."""
+    records = await db.execute(
+        _GET_QUERY, {'id': id, 'org_id': org_id}, ['p', 'o']
+    )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {id!r} not found',
         )
-    return _parse(records[0]['p'])
+    return _parse(records[0])
+
+
+async def fetch_service_provider(
+    db: graph.Graph, ref: str
+) -> models.AIProvider:
+    """Fetch the provider ``<org-slug>/<provider-slug>`` or raise 404."""
+    org, _, slug = ref.partition('/')
+    records = await db.execute(
+        _SERVICE_QUERY, {'org': org, 'slug': slug}, ['p', 'o']
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'AI provider {ref!r} not found'
+        )
+    return _parse(records[0])
 
 
 async def _assert_slug_free(
-    db: graph.Graph, slug: str, exclude_id: str | None = None
+    db: graph.Graph, org_id: str, slug: str, exclude_id: str | None = None
 ) -> None:
-    """Raise 409 when ``slug`` is already used by another provider."""
-    records = await db.execute(_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
+    """Raise 409 when another provider of the org has ``slug``."""
+    records = await db.execute(
+        _SLUG_TAKEN_QUERY, {'slug': slug, 'org_id': org_id}, ['id']
+    )
     for record in records:
         existing = graph.parse_agtype(record['id'])
         if existing and str(existing) != exclude_id:
@@ -335,12 +386,17 @@ async def _assert_driver_serves_models(
 def _build(payload: dict[str, typing.Any]) -> models.AIProvider:
     """Validate provider properties into a node or raise 422."""
     try:
-        return models.AIProvider(**payload)
+        node = models.AIProvider(**payload)
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=422,
             detail=f'Validation error: {e.errors()}',
         ) from e
+    try:
+        drivers.check_location(node.driver, node.region, node.project_id)
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
+    return node
 
 
 #: A hint is only stored for keys long enough that four trailing
@@ -379,6 +435,7 @@ async def list_ai_provider_drivers(
 
 @ai_providers_router.get('/', response_model=list[AIProviderResponse])
 async def list_ai_providers(
+    org_id: OrgId,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -392,11 +449,11 @@ async def list_ai_providers(
 
     """
     _ = auth
-    records = await db.execute(_LIST_QUERY, {}, ['p'])
-    counts = await model_counts(db)
+    records = await db.execute(_LIST_QUERY, {'org_id': org_id}, ['p', 'o'])
+    counts = await model_counts(db, org_id)
     responses = [
         to_response(node, *counts.get(node.id, (0, 0)))
-        for node in (_parse(record['p']) for record in records)
+        for node in (_parse(record) for record in records)
     ]
     return sorted(responses, key=lambda r: r.name.lower())
 
@@ -405,6 +462,7 @@ async def list_ai_providers(
     '/', response_model=AIProviderResponse, status_code=201
 )
 async def create_ai_provider(
+    org_id: OrgId,
     data: AIProviderCreate,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -422,7 +480,7 @@ async def create_ai_provider(
         The created provider, without credentials.
 
     Raises:
-        409: A provider with the same slug exists.
+        409: A provider of the organization has the same slug.
         422: Invalid configuration (bad ``base_url``, or
             ``openai_compatible`` without one).
 
@@ -430,32 +488,43 @@ async def create_ai_provider(
     _ = auth
     payload = data.model_dump(exclude={'api_key', 'slug'})
     payload['slug'] = data.slug or slugify.slugify(data.name)
+    # The membership check found the organization.
+    (payload['organization'],) = await db.match(
+        models.Organization, {'id': org_id}
+    )
+    payload['org_id'] = org_id
     node = _build(payload)
     if data.api_key:
         node.credentials_encrypted = encrypt_config_value(data.api_key)
         node.credential_hint = credential_hint(data.api_key)
         node.credential_updated_at = datetime.datetime.now(datetime.UTC)
 
-    await _assert_slug_free(db, node.slug)
+    await _assert_slug_free(db, org_id, node.slug)
 
     now = datetime.datetime.now(datetime.UTC)
     node.created_at = now
     node.updated_at = now
-    props = node.model_dump(mode='json')
-    query = f'CREATE (p:AIProvider {props_template(props)}) RETURN p'
+    props = node.model_dump(mode='json', exclude={'organization'})
+    query = (
+        f'MATCH (o:Organization {{{{id: {{org_id}}}}}})'
+        f' CREATE (p:AIProvider {props_template(props)})'
+        f' CREATE (p)-[:BELONGS_TO]->(o)'
+        f' RETURN p, o'
+    )
     with conflict_on_unique_violation(
         f'AI provider with slug {node.slug!r} already exists'
     ):
-        records = await db.execute(query, props, ['p'])
+        records = await db.execute(query, props, ['p', 'o'])
     if not records:
         raise fastapi.HTTPException(
             status_code=500, detail='AI provider create returned no row'
         )
-    return to_response(_parse(records[0]['p']))
+    return to_response(_parse(records[0]))
 
 
 @ai_providers_router.get('/{id}', response_model=AIProviderResponse)
 async def get_ai_provider(
+    org_id: OrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -476,13 +545,14 @@ async def get_ai_provider(
 
     """
     _ = auth
-    node = await fetch_provider(db, id)
-    counts = await model_counts(db)
+    node = await fetch_provider(db, org_id, id)
+    counts = await model_counts(db, org_id)
     return to_response(node, *counts.get(node.id, (0, 0)))
 
 
 @ai_providers_router.patch('/{id}', response_model=AIProviderResponse)
 async def patch_ai_provider(
+    org_id: OrgId,
     id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
@@ -513,11 +583,17 @@ async def patch_ai_provider(
 
     """
     _ = auth
-    existing = await fetch_provider(db, id)
+    existing = await fetch_provider(db, org_id, id)
     current = {field: getattr(existing, field) for field in _PATCHABLE_FIELDS}
     current['icon'] = None if existing.icon is None else str(existing.icon)
     patched = json_patch.apply_patch(current, operations, _READONLY_PATHS)
-    node = _build({k: v for k, v in patched.items() if k in _PATCHABLE_FIELDS})
+    node = _build(
+        {
+            **{k: v for k, v in patched.items() if k in _PATCHABLE_FIELDS},
+            'organization': existing.organization,
+            'org_id': org_id,
+        }
+    )
     node.id = existing.id
     node.created_at = existing.created_at
     node.credentials_encrypted = existing.credentials_encrypted
@@ -538,15 +614,16 @@ async def patch_ai_provider(
     node = _build(node.model_dump())
 
     if node.slug != existing.slug:
-        await _assert_slug_free(db, node.slug, exclude_id=id)
+        await _assert_slug_free(db, org_id, node.slug, exclude_id=id)
     if node.driver != existing.driver:
         await _assert_driver_serves_models(db, id, node.driver)
-    counts = await model_counts(db)
+    counts = await model_counts(db, org_id)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
 @ai_providers_router.delete('/{id}', status_code=204)
 async def delete_ai_provider(
+    org_id: OrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -569,8 +646,8 @@ async def delete_ai_provider(
 
     """
     _ = auth
-    await fetch_provider(db, id)
-    counts = await model_counts(db)
+    await fetch_provider(db, org_id, id)
+    counts = await model_counts(db, org_id)
     total = counts.get(id, (0, 0))[0]
     if total:
         raise fastapi.HTTPException(
@@ -582,10 +659,11 @@ async def delete_ai_provider(
         )
     query: typing.LiteralString = """
     MATCH (p:AIProvider {{id: {id}}})
+          -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
     DETACH DELETE p
     RETURN p
     """
-    records = await db.execute(query, {'id': id})
+    records = await db.execute(query, {'id': id, 'org_id': org_id})
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -597,6 +675,7 @@ async def delete_ai_provider(
     '/{id}/credentials', response_model=AIProviderResponse
 )
 async def set_ai_provider_credentials(
+    org_id: OrgId,
     id: str,
     data: AIProviderCredentials,
     db: graph.Pool,
@@ -624,7 +703,7 @@ async def set_ai_provider_credentials(
 
     """
     _ = auth
-    node = await fetch_provider(db, id)
+    node = await fetch_provider(db, org_id, id)
     if node.workload_identity is not None:
         raise fastapi.HTTPException(
             status_code=409,
@@ -637,7 +716,7 @@ async def set_ai_provider_credentials(
     node.credential_hint = credential_hint(data.api_key)
     node.credential_updated_at = datetime.datetime.now(datetime.UTC)
     LOGGER.info('Replaced credentials for AI provider %s', id)
-    counts = await model_counts(db)
+    counts = await model_counts(db, org_id)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
@@ -645,6 +724,7 @@ async def set_ai_provider_credentials(
     '/{id}/credentials', response_model=AIProviderResponse
 )
 async def delete_ai_provider_credentials(
+    org_id: OrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -667,17 +747,18 @@ async def delete_ai_provider_credentials(
 
     """
     _ = auth
-    node = await fetch_provider(db, id)
+    node = await fetch_provider(db, org_id, id)
     node.credentials_encrypted = None
     node.credential_hint = None
     node.credential_updated_at = None
     LOGGER.info('Removed credentials for AI provider %s', id)
-    counts = await model_counts(db)
+    counts = await model_counts(db, org_id)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
 @ai_providers_router.post('/{id}/discover', response_model=DiscoveryResponse)
 async def discover_ai_provider_models(
+    org_id: OrgId,
     id: str,
     db: graph.Pool,
     secrets: secret_broker.Store,
@@ -704,14 +785,16 @@ async def discover_ai_provider_models(
 
     Raises:
         404: No such provider.
-        409: The provider has no stored credentials.
-        422: The driver does not support discovery.
+        409: The provider has no stored credentials (Bedrock uses the
+            AWS credentials of the process instead).
+        422: The driver does not support discovery, or Vertex refused
+            to list models for the key.
         502: The provider rejected or failed the call, or no workload
             identity token could be minted.
 
     """
     _ = auth
-    node = await fetch_provider(db, id)
+    node = await fetch_provider(db, org_id, id)
     info = drivers.get_driver(node.driver)
     if info is None or not info.supports_discovery:
         raise fastapi.HTTPException(
@@ -719,22 +802,46 @@ async def discover_ai_provider_models(
             detail=f'Driver {node.driver!r} does not support discovery',
         )
     base_url = drivers.resolve_base_url(node.driver, node.base_url)
+
+    async def list_with(
+        credential: llm_generate.Credential,
+    ) -> list[discovery.DiscoveredModel]:
+        if credential == llm_generate.Credential():
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=(
+                    f'AI provider {id!r} has no stored credentials to '
+                    f'discover models with'
+                ),
+            )
+        return await discovery.list_models(
+            node.driver,
+            credential.key,
+            base_url,
+            bearer=credential.bearer,
+            region=node.region,
+            auth=credential.auth,
+        )
+
     try:
-        if node.workload_identity is not None:
-            found = await _discover_with_token(secrets, node, base_url)
-        else:
-            api_key = decrypt_config_value(node.credentials_encrypted)
-            if not api_key:
-                raise fastapi.HTTPException(
-                    status_code=409,
-                    detail=(
-                        f'AI provider {id!r} has no stored credentials to '
-                        f'discover models with'
-                    ),
-                )
-            found = await discovery.list_models(node.driver, api_key, base_url)
+        found = await llm_generate.with_credentials(
+            secrets,
+            node,
+            list_with,
+            lambda exc: (
+                isinstance(exc, discovery.DiscoveryError)
+                and exc.status == http.HTTPStatus.UNAUTHORIZED
+            ),
+        )
+    except discovery.DiscoveryRefused as exc:
+        raise fastapi.HTTPException(status_code=422, detail=str(exc)) from exc
     except discovery.DiscoveryError as exc:
         raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
+    except generate.GenerateError as exc:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f'Could not sign the bedrock request ({exc.code})',
+        ) from None
     except plugin_identity.IdentityError as exc:
         raise fastapi.HTTPException(
             status_code=502,
@@ -758,30 +865,11 @@ async def discover_ai_provider_models(
     )
 
 
-async def _discover_with_token(
-    secrets: secret_broker.store.SecretStore,
-    node: models.AIProvider,
-    base_url: str | None,
-) -> list[discovery.DiscoveredModel]:
-    """List models with a workload identity token (one retry after a
-    ``401``)."""
-    return await tokens.call(
-        secrets,
-        node,
-        lambda token: discovery.list_models(
-            node.driver, token, base_url, bearer=True
-        ),
-        lambda exc: (
-            isinstance(exc, discovery.DiscoveryError)
-            and exc.status == http.HTTPStatus.UNAUTHORIZED
-        ),
-    )
-
-
 @ai_providers_router.put(
     '/{id}/workload-identity', response_model=AIProviderResponse
 )
 async def set_ai_provider_workload_identity(
+    org_id: OrgId,
     id: str,
     data: AIProviderWorkloadIdentityPut,
     db: graph.Pool,
@@ -794,20 +882,21 @@ async def set_ai_provider_workload_identity(
 ) -> AIProviderResponse:
     """Use workload identity for a provider (WIF plan 4.6, O7).
 
-    The caller must be a member of the organization with
-    ``secret_provider:write`` there: the provider then uses the identity
-    source of that organization. No token is minted here.
+    The provider uses the identity source of its own organization: each
+    organization sets up its own identity. The caller must also have
+    ``secret_provider:write`` in the organization. No token is minted
+    here.
 
     Raises:
-        403: Not a member, or no ``secret_provider:write`` there.
-        404: No such provider or organization.
+        403: No ``secret_provider:write`` in the organization.
+        404: No such provider.
         409: The provider has a stored key.
         422: The driver cannot use workload identity, the provider has a
             ``base_url``, no exchanger is installed for the vendor, or
             the target is not valid.
 
     """
-    node = await fetch_provider(db, id)
+    node = await fetch_provider(db, org_id, id)
     if node.credentials_encrypted is not None:
         raise fastapi.HTTPException(
             status_code=409,
@@ -816,15 +905,12 @@ async def set_ai_provider_workload_identity(
                 f'using workload identity'
             ),
         )
-    org_id = await organizations.check_member(data.organization, db, auth)
-    # As require_permission: an admin passes, but must be a member.
+    # As require_permission; the member check of the route narrowed
+    # the permissions to this organization.
     if not auth.is_admin and 'secret_provider:write' not in auth.permissions:
         raise fastapi.HTTPException(
             status_code=403,
-            detail=(
-                f'Permission secret_provider:write in organization '
-                f'{data.organization!r} is required'
-            ),
+            detail='Permission secret_provider:write is required',
         )
     try:
         vendor = identity.exchanger(node.driver)
@@ -848,7 +934,7 @@ async def set_ai_provider_workload_identity(
         id,
         org_id,
     )
-    counts = await model_counts(db)
+    counts = await model_counts(db, org_id)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
@@ -856,6 +942,7 @@ async def set_ai_provider_workload_identity(
     '/{id}/workload-identity', response_model=AIProviderResponse
 )
 async def delete_ai_provider_workload_identity(
+    org_id: OrgId,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -872,18 +959,28 @@ async def delete_ai_provider_workload_identity(
 
     """
     _ = auth
-    node = await fetch_provider(db, id)
+    node = await fetch_provider(db, org_id, id)
     node.workload_identity = None
     tokens.CACHE.forget(id)
     LOGGER.info('Removed workload identity for AI provider %s', id)
-    counts = await model_counts(db)
+    counts = await model_counts(db, org_id)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
 class ServiceTokenRequest(pydantic.BaseModel):
-    """``failed``: the token that got a ``401``, so it is renewed."""
+    """``failed``: the token that got a ``401``, so it is renewed.
+
+    ``provider`` (``<org-slug>/<provider-slug>``) and ``user`` (an
+    email) ask for the token of a catalog provider that the service
+    calls for that user. Without them, the provider of the service.
+    """
 
     failed: str | None = None
+    provider: str | None = None
+    user: str | None = None
+    #: The slug of the organization of the call. The slackbot must set
+    #: it to the organization of its Slack workspace.
+    org: str | None = None
 
 
 class ServiceToken(pydantic.BaseModel):
@@ -891,7 +988,7 @@ class ServiceToken(pydantic.BaseModel):
     expires_at: datetime.datetime
 
 
-@ai_providers_router.post(
+@ai_provider_tokens_router.post(
     '/token', response_model=ServiceToken, include_in_schema=False
 )
 async def service_token(
@@ -903,35 +1000,45 @@ async def service_token(
         fastapi.Depends(permissions.require_permission('ai_provider:token')),
     ],
 ) -> ServiceToken:
-    """The access token of the AI Provider of the calling service.
+    """The access token of an AI Provider, for a calling service.
 
-    For the assistant and the slackbot (WIF plan 4.6). The provider
-    comes from ``IMBI_AI_PROVIDER_<SERVICE>`` for the authenticated
-    service account; the request names no provider. Not in the OpenAPI
-    document, so it is not an MCP tool.
+    For the assistant and the slackbot (WIF plan 4.6). Without
+    ``provider``, the provider comes from ``IMBI_AI_PROVIDER_<SERVICE>``
+    (``<org-slug>/<provider-slug>``) for the authenticated service
+    account. With ``provider`` and ``user``, it is that catalog provider
+    (ADR 0018): an ``anthropic`` provider in an organization of the
+    user. Not in the OpenAPI document, so it is not an MCP tool.
 
     Raises:
-        404: The caller is not a service with an AI Provider.
+        403: The provider is not in an organization of ``user``, is not
+            an ``anthropic`` provider, or for the slackbot, is not in
+            ``org``, the organization of its Slack workspace.
+        404: The caller is not a service with an AI Provider, or the
+            provider does not exist.
+        422: ``provider`` without ``user``.
         409: The provider does not use workload identity.
         502: No token could be minted.
         503: No token could be minted now; try again.
 
     """
-    provider_id = (
-        auth.service_account
-        and settings.get_ai_providers().for_service(auth.service_account.slug)
-    )
-    if not provider_id:
-        raise fastapi.HTTPException(
-            status_code=404, detail='No AI provider is set for this caller'
+    if data.provider is not None:
+        ref = data.provider
+        node = await _user_provider(db, auth, ref, data.user, data.org)
+    else:
+        ref = (
+            settings.get_ai_providers().for_service(auth.service_account.slug)
+            if auth.service_account
+            else ''
         )
-    node = await fetch_provider(db, provider_id)
+        if not ref:
+            raise fastapi.HTTPException(
+                status_code=404, detail='No AI provider is set for this caller'
+            )
+        node = await fetch_service_provider(db, ref)
     if node.workload_identity is None:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=(
-                f'AI provider {provider_id!r} does not use workload identity'
-            ),
+            detail=f'AI provider {ref!r} does not use workload identity',
         )
     if data.failed:
         tokens.CACHE.invalidate(node.id, data.failed)
@@ -943,6 +1050,73 @@ async def service_token(
             detail=f'No workload identity token: {exc.reason}',
         ) from None
     return ServiceToken(token=token.token, expires_at=token.expires_at)
+
+
+#: The services that may ask for the token of a catalog provider for a
+#: user. Each is installation-wide, not an account of one organization:
+#: a service account that an organization admin makes is not one.
+_USER_PROVIDER_SERVICES = frozenset(
+    {
+        common_permissions.ASSISTANT_ACCOUNT,
+        common_permissions.SLACKBOT_ACCOUNT,
+    }
+)
+
+#: The organization ``org_id`` when a Slack workspace is linked to it.
+_SLACK_ORG_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org_id}}})
+WHERE o.slack_team_id IS NOT NULL
+RETURN o.id AS id
+"""
+
+
+async def _user_provider(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    ref: str,
+    user: str | None,
+    org: str | None,
+) -> models.AIProvider:
+    """The catalog provider ``ref`` that a service calls for ``user``."""
+    if (
+        auth.service_account is None
+        or auth.service_account.slug not in _USER_PROVIDER_SERVICES
+    ):
+        raise fastapi.HTTPException(
+            status_code=404, detail='No AI provider is set for this caller'
+        )
+    if not user:
+        raise fastapi.HTTPException(
+            status_code=422, detail='A provider needs the user of the call'
+        )
+    node = await fetch_service_provider(db, ref)
+    if node.organization.id not in await prompt_resolve.member_org_ids(
+        db, user
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'AI provider {ref!r} is not in an organization of '
+            'the user',
+        )
+    if node.driver != drivers.ANTHROPIC:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'AI provider {ref!r} is not an anthropic provider',
+        )
+    if auth.service_account.slug == common_permissions.SLACKBOT_ACCOUNT and (
+        org != node.organization.slug
+        or not await db.execute(
+            _SLACK_ORG_QUERY, {'org_id': node.organization.id}, ['id']
+        )
+    ):
+        # The slackbot works in the organization of its Slack workspace
+        # only, as its user tokens do (#1027).
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'AI provider {ref!r} is not in the organization of the '
+            'Slack workspace',
+        )
+    return node
 
 
 _CONFIGURED_QUERY: typing.LiteralString = """
@@ -969,26 +1143,33 @@ async def persist(
 ) -> models.AIProvider:
     """Write a mutated provider back."""
     node.updated_at = datetime.datetime.now(datetime.UTC)
-    props = node.model_dump(mode='json', exclude={'id', 'created_at'})
+    props = node.model_dump(
+        mode='json', exclude={'id', 'created_at', 'organization'}
+    )
     set_stmt = set_clause('p', props)
-    query = f'MATCH (p:AIProvider {{{{id: {{id}}}}}}) {set_stmt} RETURN p'
+    query = (
+        f'MATCH (p:AIProvider {{{{id: {{id}}}}}})'
+        f'-[:BELONGS_TO]->(o:Organization) {set_stmt} RETURN p, o'
+    )
     with conflict_on_unique_violation(
         f'AI provider with slug {node.slug!r} already exists'
     ):
-        records = await db.execute(query, {**props, 'id': node.id}, ['p'])
+        records = await db.execute(query, {**props, 'id': node.id}, ['p', 'o'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {node.id!r} not found',
         )
-    return _parse(records[0]['p'])
+    return _parse(records[0])
 
 
 __all__ = [
     'AIProviderResponse',
     'ai_provider_drivers_router',
+    'ai_provider_tokens_router',
     'ai_providers_router',
     'fetch_provider',
+    'fetch_service_provider',
     'model_counts',
     'to_response',
 ]

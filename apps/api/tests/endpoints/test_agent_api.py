@@ -329,7 +329,7 @@ class RouteTests(AgentApiTestCase):
             'rescore': ('POST', '/scoring/rescore'),
             'admin reads': ('GET', '/admin/graph/schema'),
             'prompt library': ('GET', '/prompts/agents/other.agent/versions'),
-            'ai models': ('GET', '/ai-models/'),
+            'ai models': ('GET', f'{org}/ai-models/'),
             'shared notes': (
                 'GET',
                 f'{org}/component-releases/r1/notes',

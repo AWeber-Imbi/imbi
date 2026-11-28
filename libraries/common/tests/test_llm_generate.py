@@ -664,6 +664,20 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
             await generate.generate(_request('bedrock', region=None))
         self.assertEqual(ctx.exception.code, 'provider_misconfigured')
 
+    async def test_stored_bad_location_is_refused(self) -> None:
+        """A bad stored value never becomes part of a host."""
+        for request in (
+            _request('bedrock', region='evil.example/x#'),
+            _request('vertex', region='a.evil/#', project_id='my-project'),
+            _request('vertex', region='global', project_id='x/../y'),
+        ):
+            with (
+                self.subTest(driver=request.driver),
+                self.assertRaises(generate.GenerateError) as ctx,
+            ):
+                await generate.generate(request)
+            self.assertEqual(ctx.exception.code, 'provider_misconfigured')
+
     async def test_bedrock_auth_hook(self) -> None:
         class Signer(httpx.Auth):
             def auth_flow(
@@ -713,7 +727,8 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
             _request(
                 'vertex',
                 model_id='gemini-2.5-flash',
-                project_id='p1',
+                region='us-east5',
+                project_id='my-project',
                 bearer=True,
             ),
             200,
@@ -722,8 +737,8 @@ class GenerateTestCase(unittest.IsolatedAsyncioTestCase):
         sent = self.sent[-1]
         self.assertEqual(
             str(sent.url),
-            'https://us-east-1-aiplatform.googleapis.com/v1/projects/p1/'
-            'locations/us-east-1/publishers/google/models/'
+            'https://us-east5-aiplatform.googleapis.com/v1/projects/'
+            'my-project/locations/us-east5/publishers/google/models/'
             'gemini-2.5-flash:generateContent',
         )
         self.assertEqual(sent.headers['authorization'], 'Bearer secret')

@@ -1,6 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
-
-import { listAIModels } from '@/api/endpoints'
 import {
   Select,
   SelectContent,
@@ -8,13 +5,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { queryKeys } from '@/lib/queryKeys'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAIModels } from '@/hooks/useOrgResources'
 import { cn } from '@/lib/utils'
 
 // Radix Select reserves the empty string, so "no model" needs a sentinel.
 const NONE = '__none__'
 
 interface AIModelSelectProps {
+  ariaLabel?: string
   className?: string
   disabled?: boolean
   /** Only models of this type are offered. A prompt's kind sets it. */
@@ -24,20 +23,20 @@ interface AIModelSelectProps {
 }
 
 /**
- * Pick a model from the AI Models catalog, by slug. A generative prompt
- * needs a generative model and a decision prompt a decision model.
+ * Pick a model from the AI Models catalog of the selected organization,
+ * by slug. A generative prompt needs a generative model and a decision
+ * prompt a decision model.
  */
 export function AIModelSelect({
+  ariaLabel = 'Model',
   className,
   disabled = false,
   modelType = 'generative',
   onChange,
   value,
 }: AIModelSelectProps) {
-  const { data: models = [], isSuccess } = useQuery({
-    queryFn: ({ signal }) => listAIModels(signal),
-    queryKey: queryKeys.aiModels(),
-  })
+  const orgSlug = useOrganization().selectedOrganization?.slug ?? ''
+  const { data: models = [], isSuccess } = useAIModels(orgSlug)
   // Until the catalog has loaded, a value cannot be judged unknown.
   const known = value == null || models.some((m) => m.slug === value)
   return (
@@ -47,7 +46,7 @@ export function AIModelSelect({
       value={value ?? NONE}
     >
       <SelectTrigger
-        aria-label="Model"
+        aria-label={ariaLabel}
         className={cn('h-8 font-mono text-xs', className)}
       >
         <SelectValue placeholder="Select a model" />

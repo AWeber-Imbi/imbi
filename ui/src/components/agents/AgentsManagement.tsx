@@ -49,7 +49,7 @@ export function AgentsManagement() {
     return (
       <AgentEditor
         agent={null}
-        key={`new:${source?.slug ?? ''}`}
+        key={`${orgSlug}:new:${source?.slug ?? ''}`}
         orgSlug={orgSlug}
         source={source}
       />
@@ -72,7 +72,7 @@ export function AgentsManagement() {
     return (
       <AgentEditor
         agent={agent}
-        key={agent.slug}
+        key={`${orgSlug}:${agent.slug}`}
         orgSlug={orgSlug}
         source={null}
       />

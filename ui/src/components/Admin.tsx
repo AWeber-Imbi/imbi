@@ -24,6 +24,7 @@ import {
   Server,
   Shield,
   SlidersHorizontal,
+  Sparkles,
   StickyNote,
   Tags,
   Target,
@@ -38,6 +39,7 @@ import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 import { AdminOverview } from './admin/AdminOverview'
+import { AIModelsManagement } from './admin/AIModelsManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
 import { DefaultSettingsManagement } from './admin/DefaultSettingsManagement'
@@ -195,6 +197,15 @@ const SECTIONS: SectionDef[] = [
     scope: 'org',
   },
   {
+    component: AIModelsManagement,
+    description: 'LLM providers and the model catalog of the organization',
+    group: 'AI',
+    icon: Sparkles,
+    id: 'ai-models',
+    label: 'AI Models',
+    scope: 'org',
+  },
+  {
     component: UserManagement,
     description: 'Manage user accounts and administrators',
     group: 'Access',
@@ -310,7 +321,6 @@ const DEFAULT_SECTION = SECTIONS[0]
 // Sections that moved to the Agents area. Old links open the new page.
 const MOVED_SECTIONS: Record<string, AgentsSection> = {
   'agent-runners': 'runners',
-  'ai-models': 'ai-models',
   'egress-destinations': 'egress',
   secrets: 'secrets',
 }

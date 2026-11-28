@@ -186,6 +186,36 @@ class ServiceTokenTestCase(unittest.IsolatedAsyncioTestCase):
             json.loads(self.requests[1].content), {'failed': 'tok'}
         )
 
+    async def test_named_provider_sends_the_provider_and_user(self) -> None:
+        source = tokens.ServiceToken(
+            'http://imbi-api:8000', 'ik_1_s', provider='acme/claude', user='a'
+        )
+        await source.get()
+        source.invalidate('tok')
+        await source.get()
+        self.assertEqual(
+            [json.loads(r.content) for r in self.requests],
+            [
+                {'failed': None, 'provider': 'acme/claude', 'user': 'a'},
+                {'failed': 'tok', 'provider': 'acme/claude', 'user': 'a'},
+            ],
+        )
+
+    async def test_named_provider_sends_the_org(self) -> None:
+        source = tokens.ServiceToken(
+            'http://x', 'k', provider='acme/claude', user='a', org='acme'
+        )
+        await source.get()
+        self.assertEqual(
+            json.loads(self.requests[0].content),
+            {
+                'failed': None,
+                'provider': 'acme/claude',
+                'user': 'a',
+                'org': 'acme',
+            },
+        )
+
     async def test_errors(self) -> None:
         for reply, reason, retryable in (
             (httpx.ConnectError('down'), 'unreachable', True),

@@ -4,11 +4,17 @@ The **AI Models** section holds the catalog of AI models Imbi may call. The cata
 configured endpoint, with its own credential. A **model** is one model that
 provider serves.
 
-The catalog is global. Every organization in the deployment shares the same
-providers, credentials, and models. Use [Team access](#team-access) to limit a
-model to some teams.
+Each organization has its own catalog. A provider, its credential, and its
+models belong to one organization, and only that organization can see or use
+them. A slug is unique in the organization, so two organizations can each have
+a model `default-chat`. Use [Team access](#team-access) to limit a model to
+some teams of the organization.
 
-Open the section at **Agents > Settings > AI Models**.
+Open the section at **Admin > &lt;Org&gt; Admin > AI Models**. The API routes
+are under `/organizations/{org_slug}/ai-providers` and
+`/organizations/{org_slug}/ai-models`. You must be a member of the
+organization, and the `ai_model:*` permissions of your role in that
+organization apply. A provider or model of another organization gives `404`.
 
 !!! note
     The assistant and the Slack bot use a catalog model when their prompt
@@ -25,8 +31,8 @@ built in. You cannot add one from the UI.
 | Anthropic | Optional. Defaults to `https://api.anthropic.com` | API key | Yes |
 | OpenAI | Optional. Defaults to `https://api.openai.com/v1` | API key | Yes |
 | OpenAI-compatible | **Required** | API key | Yes |
-| AWS Bedrock | Not used | API key, or the runtime IAM role | No |
-| Google Vertex AI | Not used | API key, or the runtime IAM role | No |
+| AWS Bedrock | Not used | API key, or the runtime IAM role | Yes |
+| Google Vertex AI | Not used | API key, or the runtime IAM role | Yes, if the key is allowed |
 | TypeSafe | Optional. Defaults to `https://api.typesafe.ai/v1` | API key | No |
 
 Use **OpenAI-compatible** for any endpoint that implements the OpenAI
@@ -105,11 +111,12 @@ workload identity target only when the plugin of the vendor (`anthropic` or
 `openai`) is installed and enabled. The
 [Workload Identity Runbook](workload-identity.md) gives the vendor setup.
 
-1. Select the organization whose identity source signs the tokens. The
-   organization needs an identity source; see
-   [Workload identity](secrets.md#workload-identity).
-2. Click the key icon on the provider row.
-3. In **Workload identity target**, enter the vendor ids of the provider:
+The identity source of the organization of the provider signs the tokens,
+so each organization sets up its own. The organization needs an identity
+source; see [Workload identity](secrets.md#workload-identity).
+
+1. Click the key icon on the provider row.
+2. In **Workload identity target**, enter the vendor ids of the provider:
    - Anthropic, from the Anthropic Console: `{"organization_id": "...",
      "federation_rule_id": "...", "service_account_id": "...",
      "workspace_id": "..."}`. `workspace_id` is necessary only when the
@@ -118,7 +125,7 @@ workload identity target only when the plugin of the vendor (`anthropic` or
      "service_account_id": "..."}`. The OpenAI identity provider must use
      the audience `https://api.openai.com/v1`. See the
      [plugin README](https://github.com/AWeber-Imbi/imbi/tree/main/plugins/openai).
-4. Click **Use workload identity**. The provider row shows
+3. Click **Use workload identity**. The provider row shows
    **Workload identity**.
 
 Imbi mints a new token for each identity JWT and renews it before it
@@ -133,7 +140,8 @@ You need `ai_model:credentials`, membership of the organization, and
 
 imbi-api, the assistant, and the Slack bot can use an Anthropic provider
 with workload identity instead of `ANTHROPIC_API_KEY`. Set these
-variables on imbi-api to the id of the provider:
+variables on imbi-api to the provider, as `<org-slug>/<provider-slug>`
+(for example `acme/anthropic`):
 
 | Variable | Service |
 |---|---|
@@ -146,11 +154,34 @@ service account (`imbi-assistant`, `imbi-slackbot`). Set
 `IMBI_ASSISTANT_API_TOKEN` or `IMBI_SLACKBOT_API_TOKEN` on the service to
 the API key of that account; see
 [Imbi service accounts](service-accounts.md#imbi-service-accounts). With
-the API key set, the service ignores `ANTHROPIC_API_KEY`. Without it, the
-service uses `ANTHROPIC_API_KEY` as before.
+the API key set, the configured model does not use `ANTHROPIC_API_KEY`.
+Without it, the configured model uses `ANTHROPIC_API_KEY` as before. A
+catalog provider can still use `ANTHROPIC_API_KEY` (item 2 below).
 
-imbi-api gives a service only the token of its own provider. The request
-names no provider.
+These variables set the credential of the configured model of the service
+(`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`) when its model id is not in
+the catalog. When the model comes from the catalog (a prompt version model,
+a default model, or a configured model whose id is in the catalog), the
+service uses the credential of the provider of that model, in this order:
+
+1. The provider has a workload identity: the service asks imbi-api for a
+   token of that provider, for the user of the call. This needs
+   `IMBI_ASSISTANT_API_TOKEN` or `IMBI_SLACKBOT_API_TOKEN`. imbi-api gives
+   the token only when the provider is an Anthropic provider in an
+   organization of that user (else `403`). The Slack bot also names the
+   organization of its Slack workspace: the provider must be in that
+   organization, and the organization must have a Slack workspace.
+2. Else `ANTHROPIC_API_KEY` of the service, but only when the provider
+   has no custom base URL. The service sends the key to the driver default
+   URL only. An organization admin sets the base URL, and the key is for
+   all organizations, so the service key is never sent to a custom base
+   URL. A workload identity provider must also use the default base URL,
+   so the assistant and the Slack bot cannot use a provider with a custom
+   base URL.
+3. Else the call fails (`provider_credentials_unavailable`): the assistant
+   returns `422`, and the Slack bot replies with an error.
+
+A stored provider key never leaves imbi-api.
 
 ## Add a model manually
 
@@ -182,18 +213,15 @@ two steps.
 | Default top_p | Between 0 and 1. Generative models only. |
 | Structured output | The model can return JSON that matches a schema. See [Structured output](#structured-output). |
 | Forced tool choice | Shown when **Structured output** is on. The model accepts a forced tool choice. See [Forced tool choice](#forced-tool-choice). |
-| Monthly spend cap | USD per month. |
+| Monthly spend cap | USD per calendar month (UTC). See [Spend cap](#spend-cap). |
 | Allowed teams | See [Team access](#team-access). |
 | Enable immediately | Makes the model selectable as soon as it is created. |
 
 Every field in step 2 is optional. Leave a cost empty when the price is
 unknown or set by contract. Enter `0` for a self-hosted model.
 
-!!! warning
-    **Monthly spend cap is advisory.** Imbi does not block calls at the cap.
-    The field records the number for a human to act on. Agent usage uses the
-    model prices to calculate cost. See
-    [Reports > Agent Usage](agents.md#usage).
+Agent usage uses the model prices to calculate cost. See
+[Reports > Agent Usage](agents.md#usage).
 
 Two rules apply within the catalog. A model's display name must produce a slug
 that is unique in the catalog. A model identifier must be unique within
@@ -244,10 +272,23 @@ switch is on by default. Other drivers do not use it.
 
 ## Discover and import models
 
-Anthropic, OpenAI, and OpenAI-compatible providers can report their own model
-lists. Use this instead of typing model identifiers by hand.
+Anthropic, OpenAI, OpenAI-compatible, AWS Bedrock, and Google Vertex AI
+providers can report their own model lists. Use this instead of typing model
+identifiers by hand.
 
-1. Set a credential on the provider.
+AWS Bedrock lists the active text models of the provider's region. A model
+with on-demand inference shows by its model ID. A model that you can call only
+through a system inference profile, such as current Claude models, shows by
+its profile ID (for example `us.anthropic.claude-...`). Without a stored key,
+Imbi signs the calls with the runtime IAM role, which needs
+`bedrock:ListFoundationModels` and `bedrock:ListInferenceProfiles`.
+
+Google Vertex AI lists the Gemini publisher models with the stored key. The
+express mode API reference does not include this method, so Google can refuse
+it for an express mode key. Imbi then reports a 422 that tells you to add the
+Gemini models by ID. Vertex discovery needs a stored key.
+
+1. Set a credential on the provider (AWS Bedrock can use the IAM role).
 2. Click the refresh icon on the provider row. You can also expand the
    provider and click **Import from** that provider.
 3. Wait for the list. Imbi calls the provider with its stored key.
@@ -297,21 +338,23 @@ Imbi finds a model in the file by its model identifier. For the Anthropic and
 OpenAI drivers, Imbi also tries `<driver>/<model identifier>`. The dialog
 lists the models that have no match. Set their prices by hand.
 
-The sync needs `ai_model:update`. The API routes are
-`POST /ai-models/price-sync/preview` and `POST /ai-models/price-sync/apply`.
+The sync needs `ai_model:update`. It changes only the models of the
+organization. The API routes are
+`POST /organizations/{org_slug}/ai-models/price-sync/preview` and
+`POST /organizations/{org_slug}/ai-models/price-sync/apply`.
 
 ## Team access
 
 A model is available either to every team or to named teams.
 
-- **All teams** makes the model available to every team in every
+- **All teams** makes the model available to every team of the
   organization. This is the default.
 - **Selecting one or more teams** restricts the model to those teams.
 
 Select the **All teams** chip to return to access for every team. The team
-picker lists the teams of the organization you have selected. A
-restricted model must name at least one team. Imbi rejects an empty team list
-with `422`.
+picker lists the teams of the organization. A team of another organization
+gives `422`. A restricted model must name at least one team. Imbi rejects an
+empty team list with `422`.
 
 A prompt run (generative or decision) checks the teams of a restricted
 model. A user must be a member of an allowed team. An LLM Call step of a workflow runs for the
@@ -343,20 +386,105 @@ team of the agent:
 
 A model id is allowed for a user or a team when one enabled catalog model with
 that model id is not restricted, or a restricted one includes the user or the
-team.
+team. Prompt runs, workflows, agents, and agent tasks read only the catalog of
+their organization.
 
-The assistant and the Slack bot use the model of their system prompt only when
-the user may use its model id. Other users get the configured model
-(`IMBI_ASSISTANT_MODEL` or `IMBI_SLACKBOT_MODEL`). The assistant selects the
+Global prompts (such as the prompts of the assistant and the Slack bot) name a
+model by slug. When you save a version of a global prompt, the slug must be a
+model of some organization. A prompt run uses the model with that slug in the
+organization of the run. The assistant reads the catalog of the organization
+of the conversation, and the Slack bot the catalog of the organization of its
+Slack workspace.
+
+The assistant and the Slack bot use the model of their system prompt when the
+prompt version names one. When the version names no model, they use the
+default model of that organization, else the configured model (`IMBI_ASSISTANT_MODEL` or
+`IMBI_SLACKBOT_MODEL`). When the selected model cannot be used, Imbi does not
+use another model: the assistant returns `403` (`model_not_allowed`) or `422`,
+and the Slack bot replies with an error. Only an Anthropic model can be the model of
+these system prompts. The assistant selects the
 model when a conversation starts, and checks the selected model, also when it
-is `IMBI_ASSISTANT_MODEL`. A non-admin gets `403` (`model_not_allowed`) when no
-enabled catalog model allows the model id. `IMBI_ASSISTANT_MODEL` is allowed
-only when no enabled catalog model has its model id. The assistant checks the
+is `IMBI_ASSISTANT_MODEL`. Another model id that is not in the catalog gets
+`403` (`model_not_allowed`). `IMBI_ASSISTANT_MODEL` is allowed without the
+catalog only when no catalog model has its model id. When a catalog model has
+its model id and that model cannot be used (for example, it is disabled), the
+request is refused. The assistant checks the
 model of the conversation again on each message, because the allowed teams can
 change. Admins can use every model.
 
 Deleting a team does not update the models that name it. Review restricted
 models after you delete a team.
+
+## Default models
+
+An organization and each of its teams can have one default model. A call
+whose prompt or workflow step names no model uses the default. The order is:
+
+1. The model of the prompt version, the prompt run, or the workflow step.
+2. The default model of the team of the call.
+3. The default model of the organization.
+4. The model in the environment of the service.
+
+The first level that names a model wins. When that model is disabled, its
+provider is disabled, the caller may not use it, or it is at its
+[spend cap](#spend-cap), the call fails. Imbi does
+not try the next level. The environment model applies only when no level
+names a model.
+
+To set the organization default, select a model in **Default model** at the
+top of the AI Models page. To set the team default, open the team in
+**Teams** and select a model in **Default model**. Select **No model** to
+clear a default.
+
+A default model must be a generative model of the organization. A team
+default must be a model that the team may use (see
+[Team access](#team-access)). Imbi rejects other models with `422`.
+
+A generative prompt run uses the defaults. A prompt run of a workflow step
+uses the default of the owner team of the workflow, then the organization
+default. The assistant (the organization of the conversation) and the Slack
+bot (the organization of its Slack workspace) use the organization default;
+they have no team. A decision
+prompt and a Model decision step must name their model.
+
+The assistant and the Slack bot call a catalog model with the credential of
+its provider (see [Imbi services](#imbi-services)).
+
+The API routes are `GET` and `PUT`
+`/organizations/{org_slug}/default-ai-model` (`ai_model:read`,
+`ai_model:update`) and `GET` and `PUT`
+`/organizations/{org_slug}/teams/{slug}/default-ai-model` (`team:read`,
+`team:update`). The body is `{"slug": "<model slug>"}`, or
+`{"slug": null}` to clear the default.
+
+## Spend cap
+
+The spend of a model is the cost of its calls in the current calendar month
+(UTC). Imbi adds the cost of each generative prompt run and of each agent
+usage report of the model. A call with an unknown cost adds nothing. The
+cost of a decision prompt run is not recorded yet, so it does not add to
+the spend
+([#1060](https://github.com/AWeber-Imbi/imbi/issues/1060)). The AI Models page
+shows the spend and the cap on each model row. The text is red when the spend
+is at or over the cap.
+
+When the spend of a model is at or over its **Monthly spend cap**, Imbi
+refuses new calls to the model. It does not use another model in its place.
+
+- A prompt run returns `422`.
+- A Model decision step fails with `model_unavailable`.
+- The assistant returns `422`, and the Slack bot replies with an error.
+- An agent task closes with `exceeded_ceiling` (reason `spend_cap`) at the
+  usage report that takes the spend to the cap.
+
+Calls that are in progress are not counted until they end, so concurrent
+calls can go over the cap by their cost. The spend starts again at zero on
+the first day of each month (UTC). To use the model again in the same month,
+increase the cap or clear it.
+
+The spend counts only the calls made after the upgrade that added it. The
+agent setting **Monthly cost cap** is different: it is per agent, and it is
+advisory.
 
 ## Enable and disable
 
@@ -373,9 +501,13 @@ then click **Delete model**.
 
 To delete a provider, click the edit icon on the provider row, then click
 **Delete provider**. The button is disabled while the provider still serves
-models. The API (`DELETE /ai-providers/{id}`) returns `409` for the same
+models. The API (`DELETE /organizations/{org_slug}/ai-providers/{id}`) returns `409` for the same
 condition. Delete the models first, or move them to another provider. There
 is no cascade, so a provider cannot take its models with it.
+
+A model that is the default model of an organization or a team cannot be
+deleted. `DELETE /organizations/{org_slug}/ai-models/{id}` returns `409` and
+names the organizations and teams. Select another default first.
 
 ## Permissions
 

@@ -4,7 +4,8 @@ Date: 2026-09-04
 
 ## Status
 
-Accepted
+Accepted. Amended on 2026-11-27: model resolution and default models (see
+[Amendment: model resolution](#amendment-model-resolution)).
 
 This ADR records how Imbi stores the LLM providers and models an organization
 may call, and how it protects the credentials those providers need.
@@ -102,9 +103,10 @@ indistinguishable from a missing node. Cross-organization probing is therefore
 not possible through these routes.
 
 `slug` remains a stable org-scoped alias. Agent configuration can name
-`default-chat` instead of a vendor model id. Both uniqueness rules are scoped,
-so both are enforced in the endpoint rather than by a graph index: model
-`slug` is unique per organization, and `model_id` is unique per provider.
+`default-chat` instead of a vendor model id. Both uniqueness rules are scoped.
+Model `slug` is unique per organization; the `(org_id, slug)` unique index
+enforces it (see the amendment below). `model_id` is unique per provider; the
+endpoint enforces it, because no graph index covers it.
 
 ### Deleting a provider does not cascade
 
@@ -120,7 +122,8 @@ It is referenced against unreferenced.
 The field is stored and shown, and nothing enforces it. Imbi has no spend
 tracking yet. The field help text in the model dialog says so directly. The
 alternative was to omit the field until enforcement ships, which would lose
-the number an admin already knows.
+the number an admin already knows. (Superseded: see the amendment "the spend
+cap is enforced".)
 
 Costs are stored as `Decimal | None` in USD per one million tokens. `None`
 means unknown or contract pricing. `0` means self-hosted.
@@ -134,9 +137,17 @@ credential and returns the models it reports. It writes nothing.
 `anthropic` uses the `anthropic` SDK, which is already a dependency, and maps
 `max_input_tokens` and `max_tokens` into `context_window` and
 `max_output_tokens` when the provider supplies them. `openai` and
-`openai_compatible` call `GET {base_url}/models` over httpx. `bedrock` and
-`vertex` are not supported, and `supports_discovery` on the driver lets the UI
-hide the action.
+`openai_compatible` call `GET {base_url}/models` over httpx. `bedrock` calls
+`ListFoundationModels` on `bedrock.{region}.amazonaws.com` over httpx, with
+the stored key as a bearer token or SigV4 from the runtime IAM role, and keeps
+active text models with on-demand inference. It also calls
+`ListInferenceProfiles` for system-defined profiles and keeps the active
+profiles of text models by profile ID, because current Claude models are
+available only through a profile. `vertex` calls the
+`v1beta1` `publishers/google/models` list with the express key and keeps the
+Gemini models. The express mode API reference does not include that method,
+so a 401 or 403 for `vertex` is a 422 that tells the admin to add models by
+ID. `supports_discovery` on the driver lets the UI hide the action.
 
 Discovery doubles as the connection test for a stored key. Every failure is
 normalized to a message that names the driver and the transport error or HTTP
@@ -194,20 +205,182 @@ installed. Four characters of a key are not enough to use it.
 - Providers can be edited and deleted through the API only. The admin UI
   creates providers, manages their credentials, and manages their models.
 
+## Amendment: the catalog becomes per organization (2026-11-27)
+
+The first implementation did not follow this ADR. `AIProvider` and `AIModel`
+were global, with no `BELONGS_TO` edge, slugs unique across the installation,
+and routes at `/ai-providers` and `/ai-models`. The code now follows the
+decision above:
+
+- Each `AIProvider` and `AIModel` has a `BELONGS_TO` edge to one organization
+  and an `org_id` property. The `(org_id, slug)` unique index makes the slug
+  unique in the organization. The global slug indexes are dropped.
+- The routes are under `/organizations/{org_slug}/ai-providers` and
+  `/organizations/{org_slug}/ai-models`. The caller must be a member, and the
+  `ai_model:*` permissions of the caller's role in that organization apply.
+- Every consumer reads only the catalog of its organization: prompt runs,
+  workflow steps, agent saves, task claims, and usage prices. A global prompt
+  names a model by slug, and a run uses the model with that slug in the
+  organization of the run.
+- The assistant and the Slack bot still take their model from the
+  environment (`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`). Only the model
+  of their CMS system prompt comes from a catalog: the catalog of the
+  organization of the conversation for the assistant, and the catalogs of
+  the organizations of the user for the Slack bot. Model selection through
+  an organization catalog is a follow-up (the resolver below).
+- `IMBI_AI_PROVIDER_<SERVICE>` names a provider as
+  `<org-slug>/<provider-slug>`, not by id.
+
+Migration: the `ai-catalog-org-copy` maintenance operation copies each
+global provider (with its encrypted
+key, hint, workload identity, and timestamps) and each global model to every
+organization, as new nodes with new ids. A copy of a model keeps the
+`ALLOWED_FOR` edges only to the teams of its organization. Only the copy in
+the organization of a workload identity keeps it; each other organization
+sets up its own: the API sets the identity of the organization of the
+provider. Then it
+deletes the global nodes. Slugs do not change. The copy runs in one
+transaction under an advisory lock, and does nothing when no global node is
+left. With no organization, the global nodes stay.
+
+The spend cap is per organization per model, because each organization has
+its own copy of a model.
+
 ## Follow-ups
 
-- A resolver in `imbi.common.llm` that the harness, assistant, and Slack bot
-  call. Resolution order is agent override, then team default, then
-  organization default, then the environment fallback. A disabled provider or
-  model is a hard configuration error.
-- `Organization -[:USES_DEFAULT_MODEL]-> AIModel`, and the per-team equivalent.
-- Discovery for `bedrock` and `vertex`. Both need client libraries that are
-  not dependencies today.
-- Spend tracking against `monthly_spend_cap`, and pricing history.
+- The harness, the assistant, and the Slack bot on the resolver (see the
+  amendment).
+- Vertex discovery with service account credentials. They need
+  `google-auth`, which is not a dependency. Bedrock application inference
+  profiles are not listed.
+- Pricing history.
 - A capability set on models, such as `tool_use`, `vision`, and
   `structured_output`, replacing the coarse `kind` field.
 - Runtime SSRF controls on outbound calls to custom base URLs.
 - Team deletion must remove or block on `ALLOWED_FOR` edges.
+
+## Amendment: model resolution
+
+Date: 2026-11-27
+
+### Default model edges
+
+`Organization -[:USES_DEFAULT_MODEL]-> AIModel` and
+`Team -[:USES_DEFAULT_MODEL]-> AIModel` name the default model of an
+organization and of a team. Each source node has at most one edge. The
+endpoint replaces the edge in one transaction under an advisory lock on the
+source node.
+
+- A default model must be a generative model of the organization.
+- A team default must be a model that the team may use: an `organization`
+  scope model, or a `restricted` model with an `ALLOWED_FOR` edge to the team.
+- `DELETE /organizations/{org_slug}/ai-models/{id}` returns `409` while the
+  model is a default.
+- `GET`/`PUT /organizations/{org_slug}/default-ai-model` needs
+  `ai_model:read`/`ai_model:update`. `GET`/`PUT
+  /organizations/{org_slug}/teams/{slug}/default-ai-model` needs
+  `team:read`/`team:update`. No new permission is added.
+
+### Resolution order
+
+`imbi.common.llm.resolve.resolve_model` finds the model of a call:
+
+1. The explicit model (the prompt version, the prompt run, or the workflow
+   step), by id or slug, in the catalog of the organization of the call.
+2. The default of the team of the call. The team must belong to the
+   organization of the call.
+3. The default of the organization.
+4. The environment model of the service.
+
+The first level that names a model wins. When that model is missing, is
+disabled, has a disabled provider, or does not allow the caller, the resolver
+raises `ModelUnusable` with the reason `not_found`, `disabled`,
+`provider_disabled`, or `not_allowed`. It does not try the next level. This
+replaces the soft fallback to the environment model in
+`imbi.common.prompts.system`. The environment model applies only when no
+level names a model.
+
+A `restricted` model must allow the user of the call (through a team), the
+team of the call, or both when both are known. With neither, the model is
+refused. An admin can use every model.
+
+The consumers today:
+
+- A prompt run: `403` (`model_not_allowed`) or `422`, as before. A
+  generative run uses the team and organization defaults; the team is the
+  owner team of the workflow for a workflow step prompt.
+- A workflow Model decision step: the step fails with `model_unavailable`.
+  The model must allow the owner team of the workflow.
+- The system prompts of the assistant, the Slack bot, and the API helpers
+  (ticket subject, descriptions): a version model that cannot be used, or one
+  that a driver other than `anthropic` serves (`unsupported_driver`), is an
+  error. When the assistant creates a conversation with the version model,
+  it returns `403` or `422`. A turn of an existing conversation checks the
+  model of the conversation instead; when the version model cannot be used,
+  the turn keeps the rendered CMS prompt without the model settings of the
+  version. The Slack bot replies with an
+  error, and an API helper returns its fallback marked `degraded`. These
+  consumers have no team. The assistant reads the catalog of the
+  organization of the conversation, the Slack bot that of the organization
+  of its Slack workspace, and an API helper those of all the organizations
+  of the user. When the version names no model, the assistant and the
+  Slack bot use the organization default. Without a user, there is no
+  catalog model and the configured model is used. They call a catalog model with the
+  credential of its provider: a workload identity token from
+  `POST /ai-providers/token` with `{provider, user}` (imbi-api checks that
+  the provider is an Anthropic provider in an organization of the user; the
+  Slack bot also sends `org`, and the provider must be in that organization,
+  which must have a Slack workspace),
+  else the `ANTHROPIC_API_KEY` of the service with the driver default URL
+  (only for a provider without a custom base URL; the service key is never
+  sent to a custom base URL), else `provider_credentials_unavailable`. A stored provider key
+  does not leave imbi-api.
+
+## Amendment: the spend cap is enforced
+
+Date: 2026-11-27
+
+### How spend is counted
+
+The spend of an AIModel is the sum of the cost of its calls in the current
+calendar month (UTC):
+
+- `ai_runtime.ai_model_calls.cost_usd`, for generative prompt runs, by
+  `started_at`.
+- `tickets.budget_ledger.cost`, for agent usage reports, by `recorded_at`.
+- `tickets.deleted_model_spend.cost`, by `recorded_at`. When a ticket is
+  deleted, its ledger rows of the month that have a model are copied here,
+  so a delete
+  does not lower the spend.
+
+The first two tables have a nullable `ai_model_id` column, the AIModel node
+id. A row is counted only when it has a model id: rows from before the
+column, and usage that Imbi cannot match to a catalog model, are null and
+are not counted. A decision prompt run writes no row yet (#1060). A row with an unknown cost adds nothing. Because the AIModel node is
+per organization, the spend and the cap are per organization per model.
+`imbi.common.llm.resolve.month_spend` does the sum. Both schemas are in the
+graph database, so every service that has the graph can read the spend.
+
+Agent usage pricing finds the model in the catalog of the organization of
+the task by slug, then by provider model id, and records the AIModel id of
+the prices. The harness design (ADR 0022) pins the model on the task, which
+removes the slug or model id match.
+
+### Enforcement
+
+The resolver checks the cap after the access check. When the spend is at or
+over `monthly_spend_cap`, it raises `ModelUnusable` with reason `spend_cap`.
+Every consumer of the resolver refuses the call with the error it uses for
+the other reasons. A usage report that takes the spend of its model to the
+cap closes the agent task with `exceeded_ceiling` (reason `spend_cap`), like
+the task budget (reason `budget`).
+
+The check does not reserve the cost of a call before the call. Calls in
+progress, and usage reports of other tasks that are not committed, are not
+counted, so concurrent calls can go over the cap by their cost. A reservation
+was not built: the overshoot is small for the call rates of today.
+
+`AgentSettings.monthly_cost_cap` stays advisory.
 
 ## References
 

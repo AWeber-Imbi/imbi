@@ -163,7 +163,8 @@ In one answer, the assistant can do a maximum of 10 rounds of tool calls
 
 The system prompt comes from the `imbi-assistant/system` prompt in the
 prompt CMS. A new conversation uses the model of that prompt version. If
-the prompt version has no model, it uses `IMBI_ASSISTANT_MODEL`. A
+the prompt version has no model, it uses the default model of your
+organization, else `IMBI_ASSISTANT_MODEL`. A
 conversation keeps its model after it starts. An administrator changes
 the prompt and the model in the CMS. See [Prompts](../admin/prompts.md). For the service and its settings, see
 [Assistant](../assistant/index.md).

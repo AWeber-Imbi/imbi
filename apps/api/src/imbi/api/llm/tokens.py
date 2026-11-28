@@ -82,17 +82,19 @@ async def call[T](
 class ProviderToken:
     """The token of one fixed AI Provider, for an SDK client of imbi-api.
 
-    Each :meth:`get` reads the provider again, so a change to it takes
-    effect at the next call.
+    ``ref`` is ``<org-slug>/<provider-slug>``. Each :meth:`get` reads
+    the provider again, so a change to it takes effect at the next call.
     """
 
     def __init__(
         self,
-        provider_id: str,
+        ref: str,
         db: collections.abc.Callable[[], graph.Graph | None],
         secrets: collections.abc.Callable[[], store.SecretStore],
     ) -> None:
-        self._id = provider_id
+        self._ref = ref
+        #: The cache key: the id of the provider of the last :meth:`get`.
+        self._id = ''
         self._db = db
         self._secrets = secrets
 
@@ -102,7 +104,8 @@ class ProviderToken:
         db = self._db()
         if db is None:
             raise IdentityError('unavailable', retryable=True)
-        provider = await ai_providers.fetch_provider(db, self._id)
+        provider = await ai_providers.fetch_service_provider(db, self._ref)
+        self._id = provider.id
         return (await get(self._secrets(), provider)).token
 
     def invalidate(self, failed: str) -> None:

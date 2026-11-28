@@ -1149,6 +1149,27 @@ async def execute_conversation_org_backfill(
     return 'succeeded'
 
 
+async def execute_ai_catalog_org_copy(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Copy the AI catalog nodes that have no organization to each
+    organization."""
+    from imbi.api import ai_catalog_orgs
+
+    copied = await ai_catalog_orgs.migrate(db)
+    ctx.log.record(
+        'succeeded',
+        'ai-catalog-org-copy',
+        f'Copied {copied} AI providers and models to each organization',
+        copied=copied,
+    )
+    return 'succeeded'
+
+
 async def enumerate_ai_model_calls_prune(db: graph.Graph) -> list[str]:
     """One item per run: the delete of the old AI model call rows."""
     return ['older-than-retention']

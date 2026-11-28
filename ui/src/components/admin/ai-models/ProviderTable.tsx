@@ -150,13 +150,15 @@ export function ProviderTable({
                 const customBaseUrl = row.provider?.base_url ?? null
                 const baseUrl =
                   customBaseUrl ?? row.driver?.default_base_url ?? null
-                // Discovery needs a configured provider, a stored key
-                // or workload identity, and a driver whose list-models
-                // API Imbi can call.
+                // Discovery needs a configured provider, a credential
+                // (a stored key, workload identity, or the IAM role of
+                // a driver with ambient auth), and a driver whose
+                // list-models API Imbi can call.
                 const canDiscover =
                   !!row.provider &&
-                  (row.provider.has_credentials ||
-                    row.provider.auth_kind === 'workload_identity') &&
+                  row.provider.auth_kind !== 'none' &&
+                  (row.provider.auth_kind !== 'iam' ||
+                    (row.driver?.ambient_auth ?? false)) &&
                   (row.driver?.supports_discovery ?? false)
                 return (
                   <Fragment key={row.key}>
@@ -367,11 +369,10 @@ function CredentialsCell({ provider }: CredentialsCellProps) {
   return <Badge variant="warning">No key</Badge>
 }
 
-// The API renders Decimal as a JSON string, so coerce before formatting.
-function formatCap(cap: AIModel['monthly_spend_cap']): string {
-  const value = decimalToNumber(cap)
-  return value === null ? '—' : `${currency.format(value)}/mo`
-}
+const cents = new Intl.NumberFormat('en-US', {
+  currency: 'USD',
+  style: 'currency',
+})
 
 function ModelRow({
   isTogglePending,
@@ -379,6 +380,7 @@ function ModelRow({
   onEditModel,
   onToggleModel,
 }: ModelRowProps) {
+  const spend = spendVsCap(model)
   return (
     <div
       className={cn(
@@ -413,8 +415,14 @@ function ModelRow({
           {model.enabled ? 'Enabled' : 'Disabled'}
         </span>
       </div>
-      <span className="text-tertiary w-24 shrink-0 text-right font-mono text-xs tabular-nums">
-        {formatCap(model.monthly_spend_cap)}
+      <span
+        className={cn(
+          'w-40 shrink-0 text-right font-mono text-xs tabular-nums',
+          spend.atCap ? 'text-danger' : 'text-tertiary',
+        )}
+        title="Spend this month (UTC) / monthly spend cap"
+      >
+        {spend.text}
       </span>
       <Button
         aria-label={`Edit ${model.name}`}
@@ -426,6 +434,17 @@ function ModelRow({
       </Button>
     </div>
   )
+}
+
+// The API renders Decimal as a JSON string, so coerce before formatting.
+function spendVsCap(model: AIModel): { atCap: boolean; text: string } {
+  const cap = decimalToNumber(model.monthly_spend_cap)
+  const spend = decimalToNumber(model.month_to_date_spend) ?? 0
+  const capText = cap === null ? 'no cap' : `${currency.format(cap)}/mo`
+  return {
+    atCap: cap !== null && spend >= cap,
+    text: `${cents.format(spend)} / ${capText}`,
+  }
 }
 
 function teamChips(model: AIModel): string[] {

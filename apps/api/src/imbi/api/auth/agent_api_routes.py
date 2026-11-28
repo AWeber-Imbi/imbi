@@ -57,6 +57,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/component-releases/{component_release_id}/advisories',
         'GET /organizations/{org_slug}/components/',
         'GET /organizations/{org_slug}/components/{component_id}/usage',
+        'GET /organizations/{org_slug}/default-ai-model',
         'GET /organizations/{org_slug}/document-analytics',
         'GET /organizations/{org_slug}/document-templates/',
         'GET /organizations/{org_slug}/document-templates/{slug}',
@@ -137,6 +138,7 @@ ALLOWED_ROUTES: frozenset[str] = frozenset(
         'GET /organizations/{org_slug}/tags/{tag_slug}',
         'GET /organizations/{org_slug}/teams/',
         'GET /organizations/{org_slug}/teams/{slug}',
+        'GET /organizations/{org_slug}/teams/{slug}/default-ai-model',
         'GET /organizations/{org_slug}/teams/{slug}/members',
         'GET /organizations/{org_slug}/users/{email}/documents/',
         'GET /organizations/{org_slug}/webhooks/',
@@ -239,22 +241,26 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'POST /maintenance/operations/{slug}/cancel',
         'POST /maintenance/operations/{slug}/run',
         # Agent rules: platform configuration, marketplaces, AI models and providers, prompts and prompt runs
-        'DELETE /ai-models/{id}',
+        'DELETE /organizations/{org_slug}/ai-models/{id}',
+        'GET /organizations/{org_slug}/ai-models/',
+        'GET /organizations/{org_slug}/ai-models/{id}',
+        'PATCH /organizations/{org_slug}/ai-models/{id}',
+        'POST /organizations/{org_slug}/ai-models/',
+        'POST /organizations/{org_slug}/ai-models/price-sync/apply',
+        'POST /organizations/{org_slug}/ai-models/price-sync/preview',
+        'POST /organizations/{org_slug}/ai-providers/{id}/import-models',
         'DELETE /organizations/{org_slug}/agent-marketplaces/{slug}',
         'DELETE /prompts/{namespace}/{slug}',
         'DELETE /prompts/{namespace}/{slug}/labels/{label}',
-        'PATCH /ai-models/{id}',
         'PATCH /prompts/{namespace}/{slug}',
-        'POST /ai-models/',
-        'POST /ai-models/price-sync/apply',
-        'POST /ai-models/price-sync/preview',
-        'POST /ai-providers/{id}/import-models',
         'POST /organizations/{org_slug}/agent-marketplaces/',
         'POST /organizations/{org_slug}/agent-marketplaces/{slug}/sync',
         'POST /organizations/{org_slug}/prompts/run',
         'POST /prompts/',
         'POST /prompts/{namespace}/{slug}/versions',
         'PUT /organizations/{org_slug}/agent-platform-config/',
+        'PUT /organizations/{org_slug}/default-ai-model',
+        'PUT /organizations/{org_slug}/teams/{slug}/default-ai-model',
         'PUT /prompts/{namespace}/{slug}/default-label',
         'PUT /prompts/{namespace}/{slug}/labels/{label}',
         'PUT /prompts/{namespace}/{slug}/versions/{n}/evaluation',
@@ -375,12 +381,9 @@ REFUSED_ROUTES: frozenset[str] = frozenset(
         'GET /maintenance/operations/{slug}',
         # Shared records that hold data of other organizations: the
         # prompt library holds every organization's agent prompts
-        # (agents/<org>.<agent>), an AI model lists the teams of every
-        # organization that may use it, and component release notes
-        # are shared by all organizations by design. An agent gets its
-        # own prompt and model in the claim bundle.
-        'GET /ai-models/',
-        'GET /ai-models/{id}',
+        # (agents/<org>.<agent>), and component release notes are
+        # shared by all organizations by design. An agent gets its own
+        # prompt and model in the claim bundle.
         'GET /organizations/{org_slug}/component-releases/{component_release_id}/notes',
         'GET /prompts/',
         'GET /prompts/resolve',

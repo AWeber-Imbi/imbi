@@ -10,6 +10,7 @@ import {
   getTeamSchema,
   removeTeamMember,
 } from '@/api/endpoints'
+import { DefaultModelSelect } from '@/components/admin/ai-models/DefaultModelSelect'
 import { PersonPicker, usePeople } from '@/components/agents/ticketAttributes'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -156,6 +157,16 @@ export function TeamDetail({ onBack, onEdit, team }: TeamDetailProps) {
               <div className="text-secondary text-sm">Slack channel</div>
               <div className="text-primary mt-1">
                 #{team.slack_channel || team.slug}
+              </div>
+            </div>
+            <div>
+              <div className="text-secondary text-sm">Default model</div>
+              <div className="mt-1">
+                <DefaultModelSelect
+                  className="w-64"
+                  orgSlug={team.organization.slug}
+                  teamSlug={team.slug}
+                />
               </div>
             </div>
             {schemaLoading && <DynamicFieldsSkeleton />}

@@ -386,12 +386,12 @@ MATCH (a:Agent {{id: {id}}})
 RETURN a.settings AS settings
 """
 
-#: A model by catalog slug or by provider model id. The AI model catalog
-#: is global, so the organization does not narrow the match.
+#: A model of the organization by catalog slug or by provider model id.
 _MODEL_PRICES_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)
+MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
 WHERE m.slug = {model} OR m.model_id = {model}
-RETURN m.slug AS slug,
+RETURN m.id AS id, m.slug AS slug,
+       m.monthly_spend_cap AS monthly_spend_cap,
        m.input_cost_per_million AS input_cost_per_million,
        m.output_cost_per_million AS output_cost_per_million,
        m.cache_read_cost_per_million AS cache_read_cost_per_million,
@@ -491,16 +491,32 @@ def _parse_settings(raw: typing.Any) -> models.AgentSettings:
     return models.AgentSettings.model_validate(raw or {})
 
 
+type _Priced = tuple[
+    str | None, decimal.Decimal | None, dict[str, decimal.Decimal | None]
+]
+
+
+def _decimal(value: typing.Any) -> decimal.Decimal | None:
+    return None if value is None else decimal.Decimal(str(value))
+
+
 async def _model_prices(
-    db: graph.Graph, model: str
-) -> dict[str, decimal.Decimal | None] | None:
-    """Return the catalog prices of a model; ``None`` when it is unknown.
+    db: graph.Graph, org_id: str, model: str
+) -> _Priced | None:
+    """Return the AIModel id, the monthly spend cap, and the prices of a
+    model in the catalog of the organization; ``None`` when it is
+    unknown.
 
     A slug match wins. When only provider model ids match, the model
-    with the first slug is used.
+    with the first slug gives the prices. When more than one model has
+    the provider model id, the report does not tell which model made the
+    call, so no AIModel id and no spend cap are returned: the spend is
+    not charged to a model that possibly did not make it.
     """
     records = await db.execute(
-        _MODEL_PRICES_QUERY, {'model': model}, ['slug', *_PRICE_COLUMNS]
+        _MODEL_PRICES_QUERY,
+        {'model': model, 'org_id': org_id},
+        ['id', 'slug', 'monthly_spend_cap', *_PRICE_COLUMNS],
     )
     rows = [
         {key: graph.parse_agtype(value) for key, value in record.items()}
@@ -508,16 +524,24 @@ async def _model_prices(
     ]
     if not rows:
         return None
-    row = next(
-        (r for r in rows if r['slug'] == model),
-        min(rows, key=lambda r: str(r['slug'])),
+    slug_match = next((r for r in rows if r['slug'] == model), None)
+    row = slug_match or min(rows, key=lambda r: str(r['slug']))
+    if slug_match is None and len(rows) > 1:
+        LOGGER.warning(
+            'Usage for %r matches %d AI models; not charged to a model',
+            model,
+            len(rows),
+        )
+        return (
+            None,
+            None,
+            {column: _decimal(row[column]) for column in _PRICE_COLUMNS},
+        )
+    return (
+        row['id'],
+        _decimal(row['monthly_spend_cap']),
+        {column: _decimal(row[column]) for column in _PRICE_COLUMNS},
     )
-    return {
-        column: None
-        if row[column] is None
-        else decimal.Decimal(str(row[column]))
-        for column in _PRICE_COLUMNS
-    }
 
 
 def task_state(task: dict[str, typing.Any]) -> TaskState:
@@ -910,8 +934,10 @@ async def report_agent_task_usage(
     prices it used. A report with no token counts is unmeasured, and an
     unknown model has no cost; both are still recorded. When the cost
     total passes the budget, the task closes with ``exceeded_ceiling``
-    (reason ``budget``). A repeat with the same ``idempotency_key``
-    returns the first report with status 200.
+    (reason ``budget``). When the month-to-date spend of the model
+    reaches its monthly spend cap, the task closes with
+    ``exceeded_ceiling`` (reason ``spend_cap``). A repeat with the same
+    ``idempotency_key`` returns the first report with status 200.
 
     Raises:
         403: The caller is not the service account of the task's agent.
@@ -919,7 +945,9 @@ async def report_agent_task_usage(
         409: ``task_closed`` or ``session_closed``.
 
     """
-    prices = await _model_prices(db, data.model_id)
+    ai_model_id, spend_cap, prices = await _model_prices(
+        db, org_id, data.model_id
+    ) or (None, None, None)
     try:
         row, ledger, created = await store.report_usage(
             org_id,
@@ -936,6 +964,8 @@ async def report_agent_task_usage(
                 message_id=data.message_id,
             ),
             prices,
+            ai_model_id=ai_model_id,
+            spend_cap=spend_cap,
             actor=_agent_actor(task),
             system=_SYSTEM,
         )

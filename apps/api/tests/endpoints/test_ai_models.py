@@ -1,4 +1,4 @@
-"""Tests for the global AI model catalog endpoints."""
+"""Tests for the AI model catalog endpoints of an organization."""
 
 import decimal
 import typing
@@ -7,11 +7,13 @@ from unittest import mock
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
+from imbi.api import teams as org_teams
 from imbi.api.endpoints import ai_models, ai_providers
 from imbi.common.llm import discovery
+from imbi.common.llm import resolve as llm_resolve
 
-BASE = '/ai-models'
-IMPORT_BASE = '/ai-providers'
+BASE = f'/organizations/{provider_tests.ORG}/ai-models'
+IMPORT_BASE = f'/organizations/{provider_tests.ORG}/ai-providers'
 
 # Matched by exact template where a substring rule would be shadowed by
 # the write queries that embed the same ``MATCH``.
@@ -19,7 +21,7 @@ GET_MODEL = ai_models._GET_QUERY
 LIST_MODELS = ai_models._LIST_QUERY
 SLUG_TAKEN = ai_models._SLUG_TAKEN_QUERY
 MODEL_ID_TAKEN = ai_models._MODEL_ID_TAKEN_QUERY
-TEAM = ai_models._TEAM_QUERY
+TEAM = org_teams._BY_ID_QUERY
 EXISTING_IDS = ai_models._EXISTING_IDS_QUERY
 TAKEN_SLUGS = ai_models._TAKEN_SLUGS_QUERY
 GET_PROVIDER = ai_providers._GET_QUERY
@@ -93,6 +95,15 @@ class AIModelTestBase(provider_tests.AIProviderTestBase):
         patcher = mock.patch('imbi.common.llm.prices.fetch', self.fetch_prices)
         patcher.start()
         self.addCleanup(patcher.stop)
+        self.mock_db.pool = mock.MagicMock()
+        self.month_spend = mock.AsyncMock(
+            return_value={'mdl-1': decimal.Decimal('1.5')}
+        )
+        patcher = mock.patch.object(
+            llm_resolve, 'month_spend', self.month_spend
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
 
 class ReadModelTestCase(AIModelTestBase):
@@ -127,6 +138,8 @@ class ReadModelTestCase(AIModelTestBase):
         )
         self.assertEqual(data[0]['provider_id'], 'prv-1')
         self.assertEqual(data[0]['provider_name'], 'Anthropic')
+        self.assertEqual(data[0]['month_to_date_spend'], '1.5')
+        self.month_spend.assert_awaited_once_with(mock.ANY, ['mdl-1'])
 
     def test_list_handles_a_model_with_no_teams(self) -> None:
         """A null ``t`` from the OPTIONAL MATCH yields an empty list."""
@@ -262,7 +275,7 @@ class CreateModelTestCase(AIModelTestBase):
         """Restricted access writes one ALLOWED_FOR edge per team."""
         router = self.route(
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
+            (TEAM, [team_props()]),
             (
                 CREATE,
                 [{'m': model_props(access_scope='restricted')}],
@@ -306,7 +319,7 @@ class CreateModelTestCase(AIModelTestBase):
         """Team ids sent with org-wide access are validated, then dropped."""
         router = self.route(
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
+            (TEAM, [team_props()]),
             (CREATE, [{'m': model_props()}]),
         )
         response = self.client.post(
@@ -564,7 +577,7 @@ class PatchModelTestCase(AIModelTestBase):
                 ],
             ),
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props('tm-2', 'Apps', 'apps')}]),
+            (TEAM, [team_props('tm-2', 'Apps', 'apps')]),
             (UPDATE, [{'m': model_props(access_scope='restricted')}]),
         )
         router = typing.cast('typing.Any', self.mock_db.execute.side_effect)
@@ -600,7 +613,7 @@ class PatchModelTestCase(AIModelTestBase):
                 ],
             ),
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
+            (TEAM, [team_props()]),
             (UPDATE, [{'m': model_props()}]),
         )
         router = typing.cast('typing.Any', self.mock_db.execute.side_effect)
@@ -703,6 +716,20 @@ class DeleteModelTestCase(AIModelTestBase):
         self.route((DELETE, [{'m': model_props()}]))
         response = self.client.delete(f'{BASE}/mdl-1')
         self.assertEqual(response.status_code, 204)
+
+    def test_default_model_is_409(self) -> None:
+        """A default model of an organization or a team stays."""
+        router = self.route(
+            (
+                ai_models._DEFAULT_OF_QUERY,
+                [{'slug': 'platform'}, {'slug': 'acme'}],
+            ),
+            (DELETE, [{'m': model_props()}]),
+        )
+        response = self.client.delete(f'{BASE}/mdl-1')
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('acme, platform', response.json()['detail'])
+        self.assertFalse(any(DELETE in q for q, _ in router.calls))
 
 
 class ImportModelsTestCase(AIModelTestBase):
@@ -984,3 +1011,78 @@ class ModelPermissionTestCase(AIModelTestBase):
         self.auth_context.permissions = {'ai_model:read'}
         self.route()
         self.assertEqual(self.client.get(BASE + '/').status_code, 200)
+
+
+class OrgScopeTestCase(AIModelTestBase):
+    """Each read and check is in the organization of the path."""
+
+    ORG_ID = provider_tests.ORG_ID
+
+    def test_create_is_in_the_org(self) -> None:
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
+            (TEAM, [team_props()]),
+            (CREATE, [{'m': model_props(access_scope='restricted')}]),
+        )
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'provider_id': 'prv-1',
+                'name': 'Default Chat',
+                'model_id': 'claude-opus-5',
+                'access_scope': 'restricted',
+                'allowed_team_ids': ['tm-1'],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            router.params_for(GET_PROVIDER), {'id': 'prv-1', 'org_id': 'org-1'}
+        )
+        self.assertEqual(
+            router.params_for(SLUG_TAKEN),
+            {'slug': 'default-chat', 'org_id': self.ORG_ID},
+        )
+        self.assertEqual(
+            router.params_for(TEAM), {'ids': ['tm-1'], 'org_id': self.ORG_ID}
+        )
+        self.assertEqual(router.params_for(CREATE)['org_id'], self.ORG_ID)
+        create = next(q for q, _ in router.calls if CREATE in q)
+        self.assertIn('CREATE (m)-[:BELONGS_TO]->(o)', create)
+
+    def test_a_provider_of_another_org_is_404(self) -> None:
+        self.route()
+        response = self.client.post(
+            BASE + '/',
+            json={'provider_id': 'prv-9', 'name': 'X', 'model_id': 'x'},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_team_of_another_org_is_422(self) -> None:
+        self.route((GET_PROVIDER, [{'p': provider_tests.provider_props()}]))
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'provider_id': 'prv-1',
+                'name': 'X',
+                'model_id': 'x',
+                'access_scope': 'restricted',
+                'allowed_team_ids': ['tm-9'],
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_reads_are_in_the_org(self) -> None:
+        router = self.route()
+        self.assertEqual(self.client.get(BASE + '/').json(), [])
+        self.assertEqual(
+            router.params_for(LIST_MODELS), {'org_id': self.ORG_ID}
+        )
+        self.assertEqual(self.client.get(f'{BASE}/mdl-9').status_code, 404)
+        self.assertEqual(
+            router.params_for(GET_MODEL),
+            {'id': 'mdl-9', 'org_id': self.ORG_ID},
+        )
+        self.assertEqual(self.client.delete(f'{BASE}/mdl-9').status_code, 404)
+        self.assertEqual(
+            router.params_for(DELETE), {'id': 'mdl-9', 'org_id': self.ORG_ID}
+        )

@@ -21,6 +21,8 @@ def _provider(**target: str) -> models.AIProvider:
         name='Anthropic',
         slug='anthropic',
         driver='anthropic',
+        organization=models.Organization(id='org-1', name='Acme', slug='acme'),
+        org_id='org-1',
         workload_identity=models.AIProviderWorkloadIdentity(
             organization_id='org-1',
             target=target or {'service_account_id': 'svc-1'},
@@ -96,20 +98,21 @@ class TokenCacheTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_provider_token_reads_the_provider(self) -> None:
         db = mock.Mock()
         with mock.patch(
-            'imbi.api.endpoints.ai_providers.fetch_provider',
+            'imbi.api.endpoints.ai_providers.fetch_service_provider',
             mock.AsyncMock(return_value=_provider()),
         ) as fetch:
             source = tokens.ProviderToken(
-                'prv-1', lambda: db, lambda: self.store
+                'acme/anthropic', lambda: db, lambda: self.store
             )
             self.assertEqual(await source.get(), 'token-1')
+            # The cache key is the provider id, not the reference.
             source.invalidate('token-1')
             self.assertEqual(await source.get(), 'token-2')
-        fetch.assert_awaited_with(db, 'prv-1')
+        fetch.assert_awaited_with(db, 'acme/anthropic')
 
     async def test_provider_token_without_graph(self) -> None:
         source = tokens.ProviderToken(
-            'prv-1', lambda: None, lambda: self.store
+            'acme/anthropic', lambda: None, lambda: self.store
         )
         with self.assertRaises(contract.IdentityError) as ctx:
             await source.get()

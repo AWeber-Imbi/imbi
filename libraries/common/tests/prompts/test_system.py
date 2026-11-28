@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 from imbi.common import models
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import rendering, resolve, system
 
 #: Values that would break a naive renderer: braces, Jinja delimiters,
@@ -81,12 +82,39 @@ def _version(
     return prompt, version, 'stable'
 
 
+def _model(
+    slug: str, model_id: str, driver: str = 'anthropic'
+) -> llm_resolve.ResolvedModel:
+    org = models.Organization(id='org-1', name='O', slug='o')
+    provider = models.AIProvider(
+        name='P', slug='p', driver=driver, organization=org
+    )
+    return llm_resolve.ResolvedModel(
+        source='explicit',
+        model=models.AIModel(
+            name=slug,
+            slug=slug,
+            model_id=model_id,
+            provider=provider,
+            organization=org,
+        ),
+    )
+
+
 VARIABLES = {name: f'<{name}>' for name in system.ASSISTANT.variables}
 REF = 'imbi-assistant/system@stable'
 
 
 class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.object(
+            resolve, 'member_org_ids', mock.AsyncMock(return_value=['org-1'])
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def load(self, **kwargs: typing.Any) -> system.SystemPrompt:
+        kwargs.setdefault('email', 'dev@example.com')
         return await system.load_system_prompt(
             mock.AsyncMock(), REF, VARIABLES, system.ASSISTANT, **kwargs
         )
@@ -99,9 +127,14 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         )
         return mock.patch.object(resolve, 'resolve', mock.AsyncMock(**kwargs))
 
-    def patch_model(self, info: resolve.ModelInfo | None) -> typing.Any:
+    def patch_model(self, result: object) -> typing.Any:
+        kwargs: dict[str, typing.Any] = (
+            {'side_effect': result}
+            if isinstance(result, BaseException)
+            else {'return_value': result}
+        )
         return mock.patch.object(
-            resolve, 'model_info', mock.AsyncMock(return_value=info)
+            llm_resolve, 'resolve_model', mock.AsyncMock(**kwargs)
         )
 
     async def test_cms_version_is_used_with_its_params(self) -> None:
@@ -140,90 +173,141 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_anthropic_model_is_used(self) -> None:
         found = _version(model='default-chat', model_id='claude-opus-5-5')
-        info = resolve.ModelInfo('claude-opus-5-5', True, 'anthropic')
-        with self.patch_resolve(found), self.patch_model(info):
-            result = await self.load()
-        self.assertEqual(result.model_id, 'claude-opus-5-5')
-
-    async def test_other_driver_keeps_the_configured_model(self) -> None:
-        found = _version(model='gpt', model_id='gpt-5')
-        info = resolve.ModelInfo('gpt-5', True, 'openai')
-        with self.patch_resolve(found), self.patch_model(info):
-            with self.assertLogs(system.LOGGER, 'WARNING'):
-                result = await self.load()
-        self.assertEqual(result.source, 'cms')
-        self.assertIsNone(result.model_id)
-
-    async def test_disabled_model_keeps_the_configured_model(self) -> None:
-        found = _version(model='old', model_id='claude-old')
-        info = resolve.ModelInfo('claude-old', False, 'anthropic')
-        with self.patch_resolve(found), self.patch_model(info):
-            result = await self.load()
-        self.assertIsNone(result.model_id)
-
-    async def test_restricted_model_needs_an_allowed_user(self) -> None:
-        found = _version(model='opus', model_id='claude-opus-5-5')
-        info = resolve.ModelInfo(
-            'claude-opus-5-5', True, 'anthropic', 'restricted'
-        )
-        for allowed, email, expected in (
-            (False, 'dev@example.com', None),
-            (True, None, None),
-            (True, 'dev@example.com', 'claude-opus-5-5'),
-        ):
-            with (
-                self.subTest(allowed=allowed, email=email),
-                self.patch_resolve(found),
-                self.patch_model(info),
-                mock.patch.object(
-                    resolve,
-                    'member_may_use_model_id',
-                    mock.AsyncMock(return_value=allowed),
-                ),
-            ):
-                result = await self.load(email=email)
-                self.assertEqual(result.model_id, expected)
-
-    async def test_stale_model_id_is_checked(self) -> None:
-        # A catalog edit moved the slug to a new id; the version keeps
-        # the old one, and the old one is what is sent.
-        found = _version(model='opus', model_id='claude-opus-old')
-        info = resolve.ModelInfo('claude-opus-5-5', True, 'anthropic')
-        for allowed, expected in ((False, None), (True, 'claude-opus-old')):
-            with (
-                self.subTest(allowed=allowed),
-                self.patch_resolve(found),
-                self.patch_model(info),
-                mock.patch.object(
-                    resolve,
-                    'member_may_use_model_id',
-                    mock.AsyncMock(return_value=allowed),
-                ) as check,
-            ):
-                result = await self.load(email='dev@example.com')
-                self.assertEqual(result.model_id, expected)
-                check.assert_awaited_once_with(
-                    mock.ANY, 'claude-opus-old', 'dev@example.com'
-                )
-
-    async def test_access_check_error_keeps_the_cms_prompt(self) -> None:
-        found = _version(model='opus', model_id='claude-opus-5-5')
-        info = resolve.ModelInfo(
-            'claude-opus-5-5', True, 'anthropic', 'restricted'
-        )
+        resolved = _model('default-chat', 'claude-opus-5-5')
         with (
             self.patch_resolve(found),
-            self.patch_model(info),
-            mock.patch.object(
-                resolve,
-                'member_may_use_model_id',
-                mock.AsyncMock(side_effect=RuntimeError('db down')),
-            ),
-            self.assertLogs(system.LOGGER, 'WARNING'),
+            self.patch_model(resolved) as resolver,
         ):
             result = await self.load(email='dev@example.com')
-        self.assertEqual(result.source, 'cms')
+        self.assertEqual(result.model_id, 'claude-opus-5-5')
+        # The provider comes with the model, for its credential.
+        assert resolved.model is not None
+        self.assertIs(result.provider, resolved.model.provider)
+        # The resolver refuses a driver other than Anthropic.
+        resolver.assert_awaited_once_with(
+            mock.ANY,
+            ['org-1'],
+            model='default-chat',
+            email='dev@example.com',
+            admin=False,
+            drivers=('anthropic',),
+        )
+
+    async def test_admin_is_passed_to_the_resolver(self) -> None:
+        # An admin may use a restricted model (ADR 0018).
+        found = _version(model='default-chat', model_id='claude-opus-5-5')
+        resolved = _model('default-chat', 'claude-opus-5-5')
+        with (
+            self.patch_resolve(found),
+            self.patch_model(resolved) as resolver,
+        ):
+            await self.load(admin=True)
+            await system.load_model(
+                mock.AsyncMock(), REF, 'dev@example.com', admin=True
+            )
+        # One call for each loader, both with admin.
+        self.assertEqual(
+            [call.kwargs['admin'] for call in resolver.await_args_list],
+            [True, True],
+        )
+
+    async def test_no_user_has_no_catalog_model(self) -> None:
+        found = _version(model='default-chat', model_id='claude-opus-5-5')
+        with self.patch_resolve(found), self.patch_model(None) as resolver:
+            result = await self.load(email=None)
         self.assertIsNone(result.model_id)
+        resolver.assert_not_awaited()
+
+    async def test_unusable_model_is_an_error(self) -> None:
+        # No other model is used in its place (ADR 0018).
+        found = _version(model='old', model_id='claude-old')
+        for reason in typing.get_args(llm_resolve.Reason):
+            error = llm_resolve.ModelUnusable(reason, 'old', 'no')
+            with (
+                self.subTest(reason=reason),
+                self.patch_resolve(found),
+                self.patch_model(error),
+                self.assertRaises(llm_resolve.ModelUnusable),
+            ):
+                await self.load(email='dev@example.com')
+            with (
+                self.subTest(reason=reason, loader='load_model'),
+                self.patch_resolve(found),
+                self.patch_model(error),
+                self.assertRaises(llm_resolve.ModelUnusable),
+            ):
+                await system.load_model(
+                    mock.AsyncMock(), REF, 'dev@example.com'
+                )
+
+    async def test_unusable_model_without_check_model(self) -> None:
+        # A consumer whose turn uses another model gets the prompt,
+        # without the settings of the version's model.
+        found = _version(
+            model='old', model_id='claude-old', params={'max_tokens': 99}
+        )
+        for error in (
+            llm_resolve.ModelUnusable('disabled', 'old', 'no'),
+            RuntimeError('db down'),
+        ):
+            with (
+                self.subTest(error=error),
+                self.patch_resolve(found),
+                self.patch_model(error),
+                self.assertLogs(system.LOGGER, 'WARNING'),
+            ):
+                result = await self.load(check_model=False)
+            self.assertEqual(result.source, 'cms')
+            self.assertEqual(result.text, 'Hi <display_name>')
+            self.assertIsNone(result.model_id)
+            self.assertIsNone(result.max_tokens)
+
+    async def test_failed_model_check_is_raised_by_load_model(self) -> None:
+        # No default model is used in its place, so a failed spend
+        # check cannot skip the cap.
+        found = _version(model='opus', model_id='claude-opus-5-5')
+        with (
+            self.patch_resolve(found),
+            self.patch_model(RuntimeError('db down')),
+            self.assertRaises(RuntimeError),
+        ):
+            await system.load_model(mock.AsyncMock(), REF, 'dev@example.com')
+
+    async def test_prompt_read_error_in_load_model_is_none(self) -> None:
+        with (
+            self.patch_resolve(RuntimeError('db down')),
+            self.assertLogs(system.LOGGER, 'WARNING'),
+        ):
+            result = await system.load_model(
+                mock.AsyncMock(), REF, 'dev@example.com'
+            )
+        self.assertIsNone(result)
+
+    async def test_slug_uses_the_catalog_model_id(self) -> None:
+        # The version stores the id of another organization; the run
+        # uses the id of the slug in the catalog of the user (ADR 0018).
+        found = _version(model='opus', model_id='claude-opus-old')
+        resolved = _model('opus', 'claude-opus-5-5')
+        with (
+            self.patch_resolve(found),
+            self.patch_model(resolved) as resolver,
+        ):
+            result = await self.load(email='dev@example.com')
+        self.assertEqual(result.model_id, 'claude-opus-5-5')
+        assert resolved.model is not None
+        self.assertIs(result.provider, resolved.model.provider)
+        resolver.assert_awaited_once()
+
+    async def test_graph_error_in_the_model_check_is_raised(self) -> None:
+        # No other model is used in place of the named model, so the
+        # packaged prompt does not replace it.
+        found = _version(model='opus', model_id='claude-opus-5-5')
+        with (
+            self.patch_resolve(found),
+            self.patch_model(RuntimeError('db down')),
+            self.assertRaises(RuntimeError),
+        ):
+            await self.load(email='dev@example.com')
 
     async def test_override_wins(self) -> None:
         with self.patch_resolve(_version()) as found:
@@ -236,6 +320,125 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs(system.LOGGER, 'ERROR'):
             result = await self.load(override='Old {email} {{ oops')
         self.assertEqual(result.source, 'fallback')
+
+
+class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
+    async def default(self, result: object) -> system.ConsumerModel | None:
+        kwargs: dict[str, typing.Any] = (
+            {'side_effect': result}
+            if isinstance(result, BaseException)
+            else {'return_value': result}
+        )
+        with (
+            mock.patch.object(
+                resolve,
+                'member_org_ids',
+                mock.AsyncMock(return_value=['org-1']),
+            ),
+            mock.patch.object(
+                llm_resolve, 'resolve_model', mock.AsyncMock(**kwargs)
+            ) as resolver,
+        ):
+            found = await system.default_model(
+                mock.AsyncMock(), 'dev@example.com'
+            )
+        resolver.assert_awaited_once_with(
+            mock.ANY,
+            ['org-1'],
+            email='dev@example.com',
+            admin=False,
+            drivers=('anthropic',),
+        )
+        return found
+
+    async def test_organization_default(self) -> None:
+        resolved = _model('chat', 'claude-chat')
+        found = await self.default(resolved)
+        assert found is not None and resolved.model is not None
+        self.assertEqual(found.model_id, 'claude-chat')
+        self.assertIs(found.provider, resolved.model.provider)
+
+    async def test_one_named_organization(self) -> None:
+        # The organization of the call (an assistant conversation, a
+        # Slack workspace): only that catalog is read.
+        with (
+            mock.patch.object(resolve, 'member_org_ids') as member_orgs,
+            mock.patch.object(
+                llm_resolve,
+                'resolve_model',
+                mock.AsyncMock(return_value=llm_resolve.ResolvedModel('env')),
+            ) as resolver,
+        ):
+            await system.default_model(
+                mock.AsyncMock(), 'dev@example.com', org_id='org-2'
+            )
+        member_orgs.assert_not_called()
+        resolver.assert_awaited_once_with(
+            mock.ANY,
+            ['org-2'],
+            email='dev@example.com',
+            admin=False,
+            drivers=('anthropic',),
+        )
+
+    async def test_no_default_is_none(self) -> None:
+        resolved = llm_resolve.ResolvedModel(source='env')
+        self.assertIsNone(await self.default(resolved))
+
+    async def test_unusable_default_is_an_error(self) -> None:
+        error = llm_resolve.ModelUnusable('disabled', 'chat', 'no')
+        with self.assertRaises(llm_resolve.ModelUnusable):
+            await self.default(error)
+
+
+class RequestModelTestCase(unittest.IsolatedAsyncioTestCase):
+    async def request(self, result: object) -> typing.Any:
+        kwargs: dict[str, typing.Any] = (
+            {'side_effect': result}
+            if isinstance(result, BaseException)
+            else {'return_value': result}
+        )
+        with (
+            mock.patch.object(
+                resolve,
+                'member_org_ids',
+                mock.AsyncMock(return_value=['org-1']),
+            ),
+            mock.patch.object(
+                llm_resolve, 'resolve_model', mock.AsyncMock(**kwargs)
+            ) as resolver,
+        ):
+            found = await system.request_model(
+                mock.AsyncMock(), 'dev@example.com', 'claude-x', admin=True
+            )
+        resolver.assert_awaited_once_with(
+            mock.ANY,
+            ['org-1'],
+            model_id='claude-x',
+            email='dev@example.com',
+            admin=True,
+            drivers=('anthropic',),
+        )
+        return found
+
+    async def test_catalog_model(self) -> None:
+        found = await self.request(_model('x', 'claude-x'))
+        self.assertEqual(found.model_id, 'claude-x')
+
+    async def test_not_in_the_catalog_is_none(self) -> None:
+        error = llm_resolve.ModelUnusable('not_found', 'claude-x', 'no')
+        self.assertIsNone(await self.request(error))
+
+    async def test_unusable_or_other_driver_is_an_error(self) -> None:
+        for result in (
+            llm_resolve.ModelUnusable('disabled', 'claude-x', 'no'),
+            llm_resolve.ModelUnusable('unsupported_driver', 'x', 'no'),
+        ):
+            with (
+                self.subTest(result=result),
+                self.assertRaises(llm_resolve.ModelUnusable),
+            ):
+                await self.request(result)
 
 
 class UnlabelledPromptTestCase(unittest.IsolatedAsyncioTestCase):

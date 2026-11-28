@@ -104,6 +104,10 @@ class VendorTokenTestCase(secret_support.SecretCase):
             name='Anthropic',
             slug='anthropic',
             driver='anthropic',
+            organization=models.Organization(
+                id=self.org, name=self.org, slug=self.org
+            ),
+            org_id=self.org,
             workload_identity=models.AIProviderWorkloadIdentity(
                 organization_id=self.org, target=self.target
             ),

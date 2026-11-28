@@ -13,12 +13,14 @@ vi.mock('@/api/endpoints', () => ({
   deleteAIProvider: vi.fn(),
   deleteAIProviderCredentials: vi.fn(),
   discoverAIModels: vi.fn(),
+  getDefaultAIModel: vi.fn(),
   importAIModels: vi.fn(),
   listAIModels: vi.fn(),
   listAIProviderDrivers: vi.fn(),
   listAIProviders: vi.fn(),
   listTeams: vi.fn(),
   setAIProviderCredentials: vi.fn(),
+  setDefaultAIModel: vi.fn(),
   updateAIModel: vi.fn(),
   updateAIProvider: vi.fn(),
 }))
@@ -33,6 +35,7 @@ vi.mock('@/contexts/OrganizationContext', () => ({
 
 const drivers: AIProviderDriver[] = [
   {
+    ambient_auth: false,
     default_base_url: 'https://api.anthropic.com',
     description: 'Claude models from Anthropic.',
     icon: 'Sparkles',
@@ -44,6 +47,7 @@ const drivers: AIProviderDriver[] = [
     supports_iam: false,
   },
   {
+    ambient_auth: false,
     default_base_url: 'https://api.openai.com/v1',
     description: 'GPT models from OpenAI.',
     icon: 'Bot',
@@ -55,6 +59,7 @@ const drivers: AIProviderDriver[] = [
     supports_iam: false,
   },
   {
+    ambient_auth: false,
     default_base_url: 'https://api.typesafe.ai/v1',
     description: 'System One decision models, such as Jev.',
     icon: 'Scale',
@@ -99,6 +104,7 @@ const model: AIModel = {
   max_output_tokens: 8192,
   model_id: 'claude-fable-5-1',
   model_type: 'generative',
+  month_to_date_spend: '12.5',
   monthly_spend_cap: 4000,
   name: 'Claude Fable 5.1',
   output_cost_per_million: 15,
@@ -132,7 +138,7 @@ const mountAt = async (path: string) => {
     <Routes>
       <Route
         element={<AIModelsManagement />}
-        path="/agents/:section?/:slug?/:action?"
+        path="/admin/:section?/:slug?/:action?"
       />
     </Routes>,
   )
@@ -146,6 +152,10 @@ describe('AIModelsManagement', () => {
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider])
     vi.mocked(endpoints.listAIModels).mockResolvedValue([model])
     vi.mocked(endpoints.listTeams).mockResolvedValue([team])
+    vi.mocked(endpoints.getDefaultAIModel).mockResolvedValue({ slug: null })
+    vi.mocked(endpoints.setDefaultAIModel).mockResolvedValue({
+      slug: 'claude-fable-5-1',
+    })
     vi.mocked(endpoints.createAIModel).mockResolvedValue(model)
     vi.mocked(endpoints.updateAIModel).mockResolvedValue(model)
     vi.mocked(endpoints.updateAIProvider).mockResolvedValue(provider)
@@ -185,8 +195,56 @@ describe('AIModelsManagement', () => {
     })
   })
 
+  it('sets the organization default model', async () => {
+    const endpoints = await import('@/api/endpoints')
+    await mountAt('/admin/ai-models')
+
+    const select = await screen.findByRole('combobox', {
+      name: 'Default model',
+    })
+    await waitFor(() =>
+      expect(endpoints.getDefaultAIModel).toHaveBeenCalledWith(
+        'acme',
+        undefined,
+        expect.anything(),
+      ),
+    )
+    fireEvent.click(select)
+    fireEvent.click(
+      await screen.findByRole('option', { name: /claude-fable-5-1/ }),
+    )
+
+    await waitFor(() =>
+      expect(endpoints.setDefaultAIModel).toHaveBeenCalledWith(
+        'acme',
+        'claude-fable-5-1',
+        undefined,
+      ),
+    )
+    await waitFor(() => expect(select).toHaveTextContent('claude-fable-5-1'))
+  })
+
+  it('shows a read error of the default model, not "No model"', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.getDefaultAIModel)
+      .mockRejectedValueOnce(new Error('down'))
+      .mockResolvedValueOnce({ slug: 'claude-fable-5-1' })
+    await mountAt('/admin/ai-models')
+
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(screen.getByText(/Could not load the default model/)).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: 'Default model' })).toBeNull()
+    fireEvent.click(retry)
+    // The pending retry shows a disabled select; wait for the response.
+    await waitFor(() => {
+      const select = screen.getByRole('combobox', { name: 'Default model' })
+      expect(select).toBeEnabled()
+      expect(select).toHaveTextContent('claude-fable-5-1')
+    })
+  })
+
   it('renders configured providers and unconfigured drivers as ghost rows', async () => {
-    await mountAt('/agents/ai-models')
+    await mountAt('/admin/ai-models')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic')).toBeInTheDocument(),
@@ -205,7 +263,7 @@ describe('AIModelsManagement', () => {
   })
 
   it('lists a provider’s models when the row is expanded', async () => {
-    await mountAt('/agents/ai-models')
+    await mountAt('/admin/ai-models')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic')).toBeInTheDocument(),
@@ -219,13 +277,13 @@ describe('AIModelsManagement', () => {
     )
     expect(screen.getByText('claude-fable-5-1')).toBeInTheDocument()
     expect(screen.getByText('All teams')).toBeInTheDocument()
-    expect(screen.getByText('$4,000/mo')).toBeInTheDocument()
+    expect(screen.getByText('$12.50 / $4,000/mo')).toBeInTheDocument()
     expect(screen.getByText('Generative')).toBeInTheDocument()
   })
 
   it('patches enabled when a model switch is toggled', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models')
+    await mountAt('/admin/ai-models')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic')).toBeInTheDocument(),
@@ -242,7 +300,7 @@ describe('AIModelsManagement', () => {
     )
 
     await waitFor(() =>
-      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('acme', 'model-1', [
         { op: 'replace', path: '/enabled', value: false },
       ]),
     )
@@ -250,7 +308,7 @@ describe('AIModelsManagement', () => {
 
   it('creates a model with access scope and teams from the two-step dialog', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/new-model?provider=prov-1')
+    await mountAt('/admin/ai-models/new-model?provider=prov-1')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText(/model name or url/i), {
@@ -266,6 +324,7 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.createAIModel).toHaveBeenCalledWith(
+        'acme',
         expect.objectContaining({
           access_scope: 'restricted',
           allowed_team_ids: ['team-1'],
@@ -279,7 +338,7 @@ describe('AIModelsManagement', () => {
   it('creates a decision model on a TypeSafe provider', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider, typesafe])
-    await mountAt('/agents/ai-models/new-model?provider=prov-ts')
+    await mountAt('/admin/ai-models/new-model?provider=prov-ts')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     await waitFor(() =>
@@ -308,6 +367,7 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.createAIModel).toHaveBeenCalledWith(
+        'acme',
         expect.objectContaining({
           default_temperature: null,
           default_top_p: null,
@@ -322,7 +382,7 @@ describe('AIModelsManagement', () => {
   it('switches the model type when the provider changes driver', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider, typesafe])
-    await mountAt('/agents/ai-models/new-model?provider=prov-1')
+    await mountAt('/admin/ai-models/new-model?provider=prov-1')
 
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: 'Generative' })).toHaveAttribute(
@@ -336,7 +396,7 @@ describe('AIModelsManagement', () => {
 
   it('patches only the changed fields when a model is edited', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/model-1/edit')
+    await mountAt('/admin/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText(/display name/i), {
@@ -354,6 +414,7 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.updateAIModel).toHaveBeenCalledWith(
+        'acme',
         'model-1',
         expect.arrayContaining([
           { op: 'replace', path: '/name', value: 'Fable 5.1' },
@@ -362,7 +423,7 @@ describe('AIModelsManagement', () => {
       ),
     )
     // Untouched fields must stay out of the patch.
-    const ops = vi.mocked(endpoints.updateAIModel).mock.calls[0][1]
+    const ops = vi.mocked(endpoints.updateAIModel).mock.calls[0][2]
     expect(ops.map((op) => op.path).sort()).toEqual([
       '/context_window',
       '/name',
@@ -371,7 +432,7 @@ describe('AIModelsManagement', () => {
 
   it('patches the cache prices of a model', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/model-1/edit')
+    await mountAt('/admin/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -390,7 +451,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() =>
-      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('acme', 'model-1', [
         { op: 'replace', path: '/cache_read_cost_per_million', value: 0.3 },
         { op: 'replace', path: '/cache_write_1h_cost_per_million', value: 6 },
         { op: 'replace', path: '/cache_write_cost_per_million', value: 3.75 },
@@ -400,7 +461,7 @@ describe('AIModelsManagement', () => {
 
   it('patches the structured output flag of a model', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/model-1/edit')
+    await mountAt('/admin/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -411,7 +472,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() =>
-      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('acme', 'model-1', [
         { op: 'replace', path: '/supports_structured_output', value: true },
       ]),
     )
@@ -419,7 +480,7 @@ describe('AIModelsManagement', () => {
 
   it('patches the forced tool choice flag of a model', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/model-1/edit')
+    await mountAt('/admin/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -432,7 +493,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() =>
-      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('acme', 'model-1', [
         { op: 'replace', path: '/supports_forced_tool_choice', value: false },
         { op: 'replace', path: '/supports_structured_output', value: true },
       ]),
@@ -441,7 +502,7 @@ describe('AIModelsManagement', () => {
 
   it('rejects a non-numeric entry instead of clearing it', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/model-1/edit')
+    await mountAt('/admin/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -463,7 +524,7 @@ describe('AIModelsManagement', () => {
 
   it('deletes a model only after the confirmation is accepted', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/model-1/edit')
+    await mountAt('/admin/ai-models/model-1/edit')
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -485,13 +546,13 @@ describe('AIModelsManagement', () => {
     fireEvent.click(confirm.getByRole('button', { name: 'Delete model' }))
 
     await waitFor(() =>
-      expect(endpoints.deleteAIModel).toHaveBeenCalledWith('model-1'),
+      expect(endpoints.deleteAIModel).toHaveBeenCalledWith('acme', 'model-1'),
     )
   })
 
   it('patches a provider from the edit-provider route', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/prov-1/edit-provider')
+    await mountAt('/admin/ai-models/prov-1/edit-provider')
 
     await waitFor(() =>
       expect(screen.getByText('Edit Anthropic')).toBeInTheDocument(),
@@ -505,9 +566,11 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() =>
-      expect(endpoints.updateAIProvider).toHaveBeenCalledWith('prov-1', [
-        { op: 'replace', path: '/name', value: 'Anthropic Production' },
-      ]),
+      expect(endpoints.updateAIProvider).toHaveBeenCalledWith(
+        'acme',
+        'prov-1',
+        [{ op: 'replace', path: '/name', value: 'Anthropic Production' }],
+      ),
     )
   })
 
@@ -516,7 +579,7 @@ describe('AIModelsManagement', () => {
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([
       { ...provider, base_url: null },
     ])
-    await mountAt('/agents/ai-models/prov-1/edit-provider')
+    await mountAt('/admin/ai-models/prov-1/edit-provider')
 
     await waitFor(() =>
       expect(screen.getByText('Edit Anthropic')).toBeInTheDocument(),
@@ -530,7 +593,7 @@ describe('AIModelsManagement', () => {
   })
 
   it('blocks provider deletion while it still serves models', async () => {
-    await mountAt('/agents/ai-models/prov-1/edit-provider')
+    await mountAt('/admin/ai-models/prov-1/edit-provider')
 
     await waitFor(() =>
       expect(screen.getByText('Edit Anthropic')).toBeInTheDocument(),
@@ -543,7 +606,7 @@ describe('AIModelsManagement', () => {
 
   it('sets provider credentials from the credentials route', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/prov-1/credentials')
+    await mountAt('/admin/ai-models/prov-1/credentials')
 
     await waitFor(() =>
       expect(screen.getByText('Anthropic credentials')).toBeInTheDocument(),
@@ -555,6 +618,7 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.setAIProviderCredentials).toHaveBeenCalledWith(
+        'acme',
         'prov-1',
         'sk-new-key',
       ),
@@ -563,12 +627,12 @@ describe('AIModelsManagement', () => {
 
   it('lists discovered models and imports the ones selected', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/prov-1/discover')
+    await mountAt('/admin/ai-models/prov-1/discover')
 
     await waitFor(() =>
       expect(screen.getByText('Claude Opus 5')).toBeInTheDocument(),
     )
-    expect(endpoints.discoverAIModels).toHaveBeenCalledWith('prov-1')
+    expect(endpoints.discoverAIModels).toHaveBeenCalledWith('acme', 'prov-1')
     // The already-configured model is listed but cannot be selected.
     expect(screen.getByText('Already configured')).toBeInTheDocument()
     expect(
@@ -579,7 +643,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 model' }))
 
     await waitFor(() =>
-      expect(endpoints.importAIModels).toHaveBeenCalledWith('prov-1', {
+      expect(endpoints.importAIModels).toHaveBeenCalledWith('acme', 'prov-1', {
         models: [
           expect.objectContaining({
             display_name: 'Claude Opus 5',
@@ -592,7 +656,7 @@ describe('AIModelsManagement', () => {
 
   it('removes provider credentials from the credentials dialog', async () => {
     const endpoints = await import('@/api/endpoints')
-    await mountAt('/agents/ai-models/prov-1/credentials')
+    await mountAt('/admin/ai-models/prov-1/credentials')
 
     await waitFor(() =>
       expect(
@@ -609,6 +673,7 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.deleteAIProviderCredentials).toHaveBeenCalledWith(
+        'acme',
         'prov-1',
       ),
     )

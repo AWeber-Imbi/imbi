@@ -5,17 +5,18 @@ import json
 import typing
 from unittest import mock
 
+from apps.api.tests.endpoints import test_ai_models as model_tests
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from apps.api.tests.endpoints import test_prompts as base
-from imbi.api.endpoints import ai_providers, prompts
+from imbi.api.endpoints import prompts
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.llm import typesafe
 from imbi.common.prompts import resolve as prompt_resolve
 
 ORG = base.ORG
 RENDER_URL = base.RENDER_URL
 RUN_URL = f'/organizations/{ORG}/prompts/run'
-GET_PROVIDER = ai_providers._GET_QUERY
-RUN_MODEL = prompts._RUN_MODEL_QUERY
+RUN_MODEL = llm_resolve.EXPLICIT_QUERY
 
 QUESTIONS: dict[str, typing.Any] = {
     'urgent': {
@@ -34,25 +35,36 @@ SCHEMA = {'service': {'type': 'str', 'required': True}}
 DECISION_MODEL_ROW = [
     {'model_id': 'jev-latest', 'enabled': True, 'model_type': 'decision'}
 ]
-RUN_MODEL_ROW = [
-    {
-        'model_id': 'jev-latest',
-        'enabled': True,
-        'model_type': 'decision',
-        'provider_id': 'prv-ts',
-    }
-]
-TYPESAFE_PROVIDER = [
-    {
-        'p': provider_tests.provider_props(
-            id='prv-ts',
-            slug='typesafe',
-            name='TypeSafe',
-            driver='typesafe',
-            credentials_encrypted='ciphertext',
-        )
-    }
-]
+
+
+def run_model_row(
+    provider: dict[str, typing.Any] | None = None, **model: typing.Any
+) -> list[dict[str, typing.Any]]:
+    """The decision model ``jev`` and its TypeSafe provider."""
+    return [
+        {
+            'm': model_tests.model_props(
+                **{
+                    'slug': 'jev',
+                    'model_id': 'jev-latest',
+                    'model_type': 'decision',
+                    **model,
+                }
+            ),
+            'p': provider_tests.provider_props(
+                **{
+                    'id': 'prv-ts',
+                    'slug': 'typesafe',
+                    'name': 'TypeSafe',
+                    'driver': 'typesafe',
+                    'credentials_encrypted': 'ciphertext',
+                    **(provider or {}),
+                }
+            ),
+        }
+    ]
+
+
 ANSWERS = {
     'model': 'jev-latest',
     'answers': {
@@ -272,8 +284,7 @@ class DecisionRunTestCase(base.PromptTestBase):
             *extra,
             (base.GET_PROMPT, decision_prompt_row()),
             (base.GET_VERSION, decision_version_row()),
-            (RUN_MODEL, RUN_MODEL_ROW),
-            (GET_PROVIDER, TYPESAFE_PROVIDER),
+            (RUN_MODEL, run_model_row()),
         )
 
     def run_ref(self, **body: typing.Any) -> typing.Any:
@@ -352,31 +363,11 @@ class DecisionRunTestCase(base.PromptTestBase):
         self.assertEqual(self.run_ref().status_code, 409)
 
     def test_non_typesafe_driver_is_422(self) -> None:
-        self.route_run(
-            (
-                GET_PROVIDER,
-                [{'p': provider_tests.provider_props(id='prv-ts')}],
-            )
-        )
+        self.route_run((RUN_MODEL, run_model_row({'driver': 'anthropic'})))
         self.assertEqual(self.run_ref().status_code, 422)
 
     def test_disabled_provider_is_422(self) -> None:
-        self.route_run(
-            (
-                GET_PROVIDER,
-                [
-                    {
-                        'p': provider_tests.provider_props(
-                            id='prv-ts',
-                            slug='typesafe',
-                            driver='typesafe',
-                            enabled=False,
-                            credentials_encrypted='ciphertext',
-                        )
-                    }
-                ],
-            )
-        )
+        self.route_run((RUN_MODEL, run_model_row({'enabled': False})))
         response = self.run_ref()
         self.assertEqual(response.status_code, 422)
         self.assertIn('is disabled', response.json()['detail'])
@@ -408,7 +399,7 @@ class DecisionRunTestCase(base.PromptTestBase):
     def test_restricted_model_needs_an_allowed_team(self) -> None:
         self.as_principal('prompt:update')
         router = self.route_run(
-            (RUN_MODEL, [{**RUN_MODEL_ROW[0], 'access_scope': 'restricted'}])
+            (RUN_MODEL, run_model_row(access_scope='restricted'))
         )
         response = self.run_ref()
         self.assertEqual(response.status_code, 403, response.text)

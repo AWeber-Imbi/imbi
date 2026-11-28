@@ -458,9 +458,14 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             response.json()['detail']['error'], 'model_not_allowed'
         )
         resolve.assert_awaited_once_with(self.mock_db, 'agents/triage@2')
+        # The model and its teams come from the catalog of the org.
+        self.assertEqual(
+            self.mock_db.execute.await_args_list[1].args[1]['org_ids'],
+            ['engineering'],
+        )
         self.assertEqual(
             self.mock_db.execute.await_args_list[2].args[1],
-            {'slug': 'opus', 'team': 'team-1'},
+            {'slug': 'opus', 'team': 'team-1', 'org_ids': ['engineering']},
         )
         self.assertFalse(any('CREATE (a:Agent' in q for q in self._queries()))
 

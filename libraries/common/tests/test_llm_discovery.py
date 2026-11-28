@@ -359,7 +359,238 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_unsupported_driver(self) -> None:
-        """Bedrock discovery is not implemented yet."""
+        """TypeSafe has no list-models API."""
+        with self.assertRaises(discovery.DiscoveryError):
+            await discovery.list_models('typesafe', 'k', None)
+
+    async def test_vertex_pages_and_keeps_gemini(self) -> None:
+        """The express key is sent, and every page is read."""
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.headers['x-goog-api-key'], 'gk')
+            self.assertEqual(
+                request.url.path, '/v1beta1/publishers/google/models'
+            )
+            token = request.url.params.get('pageToken', '')
+            seen.append(token)
+            if not token:
+                return httpx.Response(
+                    200,
+                    json={
+                        'publisherModels': [
+                            {
+                                'name': (
+                                    'publishers/google/models/gemini-2.5-pro'
+                                )
+                            },
+                            {'name': 'publishers/google/models/imagen-4'},
+                        ],
+                        'nextPageToken': 'p2',
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    'publisherModels': [
+                        {'name': 'publishers/google/models/gemini-3-flash'}
+                    ]
+                },
+            )
+
+        with _transport(handler):
+            found = await discovery.list_models('vertex', 'gk', None)
+        self.assertEqual(seen, ['', 'p2'])
+        self.assertEqual(
+            [m.model_id for m in found], ['gemini-2.5-pro', 'gemini-3-flash']
+        )
+
+    async def test_vertex_stops_on_a_repeated_token(self) -> None:
+        """A provider that repeats its page token does not loop."""
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.params.get('pageToken', ''))
+            return httpx.Response(
+                200, json={'publisherModels': [], 'nextPageToken': 'same'}
+            )
+
+        with _transport(handler):
+            found = await discovery.list_models('vertex', 'gk', None)
+        self.assertEqual(found, [])
+        self.assertEqual(calls, ['', 'same'])
+
+    async def test_vertex_refused_key_says_add_by_id(self) -> None:
+        """A 403 for an express key tells the admin what to do."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(403, json={'error': 'gk'})
+
+        with (
+            _transport(handler),
+            self.assertRaises(discovery.DiscoveryError) as ctx,
+        ):
+            await discovery.list_models('vertex', 'gk', None)
+        self.assertEqual(ctx.exception.status, 403)
+        self.assertIn('add the models by id', str(ctx.exception))
+        self.assertNotIn('gk', str(ctx.exception))
+
+    async def test_bedrock_lists_models_and_profiles(self) -> None:
+        """On-demand text models and active system profiles are kept."""
+        arn = 'arn:aws:bedrock:us-west-2::foundation-model/'
+        text = {'outputModalities': ['TEXT']}
+        models = {
+            'modelSummaries': [
+                {
+                    'modelId': 'amazon.nova-pro-v1:0',
+                    'modelName': 'Nova Pro',
+                    'inferenceTypesSupported': ['ON_DEMAND'],
+                    **text,
+                },
+                {
+                    'modelId': 'anthropic.claude-x',
+                    'inferenceTypesSupported': ['INFERENCE_PROFILE'],
+                    **text,
+                },
+                {
+                    'modelId': 'amazon.titan-embed',
+                    'inferenceTypesSupported': ['ON_DEMAND'],
+                    'outputModalities': ['EMBEDDING'],
+                },
+                {
+                    'modelId': 'amazon.old',
+                    'inferenceTypesSupported': ['ON_DEMAND'],
+                    'modelLifecycle': {'status': 'LEGACY'},
+                    **text,
+                },
+            ]
+        }
+
+        def profile(
+            profile_id: str, model: str, status: str = 'ACTIVE'
+        ) -> dict[str, typing.Any]:
+            return {
+                'inferenceProfileId': profile_id,
+                'inferenceProfileName': profile_id.upper(),
+                'status': status,
+                'models': [{'modelArn': arn + model}],
+            }
+
+        pages = {
+            '': {
+                'inferenceProfileSummaries': [
+                    profile('us.anthropic.claude-x', 'anthropic.claude-x'),
+                    profile('us.amazon.titan-embed', 'amazon.titan-embed'),
+                ],
+                'nextToken': 'p2',
+            },
+            'p2': {
+                'inferenceProfileSummaries': [
+                    profile('eu.anthropic.claude-x', 'anthropic.claude-x'),
+                    profile('us.amazon.old', 'amazon.old'),
+                    profile('us.anthropic.claude-x', 'anthropic.claude-x'),
+                ],
+            },
+        }
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(request.headers['authorization'], 'Bearer bk')
+            self.assertEqual(
+                request.url.host, 'bedrock.us-east-1.amazonaws.com'
+            )
+            calls.append(request.url.path)
+            if request.url.path == '/foundation-models':
+                self.assertEqual(
+                    request.url.params['byOutputModality'], 'TEXT'
+                )
+                return httpx.Response(200, json=models)
+            self.assertEqual(request.url.path, '/inference-profiles')
+            self.assertEqual(request.url.params['type'], 'SYSTEM_DEFINED')
+            token = request.url.params.get('nextToken', '')
+            return httpx.Response(200, json=pages[token])
+
+        with _transport(handler):
+            found = await discovery.list_models(
+                'bedrock', 'bk', None, region='us-east-1'
+            )
+        self.assertEqual(
+            [(m.model_id, m.display_name) for m in found],
+            [
+                ('amazon.nova-pro-v1:0', 'Nova Pro'),
+                ('us.anthropic.claude-x', 'US.ANTHROPIC.CLAUDE-X'),
+                ('eu.anthropic.claude-x', 'EU.ANTHROPIC.CLAUDE-X'),
+            ],
+        )
+        self.assertEqual(
+            calls,
+            [
+                '/foundation-models',
+                '/inference-profiles',
+                '/inference-profiles',
+            ],
+        )
+
+    async def test_bedrock_stops_on_a_repeated_token(self) -> None:
+        """A repeated profile page token does not loop."""
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            if request.url.path == '/foundation-models':
+                return httpx.Response(200, json={'modelSummaries': []})
+            return httpx.Response(
+                200, json={'inferenceProfileSummaries': [], 'nextToken': 't'}
+            )
+
+        with _transport(handler):
+            await discovery.list_models(
+                'bedrock', 'bk', None, region='us-east-1'
+            )
+        self.assertEqual(calls.count('/inference-profiles'), 2)
+
+    async def test_bedrock_without_a_key_uses_the_signer(self) -> None:
+        """With no key, ``auth`` signs the request."""
+
+        class Signer(httpx.Auth):
+            def auth_flow(
+                self, request: httpx.Request
+            ) -> typing.Generator[httpx.Request, httpx.Response]:
+                request.headers['Authorization'] = 'AWS4-HMAC-SHA256 x'
+                yield request
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(
+                request.headers['authorization'], 'AWS4-HMAC-SHA256 x'
+            )
+            return httpx.Response(200, json={'modelSummaries': []})
+
+        with _transport(handler):
+            found = await discovery.list_models(
+                'bedrock', '', None, region='eu-west-1', auth=Signer()
+            )
+        self.assertEqual(found, [])
+
+    async def test_bedrock_bad_region(self) -> None:
+        """A region that changes the host is refused before the call."""
+        with self.assertRaises(discovery.DiscoveryError) as ctx:
+            await discovery.list_models(
+                'bedrock', 'k', None, region='evil.example/x#'
+            )
+        self.assertIn('not a valid AWS region', str(ctx.exception))
+
+    def test_check_location_accepts_real_values(self) -> None:
+        """Real regions and project IDs pass."""
+        for driver, region, project in (
+            ('bedrock', 'us-east-1', None),
+            ('bedrock', 'us-gov-west-1', None),
+            ('vertex', 'global', 'my-project-123'),
+            ('vertex', 'europe-west4', None),
+        ):
+            drivers.check_location(driver, region, project)
+
+    async def test_bedrock_without_a_region(self) -> None:
+        """There is no control plane endpoint without a region."""
         with self.assertRaises(discovery.DiscoveryError):
             await discovery.list_models('bedrock', 'k', None)
 

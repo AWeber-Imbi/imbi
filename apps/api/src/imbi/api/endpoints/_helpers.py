@@ -340,10 +340,6 @@ _ACCOUNT_ORGS_QUERY: typing.LiteralString = (
     'MATCH (:ServiceAccount {{slug: {who}}})-[:MEMBER_OF]->'
     '(o:Organization) RETURN DISTINCT o.slug AS slug'
 )
-_ORG_TEAMS_QUERY: typing.LiteralString = (
-    'MATCH (t:Team)-[:BELONGS_TO]->(o:Organization) '
-    'WHERE o.slug IN {slugs} RETURN DISTINCT t.id AS id'
-)
 
 
 async def caller_org_slugs(
@@ -391,17 +387,6 @@ async def caller_org_ids(
     records = await db.execute(_ORG_IDS_QUERY, {'slugs': slugs}, ['id'])
     ids = (graph.parse_agtype(r['id']) for r in records)
     return [str(value) for value in ids if value]
-
-
-async def caller_team_ids(
-    db: graph.Graph, auth: permissions.AuthContext
-) -> set[str]:
-    """The ids of the teams of the caller's organizations."""
-    slugs = sorted(await caller_org_slugs(db, auth))
-    if not slugs:
-        return set()
-    records = await db.execute(_ORG_TEAMS_QUERY, {'slugs': slugs}, ['id'])
-    return {str(graph.parse_agtype(r['id'])) for r in records}
 
 
 async def lookup_project_slugs(

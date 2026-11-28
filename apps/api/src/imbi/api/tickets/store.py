@@ -42,6 +42,7 @@ from imbi.common.labels import (
 from imbi.common.labels import (
     normalize_labels as normalize_labels,
 )
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.workflows.registry import agent as agent_step
 
 type Pool = psycopg_pool.AsyncConnectionPool[
@@ -1924,7 +1925,9 @@ class TicketStore:
         """Delete a closed task and return its row.
 
         Its events, sessions, requests, budget ledger, and harness rows
-        go by cascade; its dependency and project rows go here. A
+        go by cascade; its dependency and project rows go here. The AI
+        model spend of its ledger in this month goes to
+        ``deleted_model_spend``, for the monthly spend cap of a model. A
         ``held`` dependent that no other gate holds is released. The
         secret resolutions and the ClickHouse rows (archived events,
         usage) stay, for the security and cost history.
@@ -2006,6 +2009,19 @@ class TicketStore:
                 'DELETE FROM tickets.ticket_projects'
                 ' WHERE organization_id = %s AND ticket_id = %s',
                 (organization_id, task['id']),
+            )
+            # The ledger rows go by cascade. Keep the AI model spend of
+            # this month, which the monthly spend cap of a model counts.
+            await conn.execute(
+                'INSERT INTO tickets.deleted_model_spend'
+                ' (id, ai_model_id, cost, recorded_at)'
+                ' SELECT id, ai_model_id, cost, recorded_at'
+                ' FROM tickets.budget_ledger'
+                ' WHERE ticket_id = %s AND ai_model_id IS NOT NULL'
+                ' AND cost IS NOT NULL'
+                " AND recorded_at >= date_trunc('month', NOW()"
+                " AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'",
+                (task['id'],),
             )
             await conn.execute(
                 'DELETE FROM tickets.tickets WHERE id = %s', (task['id'],)
@@ -3261,13 +3277,18 @@ class TicketStore:
         *,
         actor: Actor,
         system: Actor,
+        ai_model_id: str | None = None,
+        spend_cap: decimal.Decimal | None = None,
     ) -> tuple[Row, Row, bool]:
         """Record a usage report; return the task, the ledger row, and
         whether the row is new.
 
-        The ledger row keeps the prices used, and the task totals change
-        in the same transaction. When the cost total passes the budget,
-        the task closes with ``exceeded_ceiling``. A repeat with the same
+        The ledger row keeps the prices used and the AIModel id of them,
+        and the task totals change in the same transaction. When the
+        cost total passes the budget, the task closes with
+        ``exceeded_ceiling`` (reason ``budget``). When the month-to-date
+        spend of the AIModel reaches ``spend_cap``, it closes with
+        reason ``spend_cap``. A repeat with the same
         idempotency key returns the first row, even when the first report
         closed the task.
 
@@ -3312,9 +3333,9 @@ class TicketStore:
                     ' cache_write_1h_tokens, input_cost_per_million,'
                     ' output_cost_per_million, cache_read_cost_per_million,'
                     ' cache_write_cost_per_million,'
-                    ' cache_write_1h_cost_per_million, cost) VALUES (%s,'
-                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s) RETURNING *',
+                    ' cache_write_1h_cost_per_million, cost, ai_model_id)'
+                    ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s) RETURNING *',
                     (
                         uuid.uuid4(),
                         task['id'],
@@ -3327,6 +3348,7 @@ class TicketStore:
                             for _count_column, price_column in _TOKEN_PRICES
                         ),
                         cost,
+                        ai_model_id,
                     ),
                 )
                 if row is None:  # pragma: no cover - RETURNING yields a row
@@ -3363,6 +3385,19 @@ class TicketStore:
                 await write.update(totals)
                 if remaining is not None and remaining < 0:
                     await _close(write, 'exceeded_ceiling', 'budget', system)
+                # ponytail: concurrent reports of other tasks can each see
+                # the spend under the cap, so the spend can go over the cap
+                # by the cost of the calls in flight. Lock the AIModel id
+                # if that overshoot is too large.
+                elif (
+                    await llm_resolve.over_cap(
+                        write.conn, ai_model_id, spend_cap
+                    )
+                    is not None
+                ):
+                    await _close(
+                        write, 'exceeded_ceiling', 'spend_cap', system
+                    )
         except TaskClosed:
             repeat = await self._usage_repeat(
                 organization_id, short_id, usage.idempotency_key

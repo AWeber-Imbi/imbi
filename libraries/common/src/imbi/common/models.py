@@ -956,8 +956,9 @@ class AIProviderWorkloadIdentity(pydantic.BaseModel):
 class AIProvider(Node):
     """A configured instance of an LLM provider.
 
-    Providers are global: one installation serves every organization
-    from the same company account. The driver catalog
+    A provider belongs to one organization, and ``slug`` is unique in
+    the organization: the ``(org_id, slug)`` unique index enforces it.
+    The driver catalog
     (:mod:`imbi.common.llm.drivers`) is static code; an ``AIProvider``
     node exists only once an admin configures one.
 
@@ -967,6 +968,9 @@ class AIProvider(Node):
     the key, stored in the clear so an admin can tell two keys apart.
     """
 
+    organization: BelongsToOrganization
+    #: Denormalised so ``(org_id, slug)`` can carry a unique index.
+    org_id: str | None = None
     driver: AIProviderDriver
     #: ``None`` means "use the driver's default endpoint".
     base_url: str | None = None
@@ -1031,11 +1035,12 @@ class AIProvider(Node):
 class AIModel(Node):
     """One model Imbi may call, served by an ``AIProvider``.
 
-    The catalog is global. ``slug`` is a stable alias
-    (``default-chat``) so agent configuration need not name a vendor
-    model id, while ``model_id`` is the identifier actually sent to the
-    provider. ``slug`` is unique by a graph index; ``model_id`` is
-    unique per provider, which the endpoint enforces.
+    A model belongs to one organization, with the provider that serves
+    it. ``slug`` is a stable alias (``default-chat``) so agent
+    configuration need not name a vendor model id, while ``model_id`` is
+    the identifier actually sent to the provider. ``slug`` is unique in
+    the organization by the ``(org_id, slug)`` unique index;
+    ``model_id`` is unique per provider, which the endpoint enforces.
 
     ``access_scope`` is explicit rather than inferred from the presence
     of ``ALLOWED_FOR`` edges, so "every team" and "no team has been
@@ -1047,6 +1052,9 @@ class AIModel(Node):
     generative models.
     """
 
+    organization: BelongsToOrganization
+    #: Denormalised so ``(org_id, slug)`` can carry a unique index.
+    org_id: str | None = None
     provider: typing.Annotated[
         AIProvider, Edge(rel_type='SERVED_BY', direction='OUTGOING')
     ]
@@ -1085,7 +1093,8 @@ class AIModel(Node):
         default=None, ge=0, le=2
     )
     default_top_p: float | None = pydantic.Field(default=None, ge=0, le=1)
-    #: Advisory only until spend enforcement exists.
+    #: USD for each calendar month (UTC). At or over it, the model
+    #: cannot be used (ADR 0018).
     monthly_spend_cap: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )

@@ -94,6 +94,7 @@ import type {
   CurrentReleaseEnvironment,
   DashboardMetrics,
   DashboardStatus,
+  DefaultAIModel,
   DeploymentCompareResult,
   DeploymentPromoteRequest,
   DeploymentRun,
@@ -2014,77 +2015,124 @@ export const listAIProviderDrivers = async (
   return Array.isArray(response) ? response : []
 }
 
+const aiProvidersPath = (orgSlug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/ai-providers`
+
+const aiProviderPath = (orgSlug: string, id: string) =>
+  `${aiProvidersPath(orgSlug)}/${encodeURIComponent(id)}`
+
+const aiModelsPath = (orgSlug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/ai-models`
+
 export const listAIProviders = async (
+  orgSlug: string,
   signal?: AbortSignal,
 ): Promise<AIProvider[]> => {
   const response = await apiClient.get<AIProvider[]>(
-    `/ai-providers/`,
+    `${aiProvidersPath(orgSlug)}/`,
     undefined,
     signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const createAIProvider = (provider: AIProviderCreate) =>
-  apiClient.post<AIProvider>(`/ai-providers/`, provider)
+export const createAIProvider = (orgSlug: string, provider: AIProviderCreate) =>
+  apiClient.post<AIProvider>(`${aiProvidersPath(orgSlug)}/`, provider)
 
-export const updateAIProvider = (id: string, operations: PatchOperation[]) =>
-  apiClient.patch<AIProvider>(
-    `/ai-providers/${encodeURIComponent(id)}`,
-    operations,
-  )
+export const updateAIProvider = (
+  orgSlug: string,
+  id: string,
+  operations: PatchOperation[],
+) => apiClient.patch<AIProvider>(aiProviderPath(orgSlug, id), operations)
 
-export const deleteAIProvider = (id: string) =>
-  apiClient.delete<void>(`/ai-providers/${encodeURIComponent(id)}`)
+export const deleteAIProvider = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(aiProviderPath(orgSlug, id))
 
 // The key is write-only: responses only ever carry `has_credentials`,
 // `credential_hint` and `credential_updated_at`.
-export const setAIProviderCredentials = (id: string, apiKey: string) =>
-  apiClient.put<AIProvider>(
-    `/ai-providers/${encodeURIComponent(id)}/credentials`,
-    { api_key: apiKey },
-  )
+export const setAIProviderCredentials = (
+  orgSlug: string,
+  id: string,
+  apiKey: string,
+) =>
+  apiClient.put<AIProvider>(`${aiProviderPath(orgSlug, id)}/credentials`, {
+    api_key: apiKey,
+  })
 
 // Unlike the other deletes this one answers 200 with the updated
 // provider, so `has_credentials` comes back already flipped to false.
-export const deleteAIProviderCredentials = (id: string) =>
-  apiClient.delete<AIProvider>(
-    `/ai-providers/${encodeURIComponent(id)}/credentials`,
-  )
+export const deleteAIProviderCredentials = (orgSlug: string, id: string) =>
+  apiClient.delete<AIProvider>(`${aiProviderPath(orgSlug, id)}/credentials`)
 
 export const setAIProviderWorkloadIdentity = (
+  orgSlug: string,
   id: string,
-  body: { organization: string; target: Record<string, unknown> },
+  body: { target: Record<string, unknown> },
 ) =>
   apiClient.put<AIProvider>(
-    `/ai-providers/${encodeURIComponent(id)}/workload-identity`,
+    `${aiProviderPath(orgSlug, id)}/workload-identity`,
     body,
   )
 
-export const deleteAIProviderWorkloadIdentity = (id: string) =>
+export const deleteAIProviderWorkloadIdentity = (orgSlug: string, id: string) =>
   apiClient.delete<AIProvider>(
-    `/ai-providers/${encodeURIComponent(id)}/workload-identity`,
+    `${aiProviderPath(orgSlug, id)}/workload-identity`,
   )
 
 export const listAIModels = async (
+  orgSlug: string,
   signal?: AbortSignal,
 ): Promise<AIModel[]> => {
   const response = await apiClient.get<AIModel[]>(
-    `/ai-models/`,
+    `${aiModelsPath(orgSlug)}/`,
     undefined,
     signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const createAIModel = (model: AIModelCreate) =>
-  apiClient.post<AIModel>(`/ai-models/`, model)
+export const createAIModel = (orgSlug: string, model: AIModelCreate) =>
+  apiClient.post<AIModel>(`${aiModelsPath(orgSlug)}/`, model)
 
-export const updateAIModel = (id: string, operations: PatchOperation[]) =>
-  apiClient.patch<AIModel>(`/ai-models/${encodeURIComponent(id)}`, operations)
+export const updateAIModel = (
+  orgSlug: string,
+  id: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<AIModel>(
+    `${aiModelsPath(orgSlug)}/${encodeURIComponent(id)}`,
+    operations,
+  )
 
-export const deleteAIModel = (id: string) =>
-  apiClient.delete<void>(`/ai-models/${encodeURIComponent(id)}`)
+export const deleteAIModel = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(`${aiModelsPath(orgSlug)}/${encodeURIComponent(id)}`)
+
+// The default model of an organization, or of a team when `teamSlug`
+// is set. A `null` slug clears it.
+const defaultAIModelPath = (orgSlug: string, teamSlug?: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}` +
+  (teamSlug ? `/teams/${encodeURIComponent(teamSlug)}` : '') +
+  '/default-ai-model'
+
+export const getDefaultAIModel = (
+  orgSlug: string,
+  teamSlug?: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<DefaultAIModel>(
+    defaultAIModelPath(orgSlug, teamSlug),
+    undefined,
+    signal,
+  )
+
+export const setDefaultAIModel = (
+  orgSlug: string,
+  slug: null | string,
+  teamSlug?: string,
+) =>
+  apiClient.put<DefaultAIModel>(defaultAIModelPath(orgSlug, teamSlug), {
+    slug,
+  })
 
 // Prompt CMS. A prompt is addressed by `namespace/slug`; versions are
 // immutable, and labels are movable pointers to one version.
@@ -2177,26 +2225,35 @@ export const runPrompt = (orgSlug: string, body: PromptRunRequest) =>
 
 // Discovery is a POST because it makes an outbound call with the
 // provider's stored credentials; nothing is cached server-side.
-export const discoverAIModels = (providerId: string) =>
+export const discoverAIModels = (orgSlug: string, providerId: string) =>
   apiClient.post<AIDiscoveryResponse>(
-    `/ai-providers/${encodeURIComponent(providerId)}/discover`,
+    `${aiProviderPath(orgSlug, providerId)}/discover`,
   )
 
 export const importAIModels = (
+  orgSlug: string,
   providerId: string,
   body: AIModelImportRequest,
 ) =>
   apiClient.post<AIModelImportResult>(
-    `/ai-providers/${encodeURIComponent(providerId)}/import-models`,
+    `${aiProviderPath(orgSlug, providerId)}/import-models`,
     body,
   )
 
 // POST because the preview downloads the LiteLLM price file.
-export const previewAIModelPrices = () =>
-  apiClient.post<AIPriceSyncPreview>('/ai-models/price-sync/preview')
+export const previewAIModelPrices = (orgSlug: string) =>
+  apiClient.post<AIPriceSyncPreview>(
+    `${aiModelsPath(orgSlug)}/price-sync/preview`,
+  )
 
-export const applyAIModelPrices = (body: AIPriceSyncApplyRequest) =>
-  apiClient.post<AIPriceSyncApplyResult>('/ai-models/price-sync/apply', body)
+export const applyAIModelPrices = (
+  orgSlug: string,
+  body: AIPriceSyncApplyRequest,
+) =>
+  apiClient.post<AIPriceSyncApplyResult>(
+    `${aiModelsPath(orgSlug)}/price-sync/apply`,
+    body,
+  )
 
 // Admin - Auth Providers (global). Login providers are org-less
 // Integrations backed by a login-capable identity plugin. Authentication

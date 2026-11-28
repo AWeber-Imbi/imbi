@@ -10,17 +10,26 @@ status that failed. Provider response bodies and the API key never
 appear in it, because the caller surfaces the message verbatim.
 """
 
+import collections.abc
 import dataclasses
 import datetime
 import logging
 import typing
+import urllib.parse
 
 import anthropic
 import httpx
 
+from imbi.common.llm import drivers
+
 LOGGER = logging.getLogger(__name__)
 
-__all__ = ['DiscoveredModel', 'DiscoveryError', 'list_models']
+__all__ = [
+    'DiscoveredModel',
+    'DiscoveryError',
+    'DiscoveryRefused',
+    'list_models',
+]
 
 #: Outbound calls target an endpoint an admin supplied for
 #: ``openai_compatible`` providers, so they get a short leash.
@@ -47,6 +56,10 @@ class DiscoveryError(Exception):
         self.status = status
 
 
+class DiscoveryRefused(DiscoveryError):
+    """The provider does not let the credential list models."""
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class DiscoveredModel:
     """One model reported by a provider."""
@@ -59,7 +72,13 @@ class DiscoveredModel:
 
 
 async def list_models(
-    driver: str, api_key: str, base_url: str | None, *, bearer: bool = False
+    driver: str,
+    api_key: str,
+    base_url: str | None,
+    *,
+    bearer: bool = False,
+    region: str | None = None,
+    auth: httpx.Auth | None = None,
 ) -> list[DiscoveredModel]:
     """Return the models ``driver`` reports for ``api_key``.
 
@@ -69,6 +88,9 @@ async def list_models(
         base_url: Endpoint to call, already resolved against the
             driver's default.
         bearer: ``api_key`` is a workload identity access token.
+        region: Bedrock only: the AWS region to list.
+        auth: Bedrock only: signs the request when ``api_key`` is
+            empty (SigV4 with the AWS credentials of the process).
 
     Returns:
         The provider's models, in the order the provider returned them.
@@ -86,6 +108,10 @@ async def list_models(
                 f'Driver {driver!r} has no endpoint configured'
             )
         return await _list_openai(api_key, base_url)
+    if driver == 'bedrock':
+        return await _list_bedrock(api_key, region, auth)
+    if driver == 'vertex':
+        return await _list_vertex(api_key, base_url, bearer=bearer)
     raise DiscoveryError(f'Driver {driver!r} does not support discovery')
 
 
@@ -183,6 +209,164 @@ async def _list_openai(api_key: str, base_url: str) -> list[DiscoveredModel]:
     return found
 
 
+async def _list_bedrock(
+    api_key: str, region: str | None, auth: httpx.Auth | None
+) -> list[DiscoveredModel]:
+    """List Bedrock foundation models and system inference profiles.
+
+    The control plane is ``bedrock.{region}``, not the runtime endpoint
+    in ``base_url``. Only active models with text output are kept. A
+    model with on-demand inference is listed by its own id. Most current
+    models (Claude among them) are available only through a system
+    inference profile such as ``us.anthropic.claude-...``, which
+    Converse accepts as ``modelId``. A profile is kept when it is active
+    and all its models give text output.
+    """
+    if not region:
+        raise DiscoveryError("Driver 'bedrock' has no region configured")
+    try:
+        drivers.check_location('bedrock', region, None)
+    except ValueError as exc:
+        raise DiscoveryError(str(exc)) from None
+    base = f'https://bedrock.{region}.amazonaws.com'
+    headers = {'Authorization': f'Bearer {api_key}'} if api_key else {}
+    payload = await _get_json(
+        f'{base}/foundation-models?byOutputModality=TEXT',
+        headers,
+        'bedrock',
+        auth,
+    )
+    found: list[DiscoveredModel] = []
+    text_models: set[str] = set()
+    for item in _entries(payload, 'modelSummaries'):
+        model_id = item.get('modelId')
+        if (
+            not isinstance(model_id, str)
+            or not model_id
+            or 'TEXT' not in (item.get('outputModalities') or ())
+            or (item.get('modelLifecycle') or {}).get('status', 'ACTIVE')
+            != 'ACTIVE'
+        ):
+            continue
+        text_models.add(model_id)
+        if 'ON_DEMAND' in (item.get('inferenceTypesSupported') or ()):
+            found.append(
+                DiscoveredModel(
+                    model_id=model_id,
+                    display_name=str(item.get('modelName') or model_id),
+                )
+            )
+    known = {model.model_id for model in found}
+    async for payload in _paged(
+        f'{base}/inference-profiles?type=SYSTEM_DEFINED&maxResults=1000',
+        'nextToken',
+        'nextToken',
+        headers,
+        'bedrock',
+        auth,
+    ):
+        for item in _entries(payload, 'inferenceProfileSummaries'):
+            profile_id = item.get('inferenceProfileId')
+            models = [
+                str(m.get('modelArn') or '').rpartition('/')[2]
+                for m in _entries(item, 'models')
+            ]
+            if (
+                not isinstance(profile_id, str)
+                or not profile_id
+                or profile_id in known
+                or item.get('status') != 'ACTIVE'
+                or not models
+                or not text_models.issuperset(models)
+            ):
+                continue
+            known.add(profile_id)
+            found.append(
+                DiscoveredModel(
+                    model_id=profile_id,
+                    display_name=str(
+                        item.get('inferenceProfileName') or profile_id
+                    ),
+                )
+            )
+        if len(found) >= MAX_MODELS:
+            break
+    return found[:MAX_MODELS]
+
+
+async def _list_vertex(
+    api_key: str, base_url: str | None, *, bearer: bool = False
+) -> list[DiscoveredModel]:
+    """List Gemini models (``publishers.models.list``, ``v1beta1``).
+
+    The express mode API reference does not include this method, so an
+    express key can be refused. A 401 or 403 then gives a message that
+    tells the admin to add the models by id.
+    """
+    url = (
+        f'{(base_url or "https://aiplatform.googleapis.com").rstrip("/")}'
+        '/v1beta1/publishers/google/models'
+    )
+    headers = (
+        {'Authorization': f'Bearer {api_key}'}
+        if bearer
+        else {'x-goog-api-key': api_key}
+    )
+    found: list[DiscoveredModel] = []
+    try:
+        async for payload in _paged(
+            f'{url}?pageSize=100',
+            'pageToken',
+            'nextPageToken',
+            headers,
+            'vertex',
+        ):
+            for item in _entries(payload, 'publisherModels'):
+                model_id = str(item.get('name') or '').rpartition('/')[2]
+                # Generation calls Gemini only (generateContent).
+                if model_id.startswith('gemini'):
+                    found.append(DiscoveredModel(model_id, model_id))
+            if len(found) >= MAX_MODELS:
+                break
+    except DiscoveryError as exc:
+        if exc.status in (401, 403):
+            raise DiscoveryRefused(
+                f'The vertex endpoint returned HTTP {exc.status}. An '
+                'express mode API key may not be allowed to list '
+                'models: add the models by id',
+                exc.status,
+            ) from exc
+        raise
+    return found[:MAX_MODELS]
+
+
+async def _paged(
+    url: str,
+    token_param: str,
+    token_key: str,
+    headers: dict[str, str],
+    driver: str,
+    auth: httpx.Auth | None = None,
+) -> collections.abc.AsyncIterator[object]:
+    """Yield each page of a paged list, at most
+    ``MAX_MODELS // 100 + 1`` pages. It stops when the page has no next
+    token, or the token repeats. ``url`` already has a query string.
+    """
+    token = ''
+    seen: set[str] = set()
+    for _page in range(MAX_MODELS // 100 + 1):
+        page_url = f'{url}&{token_param}={token}' if token else url
+        payload = await _get_json(page_url, headers, driver, auth)
+        yield payload
+        page = typing.cast(
+            'dict[str, object]', payload if isinstance(payload, dict) else {}
+        )
+        token = urllib.parse.quote(str(page.get(token_key) or ''), safe='')
+        if not token or token in seen:
+            return
+        seen.add(token)
+
+
 def _entries(payload: object, key: str) -> list[dict[str, typing.Any]]:
     """Return the list of objects under ``key`` in a provider payload."""
     if not isinstance(payload, dict):
@@ -213,7 +397,12 @@ def _parse_timestamp(value: object) -> datetime.datetime | None:
         return None
 
 
-async def _get_json(url: str, headers: dict[str, str], driver: str) -> object:
+async def _get_json(
+    url: str,
+    headers: dict[str, str],
+    driver: str,
+    auth: httpx.Auth | None = None,
+) -> object:
     """GET ``url`` and return the decoded JSON body.
 
     Raises:
@@ -225,7 +414,9 @@ async def _get_json(url: str, headers: dict[str, str], driver: str) -> object:
     """
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(
+                url, headers=headers, auth=auth or httpx.USE_CLIENT_DEFAULT
+            )
     except httpx.HTTPError as exc:
         LOGGER.warning(
             'Model discovery transport failure for %s: %s',

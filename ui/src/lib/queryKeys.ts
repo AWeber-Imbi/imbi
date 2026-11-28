@@ -19,7 +19,8 @@ export const queryKeys = {
     ['agentUsage', orgSlug, params] as const,
   agentVersions: (orgSlug: string, slug: string) =>
     ['agentVersions', orgSlug, slug] as const,
-  aiModels: () => ['ai-models'] as const,
+  aiModels: (orgSlug: string) => ['ai-models', orgSlug] as const,
+  aiProviders: (orgSlug: string) => ['ai-providers', orgSlug] as const,
   anchorEdges: (
     kind: string,
     orgSlug: string,
@@ -37,6 +38,8 @@ export const queryKeys = {
     ['componentSearch', orgSlug, q, ecosystem] as const,
   componentUsage: (orgSlug: string, componentId: string) =>
     ['componentUsage', orgSlug, componentId] as const,
+  defaultAIModel: (orgSlug: string, teamSlug?: string) =>
+    ['defaultAIModel', orgSlug, teamSlug ?? null] as const,
   documentAnalytics: (orgSlug: string, documentId: string, trendDays = 0) =>
     ['documentAnalytics', orgSlug, documentId, trendDays] as const,
   documentEditors: (orgSlug: string, documentId: string) =>

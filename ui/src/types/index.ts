@@ -54,6 +54,8 @@ export interface AIModel {
   max_output_tokens: null | number
   model_id: string
   model_type: AIModelType
+  // Spend this calendar month (UTC); only the list sets it.
+  month_to_date_spend?: null | number | string
   monthly_spend_cap: null | number | string
   name: string
   output_cost_per_million: null | number | string
@@ -165,6 +167,8 @@ export interface AIProviderCreate {
 }
 
 export interface AIProviderDriver {
+  /** Imbi can call it with the cloud credentials of its process. */
+  ambient_auth: boolean
   default_base_url: null | string
   description: string
   /** lucide-react icon name. */
@@ -941,6 +945,8 @@ export type DashboardMetrics = Schemas['DashboardMetrics']
 export type DashboardStatus = Schemas['DashboardStatus']
 
 export type DatastoreStatus = Schemas['DatastoreStatus']
+
+export type DefaultAIModel = Schemas['DefaultAIModel']
 
 export type DeploymentAction = 'deploy' | 'redeploy'
 
