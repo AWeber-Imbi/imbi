@@ -113,36 +113,3 @@ class ProviderClientsTestCase(unittest.IsolatedAsyncioTestCase):
             found.get(provider, 'u1')
             found.get(provider, 'u2')
             self.assertIsNot(found.get(provider, 'u0'), first)
-
-
-class FetchProviderTestCase(unittest.IsolatedAsyncioTestCase):
-    async def fetch(self, rows: list[dict[str, typing.Any]]) -> typing.Any:
-        db = mock.AsyncMock()
-        db.execute.return_value = rows
-        with mock.patch.object(
-            clients.graph, 'parse_agtype', side_effect=lambda value: value
-        ):
-            return await clients.fetch_provider(db, 'acme/claude')
-
-    def row(self, **overrides: typing.Any) -> list[dict[str, typing.Any]]:
-        props = _provider(**overrides).model_dump(
-            mode='json', exclude={'organization'}
-        )
-        return [{'p': props, 'o': ORG.model_dump(mode='json')}]
-
-    async def test_found(self) -> None:
-        provider = await self.fetch(self.row())
-        self.assertEqual(clients.provider_ref(provider), 'acme/claude')
-
-    async def test_errors(self) -> None:
-        for rows, reason in (
-            ([], 'not_found'),
-            (self.row(enabled=False), 'provider_disabled'),
-            (self.row(driver='openai'), 'unsupported_driver'),
-        ):
-            with (
-                self.subTest(reason=reason),
-                self.assertRaises(resolve.ModelUnusable) as raised,
-            ):
-                await self.fetch(rows)
-            self.assertEqual(raised.exception.reason, reason)

@@ -17,7 +17,6 @@ async def create_conversation(
     user_email: str,
     org_id: str,
     model: str,
-    provider: str | None = None,
 ) -> models.Conversation:
     """Create a new conversation in an organization."""
     now = datetime.datetime.now(datetime.UTC)
@@ -28,7 +27,6 @@ async def create_conversation(
         created_at=now,
         updated_at=now,
         model=model,
-        provider=provider,
     )
     create_query = """
     CREATE (c:Conversation {{
@@ -39,7 +37,6 @@ async def create_conversation(
         created_at: {created_at},
         updated_at: {updated_at},
         model: {model},
-        provider: {provider},
         is_archived: {is_archived}
     }})
     RETURN c
@@ -52,7 +49,6 @@ async def create_conversation(
         'created_at': now.isoformat(),
         'updated_at': now.isoformat(),
         'model': model,
-        'provider': provider,
         'is_archived': False,
     }
     await db.execute(create_query, params, ['c'])

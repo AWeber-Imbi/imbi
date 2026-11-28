@@ -76,12 +76,12 @@ disabled, the user may not use it, or a provider other than Anthropic serves
 it), the request fails with `403` (`model_not_allowed`) or `422`. The
 assistant does not use the next model.
 
-The assistant checks the selected model id against the enabled catalog
-entries with that id. One unrestricted entry, or one restricted entry whose
-teams include the user, allows the id. When no enabled entry allows the id, a
-non-admin gets `403` (`model_not_allowed`). `IMBI_ASSISTANT_MODEL` is an
-exception only when no enabled entry has its id. The assistant checks the
-model of the conversation again on each message. Admins can use every model.
+On each message, the assistant checks the model of the conversation again
+with the AI model of that id in the organization: it must be enabled, its
+provider enabled, allowed for the user, and under its monthly spend cap.
+`IMBI_ASSISTANT_MODEL` is an exception only when no AI model has its id.
+Each message uses the credential of the provider of that AI model. Admins
+can use every model, but the spend cap applies to them too.
 
 A conversation stops at `IMBI_ASSISTANT_MAX_CONVERSATION_TURNS` messages.
 Then the person must start a new conversation.

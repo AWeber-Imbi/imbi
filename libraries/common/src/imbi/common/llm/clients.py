@@ -13,59 +13,16 @@ With neither, the provider cannot be used.
 """
 
 import collections
-import typing
 
 import anthropic
 
-from imbi.common import graph, models
+from imbi.common import models
 from imbi.common.llm import resolve, tokens
-
-PROVIDER_QUERY: typing.LiteralString = """
-MATCH (p:AIProvider {{slug: {slug}}})
-      -[:BELONGS_TO]->(o:Organization {{slug: {org}}})
-RETURN p, o
-"""
 
 
 def provider_ref(provider: models.AIProvider) -> str:
     """``<org-slug>/<provider-slug>``."""
     return f'{provider.organization.slug}/{provider.slug}'
-
-
-async def fetch_provider(db: graph.Graph, ref: str) -> models.AIProvider:
-    """Return the provider ``<org-slug>/<provider-slug>`` when an
-    Anthropic client can use it.
-
-    Raises:
-        resolve.ModelUnusable: ``not_found``, ``provider_disabled``, or
-            ``unsupported_driver``.
-
-    """
-    org, _, slug = ref.partition('/')
-    records = await db.execute(
-        PROVIDER_QUERY, {'org': org, 'slug': slug}, ['p', 'o']
-    )
-    if not records:
-        raise resolve.ModelUnusable(
-            'not_found', ref, f'AI provider {ref!r} is not in the catalog'
-        )
-    provider = models.AIProvider.model_validate(
-        {
-            **graph.parse_agtype(records[0]['p']),
-            'organization': graph.parse_agtype(records[0]['o']),
-        }
-    )
-    if not provider.enabled:
-        raise resolve.ModelUnusable(
-            'provider_disabled', ref, f'AI provider {ref!r} is disabled'
-        )
-    if provider.driver != 'anthropic':
-        raise resolve.ModelUnusable(
-            'unsupported_driver',
-            ref,
-            f'AI provider {ref!r} is not an anthropic provider',
-        )
-    return provider
 
 
 #: The most clients that :class:`ProviderClients` keeps.

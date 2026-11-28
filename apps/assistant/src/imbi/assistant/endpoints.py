@@ -21,7 +21,7 @@ from imbi.assistant import (
     system_prompt,
 )
 from imbi.common import external_mcp, graph
-from imbi.common.llm import clients as llm_clients
+from imbi.common import models as common_models
 from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
@@ -91,24 +91,28 @@ def _require_assistant() -> None:
         )
 
 
-async def _check_model(
-    db: graph.Graph, auth_ctx: AuthDep, org_id: str, model: str, default: str
-) -> None:
-    """Raise 403 when a non-admin user may not use ``model`` (#788).
+async def _catalog_model(
+    db: graph.Graph, user: common_models.User, org_id: str, model_id: str
+) -> prompt_system.ConsumerModel | None:
+    """Return the catalog model of the vendor ``model_id`` in the
+    organization ``org_id``, with every check of the resolver (enabled,
+    provider, teams, spend cap, driver). ``None``: the id is the
+    configured model and is not in the catalog.
 
-    The catalog of the organization ``org_id`` of the conversation
-    applies.
+    Raises:
+        imbi.common.prompts.resolve.ModelNotAllowed: Another id that is
+            not in the catalog.
+        llm_resolve.ModelUnusable: The model cannot be used.
+
     """
-    user = auth_ctx.require_user
-    if user.is_admin:
-        return
-    if not await resolve.member_may_use_model_id(
-        db, model, user.email, default, org_ids=[org_id]
-    ):
+    found = await prompt_system.request_model(
+        db, user.email, model_id, admin=user.is_admin, org_id=org_id
+    )
+    if found is None and model_id != settings.get_assistant_settings().model:
         raise resolve.ModelNotAllowed(
-            f'The model {model!r} is not in the catalog or is restricted '
-            'to teams that do not include you'
+            f'The model {model_id!r} is not in the catalog'
         )
+    return found
 
 
 def _unusable(error: llm_resolve.ModelUnusable) -> fastapi.HTTPException:
@@ -137,29 +141,24 @@ async def create_conversation(
     assistant_settings = settings.get_assistant_settings()
     user = auth_ctx.require_user
     requested = body.model if body and body.model else None
-    provider: str | None = None
     # The model in the request, else the model of the prompt version,
-    # else the default model of the organization, else the
-    # configured model (ADR 0018). A catalog model keeps its provider,
-    # whose credential each turn uses.
+    # else the default model of the organization, else the configured
+    # model (ADR 0018).
     try:
         if requested is not None:
-            chosen = await prompt_system.request_model(
-                db, user.email, requested, admin=user.is_admin, org_id=org_id
-            )
-            if chosen is None and requested != assistant_settings.model:
-                raise resolve.ModelNotAllowed(
-                    f'The model {requested!r} is not in the catalog'
-                )
+            chosen = await _catalog_model(db, user, org_id, requested)
         else:
             chosen = await prompt_system.load_model(
                 db, assistant_settings.prompt_ref, user.email, org_id=org_id
             ) or await prompt_system.default_model(
                 db, user.email, org_id=org_id
             )
+            if chosen is None:
+                chosen = await _catalog_model(
+                    db, user, org_id, assistant_settings.model
+                )
         if chosen is not None:
             client.client_for(chosen.provider, user.email)
-            provider = llm_clients.provider_ref(chosen.provider)
     except llm_resolve.ModelUnusable as e:
         raise _unusable(e) from e
     model = (
@@ -167,13 +166,11 @@ async def create_conversation(
         if chosen is not None
         else requested or assistant_settings.model
     )
-    await _check_model(db, auth_ctx, org_id, model, assistant_settings.model)
     conv = await age_ops.create_conversation(
         db,
         user_email=user.email,
         org_id=org_id,
         model=model,
-        provider=provider,
     )
     return models.conversation_to_response(conv)
 
@@ -985,19 +982,17 @@ async def send_message(
             ),
         )
     # The allowed teams can change after the conversation starts.
-    await _check_model(
-        db, auth_ctx, org_id, conv.model, assistant_settings.model
-    )
-    # Each turn reads the provider again, so a disabled provider or a
-    # removed credential stops the conversation (ADR 0018).
+    # Each turn checks the model of the conversation again: the teams,
+    # the spend cap, the provider, and its credential can change after
+    # the conversation starts (ADR 0018).
     try:
+        found = await _catalog_model(
+            db, auth_ctx.require_user, org_id, conv.model
+        )
         api_client = (
             None
-            if conv.provider is None
-            else client.client_for(
-                await llm_clients.fetch_provider(db, conv.provider),
-                auth_ctx.require_user.email,
-            )
+            if found is None
+            else client.client_for(found.provider, auth_ctx.require_user.email)
         )
     except llm_resolve.ModelUnusable as e:
         raise _unusable(e) from e
