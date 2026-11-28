@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import datetime
 import logging
+import math
 import typing
 from collections import abc
 
@@ -446,15 +447,18 @@ class Engine:
             return _now()
         timeout = node.timeout_seconds or step_type.timeout_seconds
         limit = float(self.config.lease_seconds - 30)
+        remaining = math.inf
+        deadline = None
         if timeout is not None:
-            remaining = (
-                step['started_at']
-                + datetime.timedelta(seconds=timeout)
-                - _now()
-            ).total_seconds()
+            # The earlier attempts used part of the timeout (#990).
+            deadline = started_at + datetime.timedelta(
+                seconds=timeout - step['used_seconds']
+            )
+            remaining = (deadline - _now()).total_seconds()
             if remaining <= 0:
+                # No time is left for a retry.
                 return await self._error(
-                    run, node, step, slug, 'timeout', True
+                    run, node, step, slug, 'timeout', False
                 )
             limit = min(limit, remaining)
         async with self.store.write(run['id']) as conn:
@@ -500,7 +504,11 @@ class Engine:
                 unreachable=e.unreachable,
             )
         except TimeoutError:
-            return await self._error(run, node, step, slug, 'timeout', True)
+            # Retry only when the lease, not the step timeout, ended the
+            # call.
+            return await self._error(
+                run, node, step, slug, 'timeout', limit < remaining
+            )
         except Exception as e:
             LOGGER.exception('Run %s: %s raised', run['id'], node.key)
             return await self._error(
@@ -516,13 +524,10 @@ class Engine:
                     state=outcome.state,
                     call_started_at=None,
                 )
-                if timeout is None:
+                if deadline is None:
                     return outcome.resume_at
                 # A poll past the step timeout wakes at the timeout.
-                return min(
-                    outcome.resume_at,
-                    started_at + datetime.timedelta(seconds=timeout),
-                )
+                return min(outcome.resume_at, deadline)
             await store.update(
                 conn,
                 'step_runs',
@@ -603,7 +608,9 @@ class Engine:
             )
             # The next attempt starts when its backoff ends, so the step
             # timeout does not count the backoff: a timeout shorter than
-            # UNREACHABLE_BACKOFF still leaves time for the request.
+            # UNREACHABLE_BACKOFF still leaves time for the request. The
+            # timeout counts the time of this attempt (#990).
+            used = (_now() - step['started_at']).total_seconds()
             await store.update(
                 conn,
                 'step_runs',
@@ -613,6 +620,7 @@ class Engine:
                 state=state,
                 call_started_at=None,
                 started_at=resume_at,
+                used_seconds=step['used_seconds'] + used,
             )
             await runtime.append_step_event(
                 conn, run['id'], step['node_id'], 'step.started', retry_of=code

@@ -173,6 +173,13 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    (no Anthropic key, an error, or an empty reply). The agent create,
    update, and patch API no longer take `description`; a sent value is
    ignored.
+6. **Deploy imbi-api before imbi-workflows.** imbi-api adds the
+   `used_seconds` column to `workflow_runtime.step_runs` at startup.
+   imbi-workflows of this release reads and writes the column, so its
+   steps fail until the column exists. The step timeout now limits all
+   the attempts of a step in total, so a retry no longer gets a full
+   timeout. A step that uses all of its timeout fails and is not
+   retried.
 6. **Before you deploy imbi-slackbot**, link its Slack workspace to an
    organization: enter the workspace's team ID in **Slack team ID** of
    the organization (see

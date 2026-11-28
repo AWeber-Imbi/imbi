@@ -176,15 +176,16 @@ count:
 A retry waits 5 seconds, then 10, doubling each time. When the step got no
 response from imbi-api at all, such as a refused connection while imbi-api
 restarts, the retry waits 30 seconds, then 60, so a step with 2 retries
-keeps trying for about 90 seconds. The timeout of each attempt counts
-from the end of its wait, so the wait does not use up the timeout.
+keeps trying for about 90 seconds. The timeout limits all the attempts
+of a step in total. It does not count the waits between attempts. When
+a step uses all of its timeout, it fails with `timeout` and is not
+retried.
 
 The API also accepts `timeout_seconds` and `retries` (0 to 10) on a node to
 replace the defaults. The editor has no field for them.
 
 The timeout of an `llm_call` node must be at least 190 seconds, or the save
-returns `422`. A step that times out while its model call still runs is
-retried with a new model call, and the provider can bill both calls.
+returns `422`.
 
 `GET /organizations/{org}/workflow-step-types/` returns each type with its
 parameter schema, output schema, and sample output.
@@ -497,8 +498,8 @@ model a second time. It returns the recorded result of the attempt:
 the answer, the recorded error (for example
 `provider_outcome_unknown`), or
 `call_in_progress` while the first call runs. A retry after a known
-failure is a new call. A retry after a step timeout asks for the call
-of the earlier attempt, with the same results.
+failure is a new call. A retry after a call that timed out asks for
+the call of the earlier attempt, with the same results.
 
 The step fails with one of these errors:
 
@@ -1200,8 +1201,9 @@ step.
   become `cancelled`. Then the failure policy runs.
 - **Failure policy.** **Notify the owner team** sends an email to the
   members of the owner team. **Do nothing** sends nothing.
-- **Step timeout.** A step that runs longer than its timeout fails with
-  `timeout`, and its retries apply.
+- **Step timeout.** The timeout limits all the attempts of a step in
+  total, without the waits between them. A step that uses all of its
+  timeout fails with `timeout` and is not retried.
 - **Max run time.** The engine counts it from when Imbi made the run. A run
   that passes it closes as `timed_out`.
 
