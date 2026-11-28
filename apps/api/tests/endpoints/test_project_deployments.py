@@ -1536,42 +1536,76 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             'does not support creating tags', response.json()['detail']
         )
 
-    def test_promotion_options_returns_consecutive_pairs(self) -> None:
-        # The endpoint runs a Cypher query, then for each gap calls
-        # plugin.compare().  Stub the graph response with three envs;
-        # the helper deduplicates by env-slug into the latest release
-        # per env, so we feed one row per env to keep the test simple.
-        def _mock_execute(query, params, columns):
-            del query, params, columns
-            return [
-                {
-                    'env': '{"slug": "testing", "name": "Testing", '
-                    '"sort_order": 1}',
-                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 2, "can_promote": true}',
-                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "production", "name": "Production", '
-                    '"sort_order": 3, "can_promote": true}',
-                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
-                    'deployments': None,
-                },
-            ]
+    def _promotion_options(
+        self, envs: list[tuple[dict[str, typing.Any], str | None]]
+    ) -> list[dict[str, typing.Any]]:
+        """GET promotion-options for *envs*: ``(env, serving tag)`` pairs.
 
-        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
-        with testclient.TestClient(self.test_app) as client:
+        The graph answers the environments; the serving release of each
+        comes from the ``Deployment`` node reader.  A tag ``vX.Y.Z``
+        gets the committish ``cXYZ000`` so each one is distinct.
+        """
+
+        async def _execute(query, params, columns):
+            del query, params, columns
+            return [{'env': json.dumps(env)} for env, _tag in envs]
+
+        serving = [
+            common_deployments.ProjectDeployment(
+                'proj1',
+                env,
+                {
+                    'tag': tag,
+                    'committish': 'c' + tag.replace('.', '').lstrip('v') + '0',
+                },
+                models.DeploymentEvent(status='success'),
+            )
+            for env, tag in envs
+            if tag is not None
+        ]
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with (
+            mock.patch.object(
+                common_deployments,
+                'latest_released_deployments_by_project',
+                mock.AsyncMock(return_value=serving),
+            ),
+            testclient.TestClient(self.test_app) as client,
+        ):
             response = client.get(
                 '/organizations/myorg/projects/proj1/deployments/'
                 'promotion-options'
             )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def test_promotion_options_returns_consecutive_pairs(self) -> None:
+        data = self._promotion_options(
+            [
+                (
+                    {'slug': 'testing', 'name': 'Testing', 'sort_order': 1},
+                    'v6.4.0',
+                ),
+                (
+                    {
+                        'slug': 'staging',
+                        'name': 'Staging',
+                        'sort_order': 2,
+                        'can_promote': True,
+                    },
+                    'v6.3.0',
+                ),
+                (
+                    {
+                        'slug': 'production',
+                        'name': 'Production',
+                        'sort_order': 3,
+                        'can_promote': True,
+                    },
+                    'v6.2.0',
+                ),
+            ]
+        )
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['from_environment'], 'testing')
         self.assertEqual(data[0]['to_environment'], 'staging')
@@ -1586,126 +1620,58 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # staging ends its pipeline (#285): no staging->production gap
         # is derived, even though both envs hold differing releases and
         # production has can_promote=true.
-        def _mock_execute(query, params, columns):
-            del query, params, columns
-            return [
-                {
-                    'env': '{"slug": "testing", "name": "Testing", '
-                    '"sort_order": 1}',
-                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 2, "can_promote": true, "terminal": true}',
-                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "production", "name": "Production", '
-                    '"sort_order": 3, "can_promote": true}',
-                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
-                    'deployments': None,
-                },
+        data = self._promotion_options(
+            [
+                (
+                    {'slug': 'testing', 'name': 'Testing', 'sort_order': 1},
+                    'v6.4.0',
+                ),
+                (
+                    {
+                        'slug': 'staging',
+                        'name': 'Staging',
+                        'sort_order': 2,
+                        'can_promote': True,
+                        'terminal': True,
+                    },
+                    'v6.3.0',
+                ),
+                (
+                    {
+                        'slug': 'production',
+                        'name': 'Production',
+                        'sort_order': 3,
+                        'can_promote': True,
+                    },
+                    'v6.2.0',
+                ),
             ]
-
-        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
-        with testclient.TestClient(self.test_app) as client:
-            response = client.get(
-                '/organizations/myorg/projects/proj1/deployments/'
-                'promotion-options'
-            )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
+        )
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['from_environment'], 'testing')
         self.assertEqual(data[0]['to_environment'], 'staging')
 
-    def test_promotion_options_picks_latest_release_per_env(self) -> None:
-        # Two rows for the same env: an older v6.3.0 with an earlier
-        # event timestamp and a newer v6.4.0.  The reducer should pick
-        # v6.4.0 as the testing env's current release.  We pair it
-        # against staging (single-row) so the test asserts the
-        # deterministic ordering rather than the staging row choice.
-        def _mock_execute(query, params, columns):
-            del query, params, columns
-            return [
-                {
-                    'env': '{"slug": "testing", "name": "Testing", '
-                    '"sort_order": 1}',
-                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
-                    'deployments': (
-                        '[{"timestamp": "2024-01-01T00:00:00+00:00", '
-                        '"status": "success"}]'
-                    ),
-                },
-                {
-                    'env': '{"slug": "testing", "name": "Testing", '
-                    '"sort_order": 1}',
-                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
-                    'deployments': (
-                        '[{"timestamp": "2024-06-01T00:00:00+00:00", '
-                        '"status": "success"}]'
-                    ),
-                },
-                {
-                    'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 2, "can_promote": true}',
-                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
-                    'deployments': None,
-                },
+    def test_promotion_options_skip_an_env_with_no_deployment(self) -> None:
+        # Nothing serves in testing, so there is nothing to promote out
+        # of it.
+        data = self._promotion_options(
+            [
+                (
+                    {'slug': 'testing', 'name': 'Testing', 'sort_order': 1},
+                    None,
+                ),
+                (
+                    {
+                        'slug': 'staging',
+                        'name': 'Staging',
+                        'sort_order': 2,
+                        'can_promote': True,
+                    },
+                    'v6.3.0',
+                ),
             ]
-
-        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
-        with testclient.TestClient(self.test_app) as client:
-            response = client.get(
-                '/organizations/myorg/projects/proj1/deployments/'
-                'promotion-options'
-            )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['from_environment'], 'testing')
-        self.assertEqual(data[0]['from_version'], 'v6.4.0')
-        self.assertEqual(data[0]['to_version'], 'v6.2.0')
-
-    def test_promotion_options_falls_back_to_non_null_release(self) -> None:
-        # When neither row for an env has any deployment events, the
-        # reducer should still surface a non-null release if one row
-        # has it.
-        def _mock_execute(query, params, columns):
-            del query, params, columns
-            return [
-                {
-                    'env': '{"slug": "testing", "name": "Testing", '
-                    '"sort_order": 1}',
-                    'release': None,
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "testing", "name": "Testing", '
-                    '"sort_order": 1}',
-                    'release': '{"tag": "v1.0.0", "committish": "abc1000"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 2, "can_promote": true}',
-                    'release': '{"tag": "v0.9.0", "committish": "def0900"}',
-                    'deployments': None,
-                },
-            ]
-
-        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
-        with testclient.TestClient(self.test_app) as client:
-            response = client.get(
-                '/organizations/myorg/projects/proj1/deployments/'
-                'promotion-options'
-            )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['from_version'], 'v1.0.0')
+        )
+        self.assertEqual(data, [])
 
     def test_promotion_options_skips_no_promote_targets(self) -> None:
         # A gap whose to-env has can_promote=false (or, for nodes
@@ -1714,42 +1680,37 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # be offered.  Of the three gaps here only dev->testing
         # survives: testing->staging is explicitly disabled and
         # staging->production lacks the property (treated as false).
-        def _mock_execute(query, params, columns):
-            del query, params, columns
-            return [
-                {
-                    'env': '{"slug": "dev", "name": "Dev", "sort_order": 1}',
-                    'release': '{"tag": "v6.5.0", "committish": "ddd6500"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "testing", "name": "Testing", '
-                    '"sort_order": 2, "can_promote": true}',
-                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 3, "can_promote": false}',
-                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
-                    'deployments': None,
-                },
-                {
-                    'env': '{"slug": "production", "name": "Production", '
-                    '"sort_order": 4}',
-                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
-                    'deployments': None,
-                },
+        data = self._promotion_options(
+            [
+                ({'slug': 'dev', 'name': 'Dev', 'sort_order': 1}, 'v6.5.0'),
+                (
+                    {
+                        'slug': 'testing',
+                        'name': 'Testing',
+                        'sort_order': 2,
+                        'can_promote': True,
+                    },
+                    'v6.4.0',
+                ),
+                (
+                    {
+                        'slug': 'staging',
+                        'name': 'Staging',
+                        'sort_order': 3,
+                        'can_promote': False,
+                    },
+                    'v6.3.0',
+                ),
+                (
+                    {
+                        'slug': 'production',
+                        'name': 'Production',
+                        'sort_order': 4,
+                    },
+                    'v6.2.0',
+                ),
             ]
-
-        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
-        with testclient.TestClient(self.test_app) as client:
-            response = client.get(
-                '/organizations/myorg/projects/proj1/deployments/'
-                'promotion-options'
-            )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
+        )
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['from_environment'], 'dev')
         self.assertEqual(data[0]['to_environment'], 'testing')
@@ -2156,7 +2117,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         Backfilling historical remote deployments through the
         ``operations_log`` would attribute every event to whoever
         clicked "Resync", overriding the v1-migrated rows that already
-        carry the real deployer.  The ``DEPLOYED_TO`` edge alone
+        carry the real deployer.  The ``Deployment`` node alone
         carries the event during resync; in-product deploy / promote
         flows still write their own audit rows.
         """
@@ -3004,74 +2965,6 @@ class FallbackNotesTestCase(unittest.TestCase):
         ]
         body = _fallback_notes(commits)
         self.assertIn('### other', body)
-
-
-class LatestDeploymentTimestampTestCase(unittest.TestCase):
-    """Direct tests for ``_latest_deployment_timestamp``."""
-
-    def test_returns_none_for_empty_or_missing(self) -> None:
-        from imbi.api.endpoints.project_deployments import (
-            _latest_deployment_timestamp,
-        )
-
-        self.assertIsNone(_latest_deployment_timestamp(None))
-        self.assertIsNone(_latest_deployment_timestamp(''))
-        self.assertIsNone(_latest_deployment_timestamp('[]'))
-
-    def test_returns_none_for_non_list_payloads(self) -> None:
-        from imbi.api.endpoints.project_deployments import (
-            _latest_deployment_timestamp,
-        )
-
-        self.assertIsNone(_latest_deployment_timestamp('"oops"'))
-        self.assertIsNone(_latest_deployment_timestamp('{"x": 1}'))
-
-    def test_picks_max_timestamp(self) -> None:
-        from imbi.api.endpoints.project_deployments import (
-            _latest_deployment_timestamp,
-        )
-
-        raw = (
-            '[{"timestamp": "2024-01-01T00:00:00+00:00", "status": "success"},'
-            ' {"timestamp": "2024-06-01T00:00:00+00:00", "status": "success"},'
-            ' {"timestamp": "2024-03-01T00:00:00+00:00", "status": "success"}]'
-        )
-        result = _latest_deployment_timestamp(raw)
-        self.assertEqual(
-            result,
-            datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC),
-        )
-
-    def test_skips_invalid_entries(self) -> None:
-        from imbi.api.endpoints.project_deployments import (
-            _latest_deployment_timestamp,
-        )
-
-        raw = (
-            '[{"timestamp": "not-a-date", "status": "success"},'
-            ' "scalar",'
-            ' {"timestamp": 42, "status": "success"},'
-            ' {"timestamp": "2024-06-01T00:00:00+00:00", '
-            '"status": "success"}]'
-        )
-        result = _latest_deployment_timestamp(raw)
-        self.assertEqual(
-            result,
-            datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC),
-        )
-
-    def test_accepts_already_decoded_list(self) -> None:
-        from imbi.api.endpoints.project_deployments import (
-            _latest_deployment_timestamp,
-        )
-
-        result = _latest_deployment_timestamp(
-            [{'timestamp': '2024-06-01T00:00:00+00:00', 'status': 'success'}]
-        )
-        self.assertEqual(
-            result,
-            datetime.datetime(2024, 6, 1, tzinfo=datetime.UTC),
-        )
 
 
 class SafeAuditUrlTestCase(unittest.TestCase):

@@ -577,38 +577,6 @@ class ReleaseCutResponse(pydantic.BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _latest_deployment_timestamp(
-    raw: typing.Any,
-) -> datetime.datetime | None:
-    """Return the most recent deployment-event timestamp, or ``None``.
-
-    The ``deployments`` edge property is stored as a JSON-encoded list
-    of ``DeploymentEvent``-shaped objects.  We parse just the timestamp
-    field here so the promotion-options reducer can deterministically
-    rank ``(Release, Environment)`` rows by recency without paying for
-    full Pydantic validation.
-    """
-    if not raw:
-        return None
-    data = json.loads(raw) if isinstance(raw, str) else raw
-    if not isinstance(data, list):
-        return None
-    latest: datetime.datetime | None = None
-    for entry in data:  # type: ignore[reportUnknownVariableType]
-        if not isinstance(entry, dict):
-            continue
-        ts = entry.get('timestamp')  # type: ignore[reportUnknownMemberType]
-        if not isinstance(ts, str):
-            continue
-        try:
-            parsed = datetime.datetime.fromisoformat(ts)
-        except ValueError:
-            continue
-        if latest is None or parsed > latest:
-            latest = parsed
-    return latest
-
-
 async def _resolve_and_context(
     db: graph.Graph,
     org_slug: str,
@@ -1912,8 +1880,8 @@ async def resync_for_project(
 
     Resolves the project's deployment plugin, asks it for the most
     recent ``limit`` deployments per environment, upserts ``Release``
-    nodes for any observed versions that are missing, appends
-    ``DeploymentEvent`` rows on the ``DEPLOYED_TO`` edge (dedup'd by
+    nodes for any observed versions that are missing, writes a
+    ``Deployment`` node per observed deployment (dedup'd by
     ``external_run_id``).  Returns counts + a per-environment error list
     so the host can surface partial results rather than failing the
     whole call on one bad env.
@@ -2083,11 +2051,11 @@ async def _apply_remote_deployment(
 ) -> None:
     """Persist one observed remote deployment.
 
-    Writes the ``Release`` node + ``DeploymentEvent`` on the
-    ``DEPLOYED_TO`` edge.  No ``operations_log`` audit row is written
-    here -- resync backfills historical activity, and attributing it to
-    the resync operator poisons ``argMax(performed_by, occurred_at)``
-    queries.  The edge's ``DeploymentEvent.performed_by`` carries the
+    Writes the ``Release`` node + ``Deployment`` node.  No
+    ``operations_log`` audit row is written here -- resync backfills
+    historical activity, and attributing it to the resync operator
+    poisons ``argMax(performed_by, occurred_at)`` queries.  The node's
+    ``performed_by`` carries the
     original deployer when the plugin can resolve one.
 
     ``seen_identities`` is mutated to track which
@@ -2204,8 +2172,8 @@ async def _apply_remote_deployment(
     # historical remote deployments, so attributing them to the resync
     # operator poisons ``argMax(performed_by, occurred_at)`` lookups
     # (e.g. the "Current Deployments" column on /projects). The
-    # ``DEPLOYED_TO`` edge already carries the original creator via
-    # ``DeploymentEvent.performed_by``; in-product deploy/promote
+    # ``Deployment`` node already carries the original creator via
+    # ``performed_by``; in-product deploy/promote
     # actions still get their own audit row written by their handlers.
 
 
@@ -2873,8 +2841,8 @@ async def trigger_deployment(
 
     For ``deploy`` / ``redeploy``, dispatches the workflow with the
     chosen committish; if the committish (or its ``ref_label``) matches
-    an existing ``Release`` version on the project, also appends a
-    ``DeploymentEvent`` to the ``DEPLOYED_TO`` edge.
+    an existing ``Release`` version on the project, also records a
+    ``Deployment`` node for it.
 
     For ``promote``: cuts a tag at ``from_committish``, creates a
     release with the supplied notes on the remote, dispatches the
@@ -3334,7 +3302,7 @@ async def resync_project_deployments(
     source: str | None = None,
     limit: int = fastapi.Query(default=1, ge=1, le=100),
 ) -> DeploymentResyncEnqueueResponse:
-    """Enqueue a backfill of Release nodes + DEPLOYED_TO edges.
+    """Enqueue a backfill of Release and Deployment nodes.
 
     The worker asks the project's deployment plugin for the most recent
     ``limit`` deployments per environment, upserts any missing
@@ -3343,8 +3311,8 @@ async def resync_project_deployments(
     deep backfill makes hundreds of remote API calls, so the work runs
     as a Valkey-stream job; poll ``GET /deployments/sync-status`` for
     the outcome.  No ``operations_log`` audit row is written -- the
-    ``DEPLOYED_TO`` edge already carries the original creator via
-    ``DeploymentEvent.performed_by``.
+    ``Deployment`` node already carries the original creator via
+    ``performed_by``.
 
     ``limit`` defaults to 1 (cheap webhook-lapse catch-up).  Raise it
     (up to 100, the GitHub per-page ceiling) for a deeper backfill that
@@ -6582,14 +6550,9 @@ MATCH (p:Project {{id: {project_id}}})
       -[:OWNED_BY]->(:Team)
       -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 MATCH (p)-[:DEPLOYED_IN]->(e:Environment)
-OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release)
-               -[d:DEPLOYED_TO]->(e)
 RETURN e{{.slug, .name, .sort_order, .can_promote,
           terminal: coalesce(e.terminal, false),
-          allow_autonomous: coalesce(e.allow_autonomous, false)}} AS env,
-       CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
-       CASE WHEN d IS NULL THEN null ELSE d.deployments END
-           AS deployments
+          allow_autonomous: coalesce(e.allow_autonomous, false)}} AS env
 """
 
 
@@ -6621,78 +6584,27 @@ async def list_promotion_options(  # noqa: C901
     rows = await db.execute(
         _PROMOTION_OPTIONS_QUERY,
         {'project_id': project_id, 'org_slug': org_slug},
-        ['env', 'release', 'deployments'],
+        ['env'],
     )
     if not rows:
         return []
-    # The query returns one row per (Release, Environment) pair, so an
-    # env with multiple historical releases produces multiple rows.
-    # To pick a stable "current" release per env, parse the deployment
-    # event history on each edge and rank by the most recent event
-    # timestamp. Envs with no deployment history fall back to no
-    # release.
+    # Every environment the project deploys in, seeded with no release.
     by_slug: dict[str, dict[str, typing.Any]] = {}
     for row in rows:
         env = graph.parse_agtype(row['env'])
-        if not env:
-            continue
-        slug = env['slug']
-        release_raw = graph.parse_agtype(row['release'])
-        latest = _latest_deployment_timestamp(
-            graph.parse_agtype(row['deployments'])
-        )
-        existing = by_slug.get(slug)
-        if existing is None:
-            by_slug[slug] = {
-                'env': env,
-                'release': release_raw,
-                'latest': latest,
-            }
-            continue
-        # Prefer the row with the most recent deployment event; fall
-        # back to keeping a non-null release if neither row has events.
-        existing_latest = existing.get('latest')
-        if latest is not None and (
-            existing_latest is None or latest > existing_latest
-        ):
-            by_slug[slug] = {
-                'env': env,
-                'release': release_raw,
-                'latest': latest,
-            }
-        elif (
-            latest is None
-            and existing_latest is None
-            and release_raw
-            and not existing.get('release')
-        ):
-            by_slug[slug] = {
-                'env': env,
-                'release': release_raw,
-                'latest': None,
-            }
+        if env:
+            by_slug[env['slug']] = {'env': env, 'release': None}
 
-    # Union the ``Deployment`` nodes over the legacy array entries the
-    # loop above read; environments the project no longer deploys in
-    # stay out, as they always have.
-    # ``success`` only: a promote starts from the release an environment
-    # actually has, and a queued or in-flight attempt is not that yet.
+    # Environments the project no longer deploys in stay out, as they
+    # always have.  ``success`` only: a promote starts from the release
+    # an environment actually has, and a queued or in-flight attempt is
+    # not that yet.
     for entry in await deployment_nodes.latest_released_deployments_by_project(
         db, [project_id], policy='success'
     ):
         slug = str(entry.environment.get('slug') or '')
-        existing = by_slug.get(slug)
-        if entry.release is None or existing is None:
-            continue
-        existing_latest = existing.get('latest')
-        if existing_latest is None or deployment_nodes.as_utc(
-            entry.event.timestamp
-        ) > deployment_nodes.as_utc(existing_latest):
-            by_slug[slug] = {
-                'env': existing['env'],
-                'release': entry.release,
-                'latest': entry.event.timestamp,
-            }
+        if entry.release is not None and slug in by_slug:
+            by_slug[slug]['release'] = entry.release
 
     # Promotion steps are within-pipeline adjacent pairs -- a pair is
     # never derived across a ``terminal`` environment (#285).
