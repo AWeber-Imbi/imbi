@@ -505,9 +505,14 @@ class Engine:
             )
         except TimeoutError:
             # Retry only when the lease, not the step timeout, ended the
-            # call.
+            # call, and time is left before the step deadline.
             return await self._error(
-                run, node, step, slug, 'timeout', limit < remaining
+                run,
+                node,
+                step,
+                slug,
+                'timeout',
+                limit < remaining and (deadline is None or _now() < deadline),
             )
         except Exception as e:
             LOGGER.exception('Run %s: %s raised', run['id'], node.key)
