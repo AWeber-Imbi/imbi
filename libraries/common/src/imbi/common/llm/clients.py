@@ -7,9 +7,10 @@ credential of a provider is, in this order:
    (``POST /ai-providers/token`` with the provider and the user). This
    needs the API token of the service.
 2. The ``ANTHROPIC_API_KEY`` of the service, sent only to the default
-   base URL of the driver. A provider with a custom base URL needs a
-   workload identity: the key is for all organizations, so it never goes
-   to a URL that an organization admin sets.
+   base URL of the driver: the key is for all organizations, so it never
+   goes to a URL that an organization admin sets. A workload identity
+   provider also uses the default base URL, so a provider with a custom
+   base URL cannot be used here.
 
 With neither, the provider cannot be used.
 """

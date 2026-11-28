@@ -326,9 +326,10 @@ async def load_model(
     """Return the model of ``ref``'s version, when a consumer can call it
     for the user ``email``. An ``admin`` may use a ``restricted`` model.
 
-    ``None`` when the prompt is missing or names no model. Errors other
-    than :class:`~imbi.common.llm.resolve.ModelUnusable` are logged,
-    never raised.
+    ``None`` when the prompt is missing or names no model. An error that
+    reads the prompt is logged, and ``None`` is returned. An error in the
+    check of the version's model is raised: no other model is used in
+    its place, so a failed spend check cannot skip the cap.
 
     Raises:
         llm_resolve.ModelUnusable: The version names a model that the
@@ -337,14 +338,12 @@ async def load_model(
     """
     try:
         _prompt, version, _label = await resolve.resolve(db, ref)
-        return await _model(db, version, email, org_id, admin)
     except resolve.PromptError:
         return None
-    except llm_resolve.ModelUnusable:
-        raise
     except Exception:  # noqa: BLE001 - creating a conversation must not fail
-        LOGGER.warning('Failed to read the model of %s', ref, exc_info=True)
+        LOGGER.warning('Failed to read the prompt %s', ref, exc_info=True)
         return None
+    return await _model(db, version, email, org_id, admin)
 
 
 async def load_system_prompt(
@@ -410,9 +409,11 @@ async def load_system_prompt(
         rendered = await rendering.render(version, declared, {})
         try:
             model = await _model(db, version, email, org_id, admin)
-        except llm_resolve.ModelUnusable:
+        except Exception:
             if check_model:
                 raise
+            # The turn does not use this model, so an unusable model or a
+            # failed lookup does not change its instructions.
             LOGGER.warning(
                 'The model of %s cannot be used; its settings do not apply',
                 ref,

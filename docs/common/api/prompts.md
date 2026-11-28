@@ -59,9 +59,18 @@ The function passes only the variables that the version declares. An
 editor can therefore remove a variable from a version without a render
 error.
 
-When the CMS version names an enabled AI model that an `anthropic`
-provider serves, `SystemPrompt.model_id` holds its model ID. In all
-other cases it is `None`, and the consumer uses its configured model.
+When the CMS version names an AI model that the consumer can use,
+`SystemPrompt.model_id` holds its model ID. When the version names no
+model, or there is no `email`, it is `None`, and the consumer uses its
+default or configured model.
+
+A version model that the consumer cannot use is not a CMS failure. With
+an `email` and the default `check_model=True`, the function raises
+`ModelUnusable` (for example, a disabled model, a model at its spend cap,
+or a driver other than `anthropic`). It does not use the packaged
+prompt or another model. With `check_model=False`, it logs the error and
+returns the rendered CMS prompt without the model settings of the
+version.
 
 ## Render limits
 

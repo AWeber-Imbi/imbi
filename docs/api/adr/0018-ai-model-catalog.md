@@ -314,7 +314,11 @@ The consumers today:
 - The system prompts of the assistant, the Slack bot, and the API helpers
   (ticket subject, descriptions): a version model that cannot be used, or one
   that a driver other than `anthropic` serves (`unsupported_driver`), is an
-  error. The assistant returns `403` or `422`, the Slack bot replies with an
+  error. When the assistant creates a conversation with the version model,
+  it returns `403` or `422`. A turn of an existing conversation checks the
+  model of the conversation instead; when the version model cannot be used,
+  the turn keeps the rendered CMS prompt without the model settings of the
+  version. The Slack bot replies with an
   error, and an API helper returns its fallback marked `degraded`. These
   consumers have no team. The assistant reads the catalog of the
   organization of the conversation, the Slack bot that of the organization
@@ -341,12 +345,18 @@ Date: 2026-11-27
 The spend of an AIModel is the sum of the cost of its calls in the current
 calendar month (UTC):
 
-- `ai_runtime.ai_model_calls.cost_usd`, for prompt runs, by `started_at`.
+- `ai_runtime.ai_model_calls.cost_usd`, for generative prompt runs, by
+  `started_at`.
 - `tickets.budget_ledger.cost`, for agent usage reports, by `recorded_at`.
+- `tickets.deleted_model_spend.cost`, by `recorded_at`. When a ticket is
+  deleted, its ledger rows of the month that have a model are copied here,
+  so a delete
+  does not lower the spend.
 
-Both tables have a nullable `ai_model_id` column, the AIModel node id. Imbi
-writes it on every new row. Rows from before the column are null and are not
-counted. A row with an unknown cost adds nothing. Because the AIModel node is
+The first two tables have a nullable `ai_model_id` column, the AIModel node
+id. A row is counted only when it has a model id: rows from before the
+column, and usage that Imbi cannot match to a catalog model, are null and
+are not counted. A decision prompt run writes no row yet (#1060). A row with an unknown cost adds nothing. Because the AIModel node is
 per organization, the spend and the cap are per organization per model.
 `imbi.common.llm.resolve.month_spend` does the sum. Both schemas are in the
 graph database, so every service that has the graph can read the spend.

@@ -175,7 +175,9 @@ service uses the credential of the provider of that model, in this order:
    has no custom base URL. The service sends the key to the driver default
    URL only. An organization admin sets the base URL, and the key is for
    all organizations, so the service key is never sent to a custom base
-   URL. A provider with a custom base URL needs a workload identity.
+   URL. A workload identity provider must also use the default base URL,
+   so the assistant and the Slack bot cannot use a provider with a custom
+   base URL.
 3. Else the call fails (`provider_credentials_unavailable`): the assistant
    returns `422`, and the Slack bot replies with an error.
 
@@ -458,8 +460,11 @@ The API routes are `GET` and `PUT`
 ## Spend cap
 
 The spend of a model is the cost of its calls in the current calendar month
-(UTC). Imbi adds the cost of each prompt run and of each agent usage report
-of the model. A call with an unknown cost adds nothing. The AI Models page
+(UTC). Imbi adds the cost of each generative prompt run and of each agent
+usage report of the model. A call with an unknown cost adds nothing. The
+cost of a decision prompt run is not recorded yet, so it does not add to
+the spend
+([#1060](https://github.com/AWeber-Imbi/imbi/issues/1060)). The AI Models page
 shows the spend and the cap on each model row. The text is red when the spend
 is at or over the cap.
 

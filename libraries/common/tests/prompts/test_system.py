@@ -205,8 +205,11 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
             await system.load_model(
                 mock.AsyncMock(), REF, 'dev@example.com', admin=True
             )
-        for call in resolver.await_args_list:
-            self.assertIs(call.kwargs['admin'], True)
+        # One call for each loader, both with admin.
+        self.assertEqual(
+            [call.kwargs['admin'] for call in resolver.await_args_list],
+            [True, True],
+        )
 
     async def test_no_user_has_no_catalog_model(self) -> None:
         found = _version(model='default-chat', model_id='claude-opus-5-5')
@@ -243,17 +246,42 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         found = _version(
             model='old', model_id='claude-old', params={'max_tokens': 99}
         )
-        error = llm_resolve.ModelUnusable('model_disabled', 'old', 'no')
+        for error in (
+            llm_resolve.ModelUnusable('disabled', 'old', 'no'),
+            RuntimeError('db down'),
+        ):
+            with (
+                self.subTest(error=error),
+                self.patch_resolve(found),
+                self.patch_model(error),
+                self.assertLogs(system.LOGGER, 'WARNING'),
+            ):
+                result = await self.load(check_model=False)
+            self.assertEqual(result.source, 'cms')
+            self.assertEqual(result.text, 'Hi <display_name>')
+            self.assertIsNone(result.model_id)
+            self.assertIsNone(result.max_tokens)
+
+    async def test_failed_model_check_is_raised_by_load_model(self) -> None:
+        # No default model is used in its place, so a failed spend
+        # check cannot skip the cap.
+        found = _version(model='opus', model_id='claude-opus-5-5')
         with (
             self.patch_resolve(found),
-            self.patch_model(error),
+            self.patch_model(RuntimeError('db down')),
+            self.assertRaises(RuntimeError),
+        ):
+            await system.load_model(mock.AsyncMock(), REF, 'dev@example.com')
+
+    async def test_prompt_read_error_in_load_model_is_none(self) -> None:
+        with (
+            self.patch_resolve(RuntimeError('db down')),
             self.assertLogs(system.LOGGER, 'WARNING'),
         ):
-            result = await self.load(check_model=False)
-        self.assertEqual(result.source, 'cms')
-        self.assertEqual(result.text, 'Hi <display_name>')
-        self.assertIsNone(result.model_id)
-        self.assertIsNone(result.max_tokens)
+            result = await system.load_model(
+                mock.AsyncMock(), REF, 'dev@example.com'
+            )
+        self.assertIsNone(result)
 
     async def test_slug_uses_the_catalog_model_id(self) -> None:
         # The version stores the id of another organization; the run
