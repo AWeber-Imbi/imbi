@@ -254,8 +254,10 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
      cannot restore it.
    - **Migrate Deployment History** (`deployment-migration`, 2.26.0 to
      2.28.x) copied the entries of each project into `Deployment` nodes.
-     If your install did not run it, upgrade to 2.28.x and run it before
-     you upgrade to this release.
+     If your install is on 2.28.x or older and did not run it, upgrade to
+     2.28.x and run it before you upgrade to this release. 2.29.0 removed
+     it. An install on 2.29.0 or later that did not run it cannot run it
+     now, and this operation discards those entries.
    - That operation did not copy the entries of a release that no project
      owns. This operation discards them.
 
