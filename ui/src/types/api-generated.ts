@@ -2594,7 +2594,8 @@ export interface paths {
          * Set Ai Provider Workload Identity
          * @description Use workload identity for a provider (WIF plan 4.6, O7).
          *
-         *     The caller must be a member of the organization with
+         *     ``organization`` must be the organization of the provider: each
+         *     organization sets up its own identity. The caller must have
          *     ``secret_provider:write`` there: the provider then uses the identity
          *     source of that organization. No token is minted here.
          *
@@ -2602,7 +2603,8 @@ export interface paths {
          *         403: Not a member, or no ``secret_provider:write`` there.
          *         404: No such provider or organization.
          *         409: The provider has a stored key.
-         *         422: The driver cannot use workload identity, the provider has a
+         *         422: ``organization`` is not the organization of the provider,
+         *             the driver cannot use workload identity, the provider has a
          *             ``base_url``, no exchanger is installed for the vendor, or
          *             the target is not valid.
          */
