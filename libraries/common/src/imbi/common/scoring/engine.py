@@ -108,56 +108,24 @@ async def _load_analysis_results(
     return out
 
 
-_DEPLOYMENT_STATUS_QUERY: typing.LiteralString = (
-    'MATCH (p:Project {{id: {project_id}}})'
-    '-[:HAS_RELEASE]->(:Release)'
-    '-[d:DEPLOYED_TO]->(e:Environment)'
-    ' RETURN e.slug AS slug, d.deployments AS deployments'
-)
-
-
 async def _load_deployment_statuses(
     database: graph.Graph,
     project_id: str,
 ) -> dict[str, str]:
     """Fetch ``{environment_slug: latest_status}`` for *project_id*.
 
-    For each environment the status is taken from the
-    ``DeploymentEvent`` with the latest ``timestamp`` across every
-    release the project has deployed there — the same "current per
-    environment" derivation the release-train endpoint uses.
-    Environments with no parseable events are omitted and scored through
-    the policy's ``'missing'`` key.
+    For each environment the status is taken from the newest
+    ``Deployment`` node across every release the project has deployed
+    there.  Environments with no deployment are omitted and scored
+    through the policy's ``'missing'`` key.
     """
-    rows = await database.execute(
-        _DEPLOYMENT_STATUS_QUERY,
-        {'project_id': project_id},
-        columns=['slug', 'deployments'],
-    )
-    latest: dict[str, models.DeploymentEvent] = {}
-    for row in rows:
-        slug = graph.parse_agtype(row['slug'])
-        if not isinstance(slug, str):
-            continue
-        for event in _parse_deployment_events(row['deployments']):
-            current = latest.get(slug)
-            if current is None or event.timestamp > current.timestamp:
-                latest[slug] = event
-    # Union the ``Deployment`` nodes over the legacy array entries: a
-    # project deployed since the node cutover has no array entry to
-    # score, and would otherwise fall through to the ``'missing'`` key.
-    for entry in await deployments.latest_deployments_by_project(
-        database, [project_id]
-    ):
-        slug = str(entry.environment.get('slug') or '')
-        current = latest.get(slug)
-        if slug and (
-            current is None
-            or deployments.as_utc(entry.event.timestamp)
-            > deployments.as_utc(current.timestamp)
-        ):
-            latest[slug] = entry.event
-    return {slug: event.status for slug, event in latest.items()}
+    return {
+        slug: entry.event.status
+        for entry in await deployments.latest_deployments_by_project(
+            database, [project_id]
+        )
+        if (slug := str(entry.environment.get('slug') or ''))
+    }
 
 
 _DEPENDENCY_NEIGHBOURS_QUERY: typing.LiteralString = (
@@ -189,16 +157,3 @@ async def _load_dependency_neighbours(
         if isinstance(props, dict):
             neighbours.append(props)
     return neighbours
-
-
-def _parse_deployment_events(
-    raw: typing.Any,
-) -> list[models.DeploymentEvent]:
-    """Parse a ``d.deployments`` agtype value into events, tolerantly.
-
-    AGE round-trips the list as a JSON string; malformed entries are
-    skipped rather than failing the whole score computation.
-    """
-    return models.parse_deployment_events(
-        graph.parse_agtype(raw), on_error='skip'
-    )

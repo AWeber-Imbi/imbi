@@ -1,7 +1,9 @@
+import datetime
+import typing
 import unittest
 from unittest import mock
 
-from imbi.common import models
+from imbi.common import deployments, models
 from imbi.common.scoring import engine
 from imbi.common.scoring import models as scoring_models
 
@@ -190,71 +192,37 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(_Extended, graph.match.call_args_list[1].args[0])
 
 
-class ParseDeploymentEventsTests(unittest.TestCase):
-    def test_parses_json_string_list(self) -> None:
-        raw = (
-            '[{"timestamp": "2026-06-01T00:00:00+00:00", "status": "success"}]'
-        )
-        events = engine._parse_deployment_events(raw)
-        self.assertEqual(1, len(events))
-        self.assertEqual('success', events[0].status)
-
-    def test_malformed_json_returns_empty(self) -> None:
-        self.assertEqual([], engine._parse_deployment_events('not json'))
-
-    def test_non_list_returns_empty(self) -> None:
-        self.assertEqual([], engine._parse_deployment_events('{"a": 1}'))
-
-    def test_none_returns_empty(self) -> None:
-        self.assertEqual([], engine._parse_deployment_events(None))
-
-    def test_skips_invalid_event(self) -> None:
-        raw = (
-            '[{"status": "success", "timestamp": "2026-06-01T00:00:00+00:00"},'
-            ' {"nope": true}]'
-        )
-        events = engine._parse_deployment_events(raw)
-        self.assertEqual(1, len(events))
-
-
 class LoadDeploymentStatusesTests(unittest.IsolatedAsyncioTestCase):
     async def test_latest_per_environment(self) -> None:
-        graph = mock.AsyncMock()
-        graph.execute.return_value = [
-            {
-                'slug': 'production',
-                'deployments': (
-                    '[{"timestamp": "2026-06-01T00:00:00+00:00",'
-                    ' "status": "success"}]'
+        def _entry(slug: str, status: str) -> deployments.ProjectDeployment:
+            return deployments.ProjectDeployment(
+                'proj-id',
+                {'slug': slug},
+                None,
+                models.DeploymentEvent(
+                    timestamp=datetime.datetime(
+                        2026, 6, 1, tzinfo=datetime.UTC
+                    ),
+                    status=typing.cast('typing.Any', status),
                 ),
-            },
-            {
-                'slug': 'production',
-                'deployments': (
-                    '[{"timestamp": "2026-06-03T00:00:00+00:00",'
-                    ' "status": "failed"}]'
-                ),
-            },
-            {
-                'slug': 'staging',
-                'deployments': (
-                    '[{"timestamp": "2026-06-02T00:00:00+00:00",'
-                    ' "status": "success"}]'
-                ),
-            },
-        ]
-        result = await engine._load_deployment_statuses(graph, 'proj-id')
+            )
+
+        reader = mock.AsyncMock(
+            return_value=[
+                _entry('production', 'failed'),
+                _entry('staging', 'success'),
+            ]
+        )
+        with mock.patch.object(
+            deployments, 'latest_deployments_by_project', reader
+        ):
+            result = await engine._load_deployment_statuses(
+                mock.AsyncMock(), 'proj-id'
+            )
         self.assertEqual(
             {'production': 'failed', 'staging': 'success'}, result
         )
-
-    async def test_no_events_omits_environment(self) -> None:
-        graph = mock.AsyncMock()
-        graph.execute.return_value = [
-            {'slug': 'production', 'deployments': None},
-        ]
-        result = await engine._load_deployment_statuses(graph, 'proj-id')
-        self.assertEqual({}, result)
+        self.assertEqual(['proj-id'], reader.await_args.args[1])
 
 
 class LoadDependencyNeighboursTests(unittest.IsolatedAsyncioTestCase):

@@ -175,8 +175,7 @@ class AnalysisResultPolicy(_PolicyBase):
         return float(mapped) if mapped is not None else None
 
 
-#: Status carried by a ``DeploymentEvent`` on a
-#: ``Release -[:DEPLOYED_TO]-> Environment`` edge. Duplicated here as a
+#: Status carried by a ``Deployment`` node. Duplicated here as a
 #: plain literal to avoid importing the models module into the scoring
 #: package (which would invert the dependency direction).
 DeploymentStatusLiteral = typing.Literal[
