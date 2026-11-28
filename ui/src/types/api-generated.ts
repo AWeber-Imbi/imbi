@@ -2492,8 +2492,9 @@ export interface paths {
          *         403: A change of ``allow_insecure_http`` without
          *             ``ai_model:credentials``.
          *         404: No such provider.
-         *         409: The new slug is taken, or the new driver does not serve
-         *             the model type of a model of this provider.
+         *         409: The new slug is taken, the new driver does not serve
+         *             the model type of a model of this provider, or
+         *             ``allow_insecure_http`` changed after the read.
          *         422: The patched configuration is invalid.
          */
         patch: operations["patch_ai_provider_api_organizations__org_slug__ai_providers__id__patch"];
