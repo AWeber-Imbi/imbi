@@ -1285,6 +1285,20 @@ class LLMCallStepTestCase(WorkflowTestCase):
         )
         return graph.parse_agtype(records[0]['at']) is not None
 
+    async def test_model_missing_from_the_catalog_is_refused(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {id}}})
+            DETACH DELETE m
+            RETURN 1 AS ok
+            """,
+            {'id': self.plain},
+            ['ok'],
+        )
+        response = await self._create(graph=self._graph(plain={}))
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn('is not in the catalog', response.json()['detail'])
+
     async def test_save_checks(self) -> None:
         fields = [{'name': 'risk', 'type': 'string'}]
         for nodes, message in (

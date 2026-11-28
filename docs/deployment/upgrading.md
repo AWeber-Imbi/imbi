@@ -108,10 +108,18 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    (`opslog-agent-task-purge`), run it on 2.65.0. The operations log no
    longer accepts the `Agent Task` entry type. A retained `Agent Task`
    entry makes the operations log fail to load.
-4. **Before you deploy**, change `IMBI_AI_PROVIDER_API`,
+4. **When you deploy**, change `IMBI_AI_PROVIDER_API`,
    `IMBI_AI_PROVIDER_ASSISTANT`, and `IMBI_AI_PROVIDER_SLACKBOT` (if you
    set them) from a provider id to `<org-slug>/<provider-slug>`, for
-   example `acme/anthropic`. The AI model catalog is now per organization
+   example `acme/anthropic`. Put the new values only in the
+   configuration of the new release (for example, the same Helm release
+   or Deployment change that sets the new image). A container of the
+   previous release reads a value as a provider id: with a slug value,
+   it has no AI provider and does not use `ANTHROPIC_API_KEY`. If a
+   container of the previous release must start after the change (for
+   example, a rollback), first remove these values from its
+   configuration, or set the provider ids again if the copy below has
+   not run (the copy deletes the old ids). The AI model catalog is now per organization
    (ADR 0018). **Right after you deploy**, run the maintenance operation
    **Copy the AI Model Catalog to Each Organization**
    (`ai-catalog-org-copy`). Until it runs, the AI features see an empty

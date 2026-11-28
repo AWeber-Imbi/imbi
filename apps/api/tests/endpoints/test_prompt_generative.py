@@ -747,3 +747,30 @@ class DispatchTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(answer, result)
         self.assertEqual(seen, [False, False])
         self.assertTrue(dispatched.is_set())
+
+    async def test_request_bearer_and_auth_stay_without_a_credential(
+        self,
+    ) -> None:
+        auth = mock.Mock()
+        call = mock.AsyncMock(
+            return_value=generate.Result('ok', None, {}, None)
+        )
+        provider = mock.Mock(workload_identity=None, driver='anthropic')
+        request = generate.Request(
+            driver='anthropic',
+            model_id='claude-opus-5',
+            messages=[],
+            credential='token',
+            bearer=True,
+            auth=auth,
+        )
+        with (
+            mock.patch.object(
+                model_generate, 'decrypt_config_value', return_value=None
+            ),
+            mock.patch.object(generate, 'generate', call),
+        ):
+            await model_generate.call(mock.Mock(), provider, request)
+        sent = call.await_args.args[0]
+        self.assertTrue(sent.bearer)
+        self.assertIs(sent.auth, auth)

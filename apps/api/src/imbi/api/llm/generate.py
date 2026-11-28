@@ -188,8 +188,11 @@ async def call(
             dataclasses.replace(
                 request,
                 credential=credential.key or request.credential,
-                bearer=credential.bearer,
-                auth=credential.auth,
+                # Keep the request's values when the credential sets none.
+                bearer=(
+                    credential.bearer if credential.key else request.bearer
+                ),
+                auth=credential.auth or request.auth,
             )
         )
 

@@ -188,19 +188,24 @@ async def _model_id(
     version: models.PromptVersion,
     ref: str,
     email: str | None,
+    org_ids: resolve.OrgIds | None = None,
 ) -> str | None:
     """Return the version's model id when the consumer can call it.
 
     The AI model catalog is per organization, and these prompts are
-    global, so the model comes from the catalogs of the organizations
-    of the user. Without a user, there is no catalog model.
+    global, so the model comes from the catalogs of ``org_ids``, or of
+    the organizations of the user when ``org_ids`` is ``None``. Without
+    a user, there is no catalog model.
 
     A ``restricted`` model is used only for a member of one of its
     teams (#788). Other users get the configured model.
     """
     if version.model is None:
         return None
-    org_ids = [] if email is None else await resolve.member_org_ids(db, email)
+    if email is None:
+        org_ids = []
+    elif org_ids is None:
+        org_ids = await resolve.member_org_ids(db, email)
     info = await resolve.model_info(db, version.model, org_ids=org_ids)
     if info is None or not info.enabled:
         LOGGER.warning(
@@ -251,10 +256,15 @@ async def _model_id(
 
 
 async def load_model_id(
-    db: graph.Graph, ref: str, email: str | None = None
+    db: graph.Graph,
+    ref: str,
+    email: str | None = None,
+    *,
+    org_ids: resolve.OrgIds | None = None,
 ) -> str | None:
     """Return the model id of ``ref``'s version, when a consumer can call it
-    for the user ``email``.
+    for the user ``email``. ``org_ids`` limits the catalog to those
+    organizations (default: all the organizations of the user).
 
     ``None`` when the prompt is missing, names no model, or names one
     that is disabled or served by an unsupported driver. Errors are
@@ -262,7 +272,7 @@ async def load_model_id(
     """
     try:
         _prompt, version, _label = await resolve.resolve(db, ref)
-        return await _model_id(db, version, ref, email)
+        return await _model_id(db, version, ref, email, org_ids)
     except resolve.PromptError:
         return None
     except Exception:  # noqa: BLE001 - creating a conversation must not fail

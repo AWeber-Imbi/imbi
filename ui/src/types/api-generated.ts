@@ -28894,6 +28894,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Each model is in the catalog; none is created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {

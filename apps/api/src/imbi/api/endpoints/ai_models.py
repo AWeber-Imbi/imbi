@@ -861,7 +861,15 @@ async def delete_ai_model(
 
 
 @ai_provider_imports_router.post(
-    '/{id}/import-models', response_model=ImportResult, status_code=201
+    '/{id}/import-models',
+    response_model=ImportResult,
+    status_code=201,
+    responses={
+        200: {
+            'model': ImportResult,
+            'description': 'Each model is in the catalog; none is created.',
+        },
+    },
 )
 async def import_ai_models(
     org_id: OrgId,

@@ -773,6 +773,16 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
+    if prompt is not None and prompt.model is not None:
+        # A global prompt stores the id of the slug in the first
+        # organization that has it. The run uses the model with that slug
+        # in the organization of the task. Without one, the stored id
+        # stays, and the check below refuses it.
+        info = await prompt_resolve.model_info(
+            db, prompt.model, org_ids=[task['organization_id']]
+        )
+        if info is not None:
+            prompt = prompt.model_copy(update={'model_id': info.model_id})
     # The runner sends prompt.model_id. Without one it uses its own
     # configured model, which is not checked (like IMBI_ASSISTANT_MODEL).
     if prompt is not None and prompt.model_id is not None:

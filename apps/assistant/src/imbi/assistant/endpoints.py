@@ -138,6 +138,7 @@ async def create_conversation(
                 db,
                 assistant_settings.prompt_ref,
                 auth_ctx.require_user.email,
+                org_ids=[org_id],
             )
             or assistant_settings.model
         )

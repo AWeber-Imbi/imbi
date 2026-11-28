@@ -487,6 +487,12 @@ async def _check_llm_call(
             {'slug': version.model or '', 'org_id': org_id},
             ['structured', 'kind', 'access_scope'],
         )
+        # The run refuses a model that is not in the organization's
+        # catalog, so the save refuses it too.
+        if version.model and not records:
+            raise _llm_call_error(
+                node, f'the model {version.model!r} is not in the catalog'
+            )
         model = (
             {k: graph.parse_agtype(v) for k, v in records[0].items()}
             if records

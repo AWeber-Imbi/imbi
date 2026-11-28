@@ -662,15 +662,24 @@ async def _model_id_for(
     )
     if not records:
         raise _unprocessable(f'AI model {model!r} is not in the catalog')
-    record = prompt_resolve.first_enabled(records)
-    if graph.parse_agtype(record['enabled']) is False:
+    enabled = [
+        r for r in records if graph.parse_agtype(r['enabled']) is not False
+    ]
+    if not enabled:
         raise _unprocessable(f'AI model {model!r} is disabled')
+
     # A missing value predates model_type, when every model was
     # generative.
-    model_type = graph.parse_agtype(record.get('model_type'))
-    if (model_type or 'generative') != kind:
+    def model_type_of(record: dict[str, typing.Any]) -> str:
+        return graph.parse_agtype(record.get('model_type')) or 'generative'
+
+    # A global prompt sees the slug in every organization; use a row of
+    # the prompt's kind when one exists.
+    record = next((r for r in enabled if model_type_of(r) == kind), None)
+    if record is None:
+        model_type = model_type_of(enabled[0])
         raise _unprocessable(
-            f'AI model {model!r} is a {model_type or "generative"} model; '
+            f'AI model {model!r} is a {model_type} model; '
             f'a {kind} prompt needs a {kind} model'
         )
     return str(graph.parse_agtype(record['model_id']))

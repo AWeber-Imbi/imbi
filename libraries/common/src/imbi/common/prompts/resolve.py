@@ -61,7 +61,8 @@ RETURN t.id AS id
 MODEL_ID_SCOPES_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{model_id: {model_id}}})-[:BELONGS_TO]->(o:Organization)
 WHERE o.id IN {org_ids}
-RETURN m.slug AS slug, m.access_scope AS access_scope, m.enabled AS enabled
+RETURN m.slug AS slug, m.access_scope AS access_scope, m.enabled AS enabled,
+       o.id AS org_id
 """
 
 ALLOWED_TEAM_QUERY: typing.LiteralString = """
@@ -290,7 +291,7 @@ async def member_may_use_model_id(
         model_id,
         default,
         org_ids,
-        lambda slug: member_allowed(db, slug, email, org_ids=org_ids),
+        lambda slug, org_id: member_allowed(db, slug, email, org_ids=[org_id]),
     )
 
 
@@ -305,7 +306,7 @@ async def team_may_use_model_id(
         model_id,
         None,
         org_ids,
-        lambda slug: team_allowed(db, slug, team_id, org_ids=org_ids),
+        lambda slug, org_id: team_allowed(db, slug, team_id, org_ids=[org_id]),
     )
 
 
@@ -314,12 +315,16 @@ async def _may_use_model_id(
     model_id: str,
     default: str | None,
     org_ids: OrgIds,
-    allowed: collections.abc.Callable[[str], collections.abc.Awaitable[bool]],
+    allowed: collections.abc.Callable[
+        [str, str], collections.abc.Awaitable[bool]
+    ],
 ) -> bool:
+    # Check each grant in the organization of its model row only. A grant
+    # for the same slug in a different organization must not authorize it.
     records = await db.execute(
         MODEL_ID_SCOPES_QUERY,
         {'model_id': model_id, 'org_ids': list(org_ids)},
-        ['slug', 'access_scope', 'enabled'],
+        ['slug', 'access_scope', 'enabled', 'org_id'],
     )
     rows = [{k: graph.parse_agtype(v) for k, v in r.items()} for r in records]
     rows = [r for r in rows if r.get('enabled') is not False]
@@ -328,7 +333,7 @@ async def _may_use_model_id(
     if any(r['access_scope'] != 'restricted' for r in rows):
         return True
     for row in rows:
-        if await allowed(str(row['slug'])):
+        if await allowed(str(row['slug']), str(row['org_id'])):
             return True
     return False
 

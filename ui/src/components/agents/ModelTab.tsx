@@ -98,8 +98,13 @@ export function ModelTab({ errors, onChange, value }: ModelTabProps) {
   const [provider, setProvider] = useState<string>(
     () => selected?.provider_name ?? '',
   )
+  // An organization switch can leave a provider that the new catalog
+  // does not have.
   const activeProvider =
-    provider || selected?.provider_name || providers[0] || ''
+    (providers.includes(provider) ? provider : '') ||
+    selected?.provider_name ||
+    providers[0] ||
+    ''
   const [advanced, setAdvanced] = useState(() =>
     Object.values(value.params).some((p) => p.on),
   )

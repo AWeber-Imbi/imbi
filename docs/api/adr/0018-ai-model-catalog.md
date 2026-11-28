@@ -102,9 +102,10 @@ indistinguishable from a missing node. Cross-organization probing is therefore
 not possible through these routes.
 
 `slug` remains a stable org-scoped alias. Agent configuration can name
-`default-chat` instead of a vendor model id. Both uniqueness rules are scoped,
-so both are enforced in the endpoint rather than by a graph index: model
-`slug` is unique per organization, and `model_id` is unique per provider.
+`default-chat` instead of a vendor model id. Both uniqueness rules are scoped.
+Model `slug` is unique per organization; the `(org_id, slug)` unique index
+enforces it (see the amendment below). `model_id` is unique per provider; the
+endpoint enforces it, because no graph index covers it.
 
 ### Deleting a provider does not cascade
 
@@ -216,10 +217,15 @@ decision above:
   `/organizations/{org_slug}/ai-models`. The caller must be a member, and the
   `ai_model:*` permissions of the caller's role in that organization apply.
 - Every consumer reads only the catalog of its organization: prompt runs,
-  workflow steps, agent saves, task claims, and usage prices. The assistant
-  and the Slack bot have no organization, so they read the catalogs of the
-  organizations of the user. A global prompt names a model by slug, and a run
-  uses the model with that slug in the organization of the run.
+  workflow steps, agent saves, task claims, and usage prices. A global prompt
+  names a model by slug, and a run uses the model with that slug in the
+  organization of the run.
+- The assistant and the Slack bot still take their model from the
+  environment (`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`). Only the model
+  of their CMS system prompt comes from a catalog: the catalog of the
+  organization of the conversation for the assistant, and the catalogs of
+  the organizations of the user for the Slack bot. Model selection through
+  an organization catalog is a follow-up (the resolver below).
 - `IMBI_AI_PROVIDER_<SERVICE>` names a provider as
   `<org-slug>/<provider-slug>`, not by id.
 
