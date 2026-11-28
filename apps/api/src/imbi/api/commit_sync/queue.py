@@ -278,6 +278,7 @@ async def _handle_entries(
                         f'Commit sync failed after {MAX_DELIVERIES} attempts. '
                         'See server logs for details.'
                     ),
+                    only_if_pending=True,
                 )
             continue
         try:

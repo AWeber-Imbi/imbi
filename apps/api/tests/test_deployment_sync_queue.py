@@ -269,6 +269,7 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((db, 'p1'), set_status.await_args.args)
         self.assertEqual('failed', set_status.await_args.kwargs['status'])
         self.assertEqual('u1', set_status.await_args.kwargs['requested_by'])
+        self.assertTrue(set_status.await_args.kwargs['only_if_pending'])
 
     async def test_rate_limited_pauses_without_ack_or_dlq(self) -> None:
         client = mock.AsyncMock()

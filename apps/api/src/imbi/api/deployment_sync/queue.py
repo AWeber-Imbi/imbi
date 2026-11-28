@@ -322,6 +322,7 @@ async def _handle_entries(
                         f'Deployment sync failed after {MAX_DELIVERIES} '
                         'attempts. See server logs for details.'
                     ),
+                    only_if_pending=True,
                 )
             continue
         renewer = asyncio.ensure_future(_renew_claim(client, consumer, msg_id))

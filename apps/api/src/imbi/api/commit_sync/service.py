@@ -320,6 +320,7 @@ async def set_status(
     tags: int = 0,
     error: str = '',
     retry: bool = True,
+    only_if_pending: bool = False,
 ) -> None:
     """Persist last-sync state on the ``Project`` node (best-effort).
 
@@ -329,9 +330,23 @@ async def set_status(
     enqueue endpoint passes ``retry=False`` for its optimistic ``queued``
     write: dropping that on conflict is correct, since the worker's newer
     ``running`` write must win rather than be clobbered back to ``queued``.
+
+    *only_if_pending* skips the write unless the stored status is still
+    ``queued`` or ``running``. The dead-letter path uses it: a stale job
+    that reaches its delivery limit after a newer run finished must not
+    replace that run's terminal status.
     """
-    query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
+    guard: typing.LiteralString = (
+        """
+    WHERE p.commit_sync_status IN ['queued', 'running']"""
+        if only_if_pending
+        else ''
+    )
+    query: typing.LiteralString = (
+        """
+    MATCH (p:Project {{id: {project_id}}})"""
+        + guard
+        + """
     SET p.commit_sync_status = {status},
         p.commit_sync_at = {at},
         p.commit_sync_by = {by},
@@ -340,6 +355,7 @@ async def set_status(
         p.commit_sync_error = {error}
     RETURN p.id AS id
     """
+    )
     params = {
         'project_id': project_id,
         'status': status,
