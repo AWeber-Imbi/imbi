@@ -298,16 +298,16 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result.provider, resolved.model.provider)
         resolver.assert_awaited_once()
 
-    async def test_graph_error_in_the_model_check_falls_back(self) -> None:
+    async def test_graph_error_in_the_model_check_is_raised(self) -> None:
+        # No other model is used in place of the named model, so the
+        # packaged prompt does not replace it.
         found = _version(model='opus', model_id='claude-opus-5-5')
         with (
             self.patch_resolve(found),
             self.patch_model(RuntimeError('db down')),
-            self.assertLogs(system.LOGGER, 'WARNING'),
+            self.assertRaises(RuntimeError),
         ):
-            result = await self.load(email='dev@example.com')
-        self.assertEqual(result.source, 'fallback')
-        self.assertIsNone(result.model_id)
+            await self.load(email='dev@example.com')
 
     async def test_override_wins(self) -> None:
         with self.patch_resolve(_version()) as found:
@@ -323,7 +323,7 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
-    async def default(self, result: object) -> str | None:
+    async def default(self, result: object) -> system.ConsumerModel | None:
         kwargs: dict[str, typing.Any] = (
             {'side_effect': result}
             if isinstance(result, BaseException)

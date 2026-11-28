@@ -141,13 +141,17 @@ async def create_conversation(
         if requested is not None:
             chosen = await _catalog_model(db, user, org_id, requested)
         else:
-            chosen = await prompt_system.load_model(
-                db,
-                assistant_settings.prompt_ref,
-                user.email,
-                admin=user.is_admin,
-                org_id=org_id,
-            ) or await prompt_system.default_model(
+            # An operator override replaces the CMS prompt and its model.
+            chosen = None
+            if not assistant_settings.system_prompt:
+                chosen = await prompt_system.load_model(
+                    db,
+                    assistant_settings.prompt_ref,
+                    user.email,
+                    admin=user.is_admin,
+                    org_id=org_id,
+                )
+            chosen = chosen or await prompt_system.default_model(
                 db, user.email, admin=user.is_admin, org_id=org_id
             )
             if chosen is None:

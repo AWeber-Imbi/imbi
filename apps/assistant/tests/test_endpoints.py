@@ -572,6 +572,45 @@ class CreateConversationEndpointTestCase(
     @mock.patch(
         'imbi.assistant.age_ops.create_conversation',
     )
+    async def test_create_conversation_override_skips_the_prompt_model(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        # An override replaces the CMS prompt and its model, so an
+        # unusable CMS model does not stop the conversation.
+        client._client = mock.MagicMock()
+        mock_create.return_value = _make_conversation()
+        error = llm_resolve.ModelUnusable('disabled', 'opus', 'no')
+        with (
+            mock.patch.dict(
+                'os.environ',
+                {'IMBI_ASSISTANT_SYSTEM_PROMPT': 'Be brief.'},
+                clear=True,
+            ),
+            mock.patch.object(client, 'client_for'),
+            mock.patch.object(
+                prompt_system,
+                'load_model',
+                mock.AsyncMock(side_effect=error),
+            ) as load,
+            mock.patch.object(
+                prompt_system,
+                'default_model',
+                mock.AsyncMock(return_value=_consumer_model('claude-org')),
+            ),
+        ):
+            await endpoints.create_conversation(
+                org_id='org-1',
+                db=mock.AsyncMock(),
+                auth_ctx=_make_auth_context(),
+                body=None,
+            )
+        load.assert_not_awaited()
+        self.assertEqual(mock_create.call_args.kwargs['model'], 'claude-org')
+
+    @mock.patch(
+        'imbi.assistant.age_ops.create_conversation',
+    )
     async def test_create_conversation_refuses_an_unusable_prompt_model(
         self,
         mock_create: mock.AsyncMock,

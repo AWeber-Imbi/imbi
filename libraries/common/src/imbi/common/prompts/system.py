@@ -407,27 +407,6 @@ async def load_system_prompt(
             if name in version.variable_schema
         }
         rendered = await rendering.render(version, declared, {})
-        try:
-            model = await _model(db, version, email, org_id, admin)
-        except Exception:
-            if check_model:
-                raise
-            # The turn does not use this model, so an unusable model or a
-            # failed lookup does not change its instructions.
-            LOGGER.warning(
-                'The model of %s cannot be used; its settings do not apply',
-                ref,
-                exc_info=True,
-            )
-            return SystemPrompt(
-                text=rendered.system,
-                source='cms',
-                ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
-            )
-    except llm_resolve.ModelUnusable:
-        # A configuration error, not a CMS failure: no other model is
-        # used in its place (ADR 0018).
-        raise
     except resolve.PromptError as e:
         LOGGER.info('Using the packaged prompt for %s: %s', ref, e)
         return await _fallback(default, variables)
@@ -438,6 +417,26 @@ async def load_system_prompt(
             exc_info=True,
         )
         return await _fallback(default, variables)
+
+    # An error in the check of the named model is not a CMS failure: no
+    # other model is used in its place (ADR 0018).
+    try:
+        model = await _model(db, version, email, org_id, admin)
+    except Exception:
+        if check_model:
+            raise
+        # The turn does not use this model, so an unusable model or a
+        # failed lookup does not change its instructions.
+        LOGGER.warning(
+            'The model of %s cannot be used; its settings do not apply',
+            ref,
+            exc_info=True,
+        )
+        return SystemPrompt(
+            text=rendered.system,
+            source='cms',
+            ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
+        )
 
     return SystemPrompt(
         text=rendered.system,
