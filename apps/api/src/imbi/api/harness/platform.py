@@ -23,6 +23,7 @@ from imbi.api.harness import store as harness_store
 from imbi.api.secret_broker import broker, model_key, providers
 from imbi.common import models
 from imbi.common.llm import drivers
+from imbi.common.llm import resolve as llm_resolve
 
 
 class ModelUpstream(pydantic.BaseModel):
@@ -39,18 +40,41 @@ class ModelUpstream(pydantic.BaseModel):
     key_ref: str | None = None
 
 
-def upstream(provider: models.AIProvider) -> ModelUpstream:
-    """Return the model upstream of an AI provider: the Anthropic
-    Messages API of an ``anthropic`` provider, or a gateway that speaks
-    it (``openai_compatible``, with a bearer key, at the root of its
-    URL)."""
+#: The drivers that the runner's model proxy can call, and the upstream
+#: kind of each: the Anthropic Messages protocol, from Anthropic or from
+#: a gateway with a bearer key (ADR 0022 amendment).
+_KINDS: dict[str, typing.Literal['anthropic', 'litellm']] = {
+    'anthropic': 'anthropic',
+    'openai_compatible': 'litellm',
+}
+
+
+def upstream(model: models.AIModel) -> ModelUpstream:
+    """Return the model upstream of the AI provider of ``model``: the
+    Anthropic Messages API of an ``anthropic`` provider, or a gateway
+    that speaks it (``openai_compatible``, at the root of its URL).
+
+    Raises:
+        llm_resolve.ModelUnusable: ``unsupported_driver``.
+
+    """
+    provider = model.provider
+    kind = _KINDS.get(provider.driver)
+    if kind is None:
+        raise llm_resolve.ModelUnusable(
+            'unsupported_driver',
+            model.slug,
+            f'AI model {model.slug!r} is served by driver '
+            f'{provider.driver!r}; agents need anthropic or '
+            'openai_compatible',
+        )
     base_url = drivers.resolve_base_url(provider.driver, provider.base_url)
     if provider.driver != 'anthropic' and base_url is not None:
         # An OpenAI style base URL ends in /v1; the proxy adds
         # /v1/messages itself.
         base_url = base_url.removesuffix('/v1')
     return ModelUpstream(
-        kind='anthropic' if provider.driver == 'anthropic' else 'litellm',
+        kind=kind,
         base_url=base_url,
         allow_insecure_http=provider.allow_insecure_http,
         key_ref=model_key.REFERENCE,

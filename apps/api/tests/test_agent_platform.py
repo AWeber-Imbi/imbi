@@ -10,6 +10,7 @@ from imbi.api.endpoints import harness as harness_api
 from imbi.api.harness import marketplaces, platform
 from imbi.api.plugins import assignments
 from imbi.common import models
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.plugins import base
 from imbi.common.prompts import pool
 from imbi.common.prompts import resolve as prompt_resolve
@@ -1320,9 +1321,10 @@ class ModelUpstreamTests(unittest.TestCase):
     def provider(
         self, driver: str, base_url: str | None, insecure: bool = False
     ) -> typing.Any:
-        return mock.Mock(
+        provider = mock.Mock(
             driver=driver, base_url=base_url, allow_insecure_http=insecure
         )
+        return mock.Mock(slug='m', provider=provider)
 
     def test_anthropic_provider(self) -> None:
         self.assertEqual(
@@ -1347,6 +1349,15 @@ class ModelUpstreamTests(unittest.TestCase):
             self.provider('openai_compatible', 'http://litellm:4000', True)
         )
         self.assertTrue(upstream.allow_insecure_http)
+
+    def test_other_drivers_are_unsupported(self) -> None:
+        for driver in ('openai', 'bedrock', 'vertex', 'typesafe'):
+            with (
+                self.subTest(driver=driver),
+                self.assertRaises(llm_resolve.ModelUnusable) as ctx,
+            ):
+                platform.upstream(self.provider(driver, None))
+            self.assertEqual(ctx.exception.reason, 'unsupported_driver')
 
 
 class PinTests(unittest.TestCase):

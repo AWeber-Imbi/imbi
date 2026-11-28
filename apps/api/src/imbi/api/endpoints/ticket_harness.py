@@ -386,10 +386,8 @@ MATCH (a:Agent {{id: {id}}})
 RETURN a.settings AS settings
 """
 
-#: A model of the organization by catalog slug or by provider model id.
-_MODEL_PRICES_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
-WHERE m.slug = {model} OR m.model_id = {model}
+#: The AIModel id, slug, spend cap, and prices of a price match.
+_PRICE_RETURN: typing.LiteralString = """
 RETURN m.id AS id, m.slug AS slug,
        m.monthly_spend_cap AS monthly_spend_cap,
        m.input_cost_per_million AS input_cost_per_million,
@@ -399,19 +397,22 @@ RETURN m.id AS id, m.slug AS slug,
        m.cache_write_1h_cost_per_million AS cache_write_1h_cost_per_million
 """
 
+#: A model of the organization by catalog slug or by provider model id.
+_MODEL_PRICES_QUERY: typing.LiteralString = (
+    """
+MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+WHERE m.slug = {model} OR m.model_id = {model}"""
+    + _PRICE_RETURN
+)
+
 #: The models of the AI provider that the claim pinned on the task.
-_PROVIDER_PRICES_QUERY: typing.LiteralString = """
+_PROVIDER_PRICES_QUERY: typing.LiteralString = (
+    """
 MATCH (m:AIModel)-[:SERVED_BY]->(:AIProvider {{id: {provider_id}}})
       -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
-WHERE m.slug = {model} OR m.model_id = {model}
-RETURN m.id AS id, m.slug AS slug,
-       m.monthly_spend_cap AS monthly_spend_cap,
-       m.input_cost_per_million AS input_cost_per_million,
-       m.output_cost_per_million AS output_cost_per_million,
-       m.cache_read_cost_per_million AS cache_read_cost_per_million,
-       m.cache_write_cost_per_million AS cache_write_cost_per_million,
-       m.cache_write_1h_cost_per_million AS cache_write_1h_cost_per_million
-"""
+WHERE m.slug = {model} OR m.model_id = {model}"""
+    + _PRICE_RETURN
+)
 
 _PRICE_COLUMNS = (
     'input_cost_per_million',

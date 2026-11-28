@@ -789,7 +789,7 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
-    source, model = await _task_model(db, task, prompt)
+    source, model, upstream = await _task_model(db, task, prompt)
     await store.pin_model(task['id'], model.id, model.provider.id)
     if prompt is not None:
         prompt = prompt.model_copy(update={'model_id': model.model_id})
@@ -805,7 +805,7 @@ async def _identity(
                 config, settings, bundle.snapshot.get('tools') or {}
             ).model_copy(
                 update={
-                    'model_upstream': platform.upstream(model.provider),
+                    'model_upstream': upstream,
                     # What the agent may request comes from its grants,
                     # not from a list in the agent (#445).
                     'secrets': await _secret_references(
@@ -831,24 +831,19 @@ class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
 
 
-#: The drivers that the runner's model proxy can call: the Anthropic
-#: Messages protocol, from Anthropic or a gateway (ADR 0022 amendment).
-HARNESS_DRIVERS = frozenset({'anthropic', 'openai_compatible'})
-
-
 async def _task_model(
     db: graph.Graph,
     task: dict[str, typing.Any],
     prompt: BundlePrompt | None,
-) -> tuple[llm_resolve.Source, models.AIModel]:
-    """Resolve the model of a task: the prompt version, then the default
-    of the agent's owner team, then the default of the organization.
-    There is no environment level: it has no provider key.
+) -> tuple[llm_resolve.Source, models.AIModel, platform.ModelUpstream]:
+    """Resolve the model of a task and its upstream: the prompt version,
+    then the default of the agent's owner team, then the default of the
+    organization. There is no environment level: it has no provider key.
 
     Raises:
         llm_resolve.ModelUnusable: The first level that names a model
-            names one that cannot be used, its driver is not in
-            :data:`HARNESS_DRIVERS`, or no level names a model
+            names one that cannot be used, the runner cannot call its
+            driver (:func:`platform.upstream`), or no level names a model
             (``not_configured``).
 
     """
@@ -870,15 +865,7 @@ async def _task_model(
             'No AI model: set a model on the prompt version, or a default '
             'model for the team or the organization',
         )
-    if model.provider.driver not in HARNESS_DRIVERS:
-        raise llm_resolve.ModelUnusable(
-            'unsupported_driver',
-            model.slug,
-            f'AI model {model.slug!r} is served by driver '
-            f'{model.provider.driver!r}; agents need anthropic or '
-            'openai_compatible',
-        )
-    return resolved.source, model
+    return resolved.source, model, platform.upstream(model)
 
 
 class _EgressTokenTooLarge(ValueError):

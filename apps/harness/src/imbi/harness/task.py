@@ -1126,8 +1126,9 @@ class TaskRun:
         self.layout.make_task(str(self.task['id']))
         upstream: Body = self.config.get('model_upstream') or {}
         base_url = str(upstream.get('base_url') or ANTHROPIC_API)
-        # imbi-api refuses this on write, but an older stored version
-        # can still have it. Do not send the key without TLS.
+        # imbi-api allows http:// only for a provider with
+        # allow_insecure_http (an in-cluster gateway). Do not send the key
+        # without TLS otherwise.
         if urllib.parse.urlsplit(
             base_url
         ).scheme != 'https' and not upstream.get('allow_insecure_http'):
