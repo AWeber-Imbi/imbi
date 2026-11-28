@@ -1691,8 +1691,8 @@ async def _set_current_release(
     Records ``release_id`` as ``current_release`` on the
     ``Project -[:DEPLOYED_IN]-> Environment`` edge so the release
     currently deployed to an environment can be read as a single
-    edge-property lookup rather than derived from the ``DEPLOYED_TO``
-    deployment history. Called on every ``success`` deployment event.
+    edge-property lookup rather than derived from the ``Deployment``
+    nodes. Called on every ``success`` deployment event.
 
     The edge is ``MERGE``d: for the common case where the project is
     already configured to deploy in the environment it reuses the

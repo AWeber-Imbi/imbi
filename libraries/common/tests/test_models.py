@@ -1711,52 +1711,7 @@ class ReleaseModelTestCase(unittest.TestCase):
     def test_release_in_all(self) -> None:
         self.assertIn('Release', models.__all__)
         self.assertIn('ReleaseLink', models.__all__)
-        self.assertIn('ReleaseDeploymentEdge', models.__all__)
         self.assertIn('DeploymentEvent', models.__all__)
-
-
-class ReleaseDeploymentEdgeTestCase(unittest.TestCase):
-    """Tests for the ReleaseDeploymentEdge relationship model."""
-
-    def test_is_relationship_edge(self) -> None:
-        edge = models.ReleaseDeploymentEdge()
-        self.assertIsInstance(edge, models.RelationshipEdge)
-
-    def test_default_deployments_empty(self) -> None:
-        edge = models.ReleaseDeploymentEdge()
-        self.assertEqual(edge.deployments, [])
-
-    def test_deployment_events_round_trip(self) -> None:
-        edge = models.ReleaseDeploymentEdge(
-            deployments=[
-                models.DeploymentEvent(
-                    status='pending',
-                    note='queued',
-                ),
-                models.DeploymentEvent(
-                    status='success',
-                    note='ok',
-                ),
-            ],
-        )
-        roundtrip = models.ReleaseDeploymentEdge.model_validate_json(
-            edge.model_dump_json(),
-        )
-        self.assertEqual(len(roundtrip.deployments), 2)
-        self.assertEqual(roundtrip.deployments[0].status, 'pending')
-        self.assertEqual(roundtrip.deployments[0].note, 'queued')
-        self.assertEqual(roundtrip.deployments[1].status, 'success')
-
-    def test_deployment_events_serialize_as_list(self) -> None:
-        edge = models.ReleaseDeploymentEdge(
-            deployments=[
-                models.DeploymentEvent(status='pending'),
-            ],
-        )
-        dumped = json.loads(edge.model_dump_json())
-        self.assertIsInstance(dumped['deployments'], list)
-        self.assertEqual(len(dumped['deployments']), 1)
-        self.assertEqual(dumped['deployments'][0]['status'], 'pending')
 
 
 class IntegrationTestCase(unittest.TestCase):
