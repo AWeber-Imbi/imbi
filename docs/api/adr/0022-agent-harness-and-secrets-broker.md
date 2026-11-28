@@ -523,7 +523,12 @@ provider. Without one, its tasks close with `model_not_configured`.
 An older runner reads the derived `model_upstream` and asks for
 `secret://imbi/model` with its current code, so it works with the new
 imbi-api. It takes the model from `prompt.model_id`, or from
-`IMBI_HARNESS_MODEL` when the task has no prompt. A newer runner with an
+`IMBI_HARNESS_MODEL` when the task has no prompt. Thus the support is only
+for tasks with a prompt. For a task with no prompt, an older runner sends
+`IMBI_HARNESS_MODEL` to the provider of the resolved model, not the pinned
+model: the provider can refuse the call, or the task runs a model that is
+not the pinned one. The upgrade notes tell operators to start the runners
+with the new image, not an older one. A newer runner with an
 older imbi-api gets the configured `model_upstream` and no `model`, and works
 as before.
 
