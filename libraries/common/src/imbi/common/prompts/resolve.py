@@ -40,8 +40,9 @@ RETURN v
 
 #: The AI model catalog is per organization. Each catalog query reads
 #: only the organizations in ``org_ids``: the organization of the
-#: caller, or for a consumer with no organization (the assistant, the
-#: Slack bot) each organization of the user (:func:`member_org_ids`).
+#: caller, or for a consumer with no organization (a global system
+#: prompt of an imbi-api helper) each organization of the user
+#: (:func:`member_org_ids`).
 MODEL_DRIVER_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})-[:BELONGS_TO]->(o:Organization)
 WHERE o.id IN {org_ids}
@@ -90,7 +91,11 @@ def first_enabled(
     orders the rows by organization slug, so the choice is stable.
     """
     return next(
-        (r for r in records if graph.parse_agtype(r['enabled']) is not False),
+        (
+            r
+            for r in records
+            if graph.parse_agtype(r.get('enabled')) is not False
+        ),
         records[0],
     )
 

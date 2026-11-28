@@ -56,16 +56,34 @@ A conversation has a model. A new conversation uses the first of these that
 is set:
 
 1. The model in the request.
-2. The model of the prompt version, when the assistant can call it and the
-   user may use it (see [AI Models](../admin/ai-models.md)).
-3. `IMBI_ASSISTANT_MODEL`.
+2. The model of the prompt version (see [AI Models](../admin/ai-models.md)).
+3. The default model of the organization of the conversation.
+4. `IMBI_ASSISTANT_MODEL`.
 
-The assistant checks the selected model id against the enabled catalog
-entries with that id. One unrestricted entry, or one restricted entry whose
-teams include the user, allows the id. When no enabled entry allows the id, a
-non-admin gets `403` (`model_not_allowed`). `IMBI_ASSISTANT_MODEL` is an
-exception only when no enabled entry has its id. The assistant checks the
-model of the conversation again on each message. Admins can use every model.
+The model in the request is a vendor model id. It must be the model id of an
+AI model of the organization of the conversation, with the same checks as the other
+levels, or `IMBI_ASSISTANT_MODEL`. Another id gets `403`
+(`model_not_allowed`).
+
+A catalog model uses the credential of its provider: a workload identity
+token from imbi-api, else `ANTHROPIC_API_KEY` (see
+[Imbi services](../admin/ai-models.md#imbi-services)). This includes
+`IMBI_ASSISTANT_MODEL` when a catalog model has its model id.
+`IMBI_ASSISTANT_MODEL` uses the credential of the assistant only when no
+catalog model has its model id.
+
+The first of these that names a model wins. When the model of the prompt
+version or the default model cannot be used (it is disabled, its provider is
+disabled, the user may not use it, or a provider other than Anthropic serves
+it), the request fails with `403` (`model_not_allowed`) or `422`. The
+assistant does not use the next model.
+
+On each message, the assistant checks the model of the conversation again
+with the AI model of that id in the organization: it must be enabled, its
+provider enabled, allowed for the user, and under its monthly spend cap.
+`IMBI_ASSISTANT_MODEL` is an exception only when no AI model has its id.
+Each message uses the credential of the provider of that AI model. Admins
+can use every model, but the spend cap applies to them too.
 
 A conversation stops at `IMBI_ASSISTANT_MAX_CONVERSATION_TURNS` messages.
 Then the person must start a new conversation.

@@ -1094,7 +1094,8 @@ class AIModel(Node):
         default=None, ge=0, le=2
     )
     default_top_p: float | None = pydantic.Field(default=None, ge=0, le=1)
-    #: Advisory only until spend enforcement exists.
+    #: USD for each calendar month (UTC). At or over it, the model
+    #: cannot be used (ADR 0018).
     monthly_spend_cap: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )

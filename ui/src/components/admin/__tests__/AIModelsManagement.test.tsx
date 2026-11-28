@@ -13,12 +13,14 @@ vi.mock('@/api/endpoints', () => ({
   deleteAIProvider: vi.fn(),
   deleteAIProviderCredentials: vi.fn(),
   discoverAIModels: vi.fn(),
+  getDefaultAIModel: vi.fn(),
   importAIModels: vi.fn(),
   listAIModels: vi.fn(),
   listAIProviderDrivers: vi.fn(),
   listAIProviders: vi.fn(),
   listTeams: vi.fn(),
   setAIProviderCredentials: vi.fn(),
+  setDefaultAIModel: vi.fn(),
   updateAIModel: vi.fn(),
   updateAIProvider: vi.fn(),
 }))
@@ -102,6 +104,7 @@ const model: AIModel = {
   max_output_tokens: 8192,
   model_id: 'claude-fable-5-1',
   model_type: 'generative',
+  month_to_date_spend: '12.5',
   monthly_spend_cap: 4000,
   name: 'Claude Fable 5.1',
   output_cost_per_million: 15,
@@ -149,6 +152,10 @@ describe('AIModelsManagement', () => {
     vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider])
     vi.mocked(endpoints.listAIModels).mockResolvedValue([model])
     vi.mocked(endpoints.listTeams).mockResolvedValue([team])
+    vi.mocked(endpoints.getDefaultAIModel).mockResolvedValue({ slug: null })
+    vi.mocked(endpoints.setDefaultAIModel).mockResolvedValue({
+      slug: 'claude-fable-5-1',
+    })
     vi.mocked(endpoints.createAIModel).mockResolvedValue(model)
     vi.mocked(endpoints.updateAIModel).mockResolvedValue(model)
     vi.mocked(endpoints.updateAIProvider).mockResolvedValue(provider)
@@ -188,6 +195,54 @@ describe('AIModelsManagement', () => {
     })
   })
 
+  it('sets the organization default model', async () => {
+    const endpoints = await import('@/api/endpoints')
+    await mountAt('/admin/ai-models')
+
+    const select = await screen.findByRole('combobox', {
+      name: 'Default model',
+    })
+    await waitFor(() =>
+      expect(endpoints.getDefaultAIModel).toHaveBeenCalledWith(
+        'acme',
+        undefined,
+        expect.anything(),
+      ),
+    )
+    fireEvent.click(select)
+    fireEvent.click(
+      await screen.findByRole('option', { name: /claude-fable-5-1/ }),
+    )
+
+    await waitFor(() =>
+      expect(endpoints.setDefaultAIModel).toHaveBeenCalledWith(
+        'acme',
+        'claude-fable-5-1',
+        undefined,
+      ),
+    )
+    await waitFor(() => expect(select).toHaveTextContent('claude-fable-5-1'))
+  })
+
+  it('shows a read error of the default model, not "No model"', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.getDefaultAIModel)
+      .mockRejectedValueOnce(new Error('down'))
+      .mockResolvedValueOnce({ slug: 'claude-fable-5-1' })
+    await mountAt('/admin/ai-models')
+
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(screen.getByText(/Could not load the default model/)).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: 'Default model' })).toBeNull()
+    fireEvent.click(retry)
+    // The pending retry shows a disabled select; wait for the response.
+    await waitFor(() => {
+      const select = screen.getByRole('combobox', { name: 'Default model' })
+      expect(select).toBeEnabled()
+      expect(select).toHaveTextContent('claude-fable-5-1')
+    })
+  })
+
   it('renders configured providers and unconfigured drivers as ghost rows', async () => {
     await mountAt('/admin/ai-models')
 
@@ -222,7 +277,7 @@ describe('AIModelsManagement', () => {
     )
     expect(screen.getByText('claude-fable-5-1')).toBeInTheDocument()
     expect(screen.getByText('All teams')).toBeInTheDocument()
-    expect(screen.getByText('$4,000/mo')).toBeInTheDocument()
+    expect(screen.getByText('$12.50 / $4,000/mo')).toBeInTheDocument()
     expect(screen.getByText('Generative')).toBeInTheDocument()
   })
 

@@ -65,11 +65,14 @@ remove one from a version without breaking it.
 ### Model and parameters
 
 When a version sets `max_tokens` or `temperature`, the consumer uses
-them. When a version names a catalog model, the consumer uses it only if
-the model is enabled and an **Anthropic** provider serves it; otherwise
-it logs a warning and uses its configured model (`IMBI_ASSISTANT_MODEL`,
-`IMBI_SLACKBOT_MODEL`). A request that names a model explicitly still
-wins.
+them. When a version names a catalog model, the consumer uses it. The model
+must be enabled, an enabled **Anthropic** provider must serve it, and the
+user must be allowed to use it; otherwise the request fails and the
+consumer does not use another model. When the version names no model,
+the consumer uses the default model of the organization (see
+[AI Models](ai-models.md#default-models)), else its configured model
+(`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`). A request that names a
+model explicitly still wins.
 
 ### Environment override
 

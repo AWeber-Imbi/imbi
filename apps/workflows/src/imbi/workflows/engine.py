@@ -227,9 +227,7 @@ class Engine:
         ports = {n: s['port'] for n, s in steps.items()}
         running = [n for n, s in status.items() if s == 'running']
         if running:
-            due = await self._call(
-                run, wf_graph, steps, running[0], version['slug']
-            )
+            due = await self._call(run, wf_graph, steps, running[0], version)
             # A wait or a backoff past the deadline wakes at the deadline,
             # so the run times out on time.
             return min(due, deadline) if due else due
@@ -421,9 +419,12 @@ class Engine:
         wf_graph: wf.Graph,
         steps: dict[str, store.Row],
         node_id: str,
-        slug: str,
+        version: store.Row,
     ) -> datetime.datetime | None:
-        """Make one call of a running step and record what it returns."""
+        """Make one call of a running step and record what it returns.
+        ``version`` is the pinned version with the workflow's slug and
+        owner team (:meth:`store.Store.load`)."""
+        slug: str = version['slug']
         node = next(n for n in wf_graph.nodes if n.id == node_id)
         step = steps[node_id]
         step_type = registry.require(node.type)
@@ -481,6 +482,7 @@ class Engine:
                     executors.Call(
                         organization_id=run['organization_id'],
                         workflow_slug=slug,
+                        owner_team_id=version['owner_team_id'],
                         run_id=run['id'],
                         node=node,
                         params=step['input'] or {},

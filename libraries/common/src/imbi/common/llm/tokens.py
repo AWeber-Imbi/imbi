@@ -186,13 +186,28 @@ def bearer_client(
 class ServiceToken:
     """The AI Provider token of this service, from imbi-api.
 
-    ``api_token`` is the API key of the service account. imbi-api finds
-    the AI Provider from that account; the request names no provider.
+    ``api_token`` is the API key of the service account. Without
+    ``provider``, imbi-api finds the AI Provider from that account.
+    With ``provider`` (``<org-slug>/<provider-slug>``), imbi-api gives
+    the token of that provider when it is in an organization of
+    ``user``, the user the service calls the model for. A source with a
+    provider serves that one user only. ``org`` names the organization
+    of the call; imbi-api requires it from the slackbot.
     """
 
-    def __init__(self, api_url: str, api_token: str) -> None:
+    def __init__(
+        self,
+        api_url: str,
+        api_token: str,
+        provider: str | None = None,
+        user: str | None = None,
+        org: str | None = None,
+    ) -> None:
         self._url = f'{api_url.rstrip("/")}/ai-providers/token'
         self._api_token = api_token
+        self._provider = provider
+        self._user = user
+        self._org = org
         self._cache = TokenCache()
         self._failed: str | None = None
 
@@ -207,9 +222,14 @@ class ServiceToken:
     async def _mint(self) -> AccessToken:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
+                payload: dict[str, str | None] = {'failed': self._failed}
+                if self._provider is not None:
+                    payload |= {'provider': self._provider, 'user': self._user}
+                    if self._org is not None:
+                        payload['org'] = self._org
                 response = await client.post(
                     self._url,
-                    json={'failed': self._failed},
+                    json=payload,
                     headers={'Authorization': f'Bearer {self._api_token}'},
                 )
         except httpx.HTTPError:

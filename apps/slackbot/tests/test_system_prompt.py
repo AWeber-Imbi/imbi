@@ -129,3 +129,4 @@ class SystemPromptTests(helpers.TestCase):
                 identity.ImbiUser('a@example.com', 'Ada', 'acme', 'org-1'), []
             )
         self.assertEqual(load.await_args.kwargs['email'], 'a@example.com')
+        self.assertIs(load.await_args.kwargs['admin'], False)

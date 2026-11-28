@@ -42,9 +42,10 @@ import httpx
 import psycopg
 import pydantic
 
-from imbi.common import graph, versioning
+from imbi.common import graph, models, versioning
 from imbi.common.auth import encryption
 from imbi.common.llm import drivers, typesafe
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.plugins import base
 from imbi.common.workflows import graph as wf
 from imbi.common.workflows import registry, script_runner, step_type
@@ -140,6 +141,9 @@ class Call:
     attempt: int = 1
     #: Seconds before the engine cancels this call, or ``None``.
     time_limit: float | None = None
+    #: The owner team of the workflow. A ``restricted`` model must allow
+    #: it.
+    owner_team_id: str | None = None
 
 
 @dataclasses.dataclass
@@ -269,16 +273,8 @@ class Api:
         return typing.cast('dict[str, typing.Any]', response.json())
 
 
-#: A model of the organization of the run, by id or slug.
-_MODEL_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{id: {org}}})
-MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-WHERE m.id = {ref} OR m.slug = {ref}
-RETURN m.model_id AS model_id, m.enabled AS enabled,
-       m.model_type AS model_type, p.driver AS driver,
-       p.enabled AS provider_enabled, p.base_url AS base_url,
-       p.credentials_encrypted AS credentials
-"""
+#: The driver of the decision models of a Model decision step.
+_TYPESAFE = 'typesafe'
 
 #: imbi-api records a release before its build; a failed build leaves
 #: it with an open ``build-failure`` blocker and no tag on the remote.
@@ -411,38 +407,35 @@ class Executors:
 
     async def _model_decision(self, call: Call) -> Outcome:
         params = _params(model_decision.Params, call)
-        found = await _values(
-            self.db,
-            _MODEL_QUERY,
-            {'ref': params.model_id, 'org': call.organization_id},
-            [
-                'model_id',
-                'enabled',
-                'model_type',
-                'driver',
-                'provider_enabled',
-                'base_url',
-                'credentials',
-            ],
-        )
-        model = found[0] if found else None
-        if (
-            model is None
-            or model['enabled'] is False
-            or model['provider_enabled'] is False
-            or model['model_type'] != 'decision'
-            or model['driver'] != 'typesafe'
-        ):
+        try:
+            resolved = await llm_resolve.resolve_model(
+                self.db,
+                [call.organization_id],
+                model=params.model_id,
+                team_id=call.owner_team_id,
+                drivers=(_TYPESAFE,),
+            )
+        except llm_resolve.ModelUnusable as e:
+            raise StepError(
+                'model_unavailable',
+                retry=False,
+                detail={'error': e.reason, 'message': e.message},
+            ) from e
+        model = typing.cast('models.AIModel', resolved.model)
+        provider = model.provider
+        if model.model_type != 'decision':
             raise StepError('model_unavailable', retry=False)
-        api_key = encryption.decrypt_config_value(model['credentials'])
+        api_key = encryption.decrypt_config_value(
+            provider.credentials_encrypted
+        )
         if not api_key:
             raise StepError('model_credentials_missing', retry=False)
         try:
             result = await typesafe.decide(
                 api_key,
-                drivers.resolve_base_url(model['driver'], model['base_url'])
+                drivers.resolve_base_url(provider.driver, provider.base_url)
                 or '',
-                str(model['model_id']),
+                model.model_id,
                 params.context or params.prompt,
                 {
                     'decision': {

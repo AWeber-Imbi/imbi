@@ -45,12 +45,13 @@ _INSERT: typing.LiteralString = """
 INSERT INTO ai_runtime.ai_model_calls (
     id, organization_id, principal, origin, run_id, node_id, attempt,
     idempotency_key, prompt_ref, prompt_version, content_sha256, model,
-    model_id, driver, system, messages, output_schema
+    model_id, ai_model_id, driver, system, messages, output_schema
 ) VALUES (
     %(id)s, %(organization_id)s, %(principal)s, %(origin)s, %(run_id)s,
     %(node_id)s, %(attempt)s, %(idempotency_key)s, %(prompt_ref)s,
     %(prompt_version)s, %(content_sha256)s, %(model)s, %(model_id)s,
-    %(driver)s, %(system)s, %(messages)s, %(output_schema)s
+    %(ai_model_id)s, %(driver)s, %(system)s, %(messages)s,
+    %(output_schema)s
 )
 ON CONFLICT (organization_id, principal, idempotency_key) DO UPDATE
 SET status = CASE

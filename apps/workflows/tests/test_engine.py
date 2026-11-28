@@ -22,7 +22,7 @@ import orjson
 import psycopg
 from psycopg import rows
 
-from imbi.api import models, tickets, workflows
+from imbi.api import model_calls, models, tickets, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
@@ -1663,6 +1663,80 @@ class BranchTestCase(EngineTestCase):
             steps['join']['started_at'],
             max(steps['wa']['finished_at'], steps['wc']['finished_at']),
         )
+
+
+class ModelDecisionTestCase(EngineTestCase):
+    async def _decide(self) -> dict[str, typing.Any]:
+        workflow_id = await self._workflow(
+            [
+                _node('start', 'manual'),
+                _node(
+                    'decide',
+                    'model_decision',
+                    {
+                        'model_id': self.model,
+                        'prompt': 'Which?',
+                        'branches': ['a', 'b'],
+                    },
+                ),
+            ],
+            [_edge('start', 'decide')],
+        )
+        run_id = await self._start(workflow_id)
+        with mock.patch(
+            'imbi.common.llm.typesafe.decide',
+            mock.AsyncMock(return_value=_decision('a')),
+        ):
+            return await self._drive(run_id)
+
+    async def test_restricted_model_needs_the_owner_team(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}})
+            SET m.access_scope = 'restricted'
+            """,
+            {'model': self.model},
+        )
+        run = await self._decide()
+        self.assertEqual(run['status'], 'failed', run)
+        self.assertEqual(run['steps']['decide']['error'], 'model_unavailable')
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}}), (t:Team {{id: {team}}})
+            CREATE (m)-[:ALLOWED_FOR]->(t)
+            """,
+            {'model': self.model, 'team': self.team},
+        )
+        run = await self._decide()
+        self.assertEqual(run['status'], 'succeeded', run)
+
+    async def test_disabled_provider_is_unavailable(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (p:AIProvider {{id: {provider}}})
+            SET p.enabled = false
+            """,
+            {'provider': self.provider},
+        )
+        run = await self._decide()
+        self.assertEqual(run['steps']['decide']['error'], 'model_unavailable')
+
+    async def test_model_at_its_spend_cap_is_unavailable(self) -> None:
+        await tickets.initialize()
+        await model_calls.initialize()
+        # The spend of the month (zero) is at a cap of zero.
+        await self.graph.execute(
+            """
+            MATCH (m:AIModel {{id: {model}}})
+            SET m.monthly_spend_cap = 0
+            """,
+            {'model': self.model},
+        )
+        with self.assertLogs('imbi.workflows.engine', 'WARNING') as logs:
+            run = await self._decide()
+        self.assertEqual(run['status'], 'failed', run)
+        self.assertEqual(run['steps']['decide']['error'], 'model_unavailable')
+        self.assertIn("'error': 'spend_cap'", '\n'.join(logs.output))
 
 
 class ConditionTestCase(EngineTestCase):

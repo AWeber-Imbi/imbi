@@ -12,7 +12,13 @@ from unittest import mock
 import httpx
 
 from apps.api.tests.endpoints import test_agent_tasks
-from imbi.api import conversation_orgs, mcp_server_orgs, secret_broker
+from imbi.api import (
+    conversation_orgs,
+    mcp_server_orgs,
+    model_calls,
+    secret_broker,
+    tickets,
+)
 from imbi.api.endpoints import plugin_edges
 from imbi.common import graph
 
@@ -148,6 +154,9 @@ class AIModelTests(CrossOrgTestCase):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        # The list reads the month-to-date spend.
+        await model_calls.initialize()
+        await tickets.initialize()
         self.permissions |= {'ai_model:read', 'ai_model:update'}
         self.foreign_team = f'team-foreign-{self.org}'
         await self.node(

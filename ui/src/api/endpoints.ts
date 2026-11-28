@@ -94,6 +94,7 @@ import type {
   CurrentReleaseEnvironment,
   DashboardMetrics,
   DashboardStatus,
+  DefaultAIModel,
   DeploymentCompareResult,
   DeploymentPromoteRequest,
   DeploymentRun,
@@ -2105,6 +2106,33 @@ export const updateAIModel = (
 
 export const deleteAIModel = (orgSlug: string, id: string) =>
   apiClient.delete<void>(`${aiModelsPath(orgSlug)}/${encodeURIComponent(id)}`)
+
+// The default model of an organization, or of a team when `teamSlug`
+// is set. A `null` slug clears it.
+const defaultAIModelPath = (orgSlug: string, teamSlug?: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}` +
+  (teamSlug ? `/teams/${encodeURIComponent(teamSlug)}` : '') +
+  '/default-ai-model'
+
+export const getDefaultAIModel = (
+  orgSlug: string,
+  teamSlug?: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<DefaultAIModel>(
+    defaultAIModelPath(orgSlug, teamSlug),
+    undefined,
+    signal,
+  )
+
+export const setDefaultAIModel = (
+  orgSlug: string,
+  slug: null | string,
+  teamSlug?: string,
+) =>
+  apiClient.put<DefaultAIModel>(defaultAIModelPath(orgSlug, teamSlug), {
+    slug,
+  })
 
 // Prompt CMS. A prompt is addressed by `namespace/slug`; versions are
 // immutable, and labels are movable pointers to one version.

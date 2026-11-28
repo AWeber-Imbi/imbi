@@ -69,6 +69,7 @@ async def build_system_prompt(
     db: graph.Graph,
     auth_context: auth.AuthContext,
     tool_names: list[str],
+    org_id: str | None = None,
 ) -> system.SystemPrompt:
     """Build the system prompt for the current user.
 
@@ -76,6 +77,8 @@ async def build_system_prompt(
         db: The graph, for reading the prompt from the CMS.
         auth_context: The authenticated user's context.
         tool_names: Names of tools available to this user.
+        org_id: The organization of the conversation, whose AI models
+            apply.
 
     Returns:
         The rendered prompt with the model settings of its version.
@@ -89,4 +92,9 @@ async def build_system_prompt(
         system.ASSISTANT,
         override=assistant_settings.system_prompt,
         email=auth_context.require_user.email,
+        org_id=org_id,
+        admin=auth_context.require_user.is_admin,
+        # A turn uses the model of the conversation, which the turn
+        # checks. The model of the version must not stop the turn.
+        check_model=False,
     )

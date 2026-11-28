@@ -17,12 +17,13 @@ import orjson
 from psycopg.types import json as pg_json
 
 from apps.api.tests.endpoints import test_agent_tasks
-from imbi.api import models, scoring
+from imbi.api import model_calls, models, scoring
 from imbi.api.auth import permissions
 from imbi.api.endpoints import ticket_harness
 from imbi.api.graph_sql import props_template
 from imbi.api.tickets import sweeper
 from imbi.common import valkey
+from imbi.common.llm import resolve as llm_resolve
 
 
 def new_id() -> str:
@@ -1320,6 +1321,109 @@ class UsageTests(HarnessTestCase):
             cache_write_tokens=None,
         )
         self.assertEqual(response.json()['input_cost_per_million'], '3.000000')
+
+    async def add_model_call(
+        self, ai_model_id: str, cost: str, *, last_month: bool = False
+    ) -> None:
+        """Add a prompt run of the model to ``ai_runtime``, now or in
+        the last second of the previous month (UTC)."""
+        pool = model_calls.create_pool()
+        await pool.open()
+        try:
+            async with pool.connection() as conn:
+                await conn.execute(
+                    'INSERT INTO ai_runtime.ai_model_calls (id,'
+                    ' organization_id, principal, origin, prompt_ref,'
+                    ' content_sha256, model, model_id, ai_model_id, driver,'
+                    ' system, messages, cost_usd, started_at) VALUES (%s,'
+                    " %s, 'p', 'preview', 'r', 'x', 'm', 'm', %s,"
+                    " 'anthropic', '', '[]', %s, CASE WHEN %s THEN"
+                    " date_trunc('month', NOW() AT TIME ZONE 'UTC')"
+                    " AT TIME ZONE 'UTC' - interval '1 second'"
+                    ' ELSE NOW() END)',
+                    (uuid.uuid4(), self.org, ai_model_id, cost, last_month),
+                )
+        finally:
+            await pool.close()
+        self.addAsyncCleanup(self._delete_model_calls)
+
+    async def _delete_model_calls(self) -> None:
+        pool = model_calls.create_pool()
+        await pool.open()
+        try:
+            async with pool.connection() as conn:
+                await conn.execute(
+                    'DELETE FROM ai_runtime.ai_model_calls'
+                    ' WHERE organization_id = %s',
+                    (self.org,),
+                )
+        finally:
+            await pool.close()
+
+    async def month_spend(self, ai_model_id: str) -> decimal.Decimal | None:
+        async with self.store._pool.connection() as conn:
+            spend = await llm_resolve.month_spend(conn, [ai_model_id])
+        return spend.get(ai_model_id)
+
+    async def test_spend_cap_closes_the_task(self) -> None:
+        await model_calls.initialize()
+        under = f'under-{uuid.uuid4().hex[:8]}'
+        await self.make_model(under, under, monthly_spend_cap='1')
+        response = await self.report(
+            'u-0',
+            model_id=under,
+            tokens_out=None,
+            cache_read_tokens=None,
+            cache_write_tokens=None,
+        )
+        self.assertNotEqual(response.json()['task']['status'], 'closed')
+        slug = f'capped-{uuid.uuid4().hex[:8]}'
+        await self.make_model(slug, slug, monthly_spend_cap='0.025')
+        ai_model_id = f'{self.org}-{slug}'
+        await self.add_model_call(ai_model_id, '0.01')
+        # The last second of the previous month (UTC) is not counted.
+        await self.add_model_call(ai_model_id, '100', last_month=True)
+        self.assertEqual(
+            await self.month_spend(ai_model_id), decimal.Decimal('0.01')
+        )
+        response = await self.report('u-1', model_id=slug)
+        self.assertEqual(response.status_code, 201, response.text)
+        state = response.json()['task']
+        self.assertEqual(state['status'], 'closed')
+        self.assertEqual(state['outcome'], 'exceeded_ceiling')
+        self.assertEqual(state['outcome_reason'], 'spend_cap')
+        # The spend counts the prompt run and the agent report.
+        self.assertEqual(
+            await self.month_spend(ai_model_id), decimal.Decimal('0.031')
+        )
+        self.assertEqual(
+            [row['ai_model_id'] for row in await self.ledger()],
+            [f'{self.org}-{under}', ai_model_id],
+        )
+        # A delete of the ticket does not lower the spend of the model.
+        async with self.store._pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET log_archived_at = NOW()'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+        await self.store.delete(self.org, 'T-1', ticket_harness._SYSTEM)
+        self.assertEqual(
+            await self.month_spend(ai_model_id), decimal.Decimal('0.031')
+        )
+
+    async def test_a_shared_model_id_is_not_charged_to_a_model(self) -> None:
+        # Two providers serve the same vendor id: the report does not
+        # tell which model made the call.
+        shared = f'shared-{uuid.uuid4().hex[:8]}'
+        await self.make_model(f'{shared}-a', shared, monthly_spend_cap='0')
+        await self.make_model(f'{shared}-b', shared, monthly_spend_cap='0')
+        response = await self.report('u-1', model_id=shared)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertNotEqual(response.json()['task']['status'], 'closed')
+        (row,) = await self.ledger()
+        self.assertIsNone(row['ai_model_id'])
+        self.assertEqual(row['input_cost_per_million'], 3)
 
     async def test_a_model_of_another_org_has_no_price(self) -> None:
         await self.make_model('other-only', 'other-only-id', self.other_org)

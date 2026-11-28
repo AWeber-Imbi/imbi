@@ -71,6 +71,21 @@ class BuildSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
             found.await_args.args[1], 'imbi-assistant/system@stable'
         )
 
+    @mock.patch.dict(os.environ, {}, clear=True)
+    async def test_the_version_model_does_not_stop_a_turn(self) -> None:
+        # A turn uses the model of the conversation (ADR 0018).
+        loaded = system_prompt.system.SystemPrompt(text='x', source='cms')
+        with mock.patch.object(
+            system_prompt.system,
+            'load_system_prompt',
+            new=mock.AsyncMock(return_value=loaded),
+        ) as load:
+            await system_prompt.build_system_prompt(
+                mock.AsyncMock(), _make_auth_context(is_admin=True), []
+            )
+        self.assertIs(load.await_args.kwargs['check_model'], False)
+        self.assertIs(load.await_args.kwargs['admin'], True)
+
     @mock.patch.dict(
         os.environ,
         {

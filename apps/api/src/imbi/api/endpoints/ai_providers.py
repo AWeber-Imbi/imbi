@@ -23,9 +23,10 @@ A provider of a WIF driver can use workload identity instead of a key
 short-lived token with the identity source of that organization
 (:mod:`imbi.api.llm.tokens`). A key and workload identity are exclusive.
 ``POST /ai-providers/token`` gives the assistant and the slackbot the
-token of their fixed provider. That route is not in an organization:
-``IMBI_AI_PROVIDER_<SERVICE>`` names the provider as
-``<org-slug>/<provider-slug>``.
+token of their fixed provider, or of a catalog provider in an
+organization of the user they call the model for. That route is not in
+an organization: ``IMBI_AI_PROVIDER_<SERVICE>`` names the fixed provider
+as ``<org-slug>/<provider-slug>``.
 """
 
 import datetime
@@ -46,11 +47,13 @@ from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
+from imbi.common.auth import permissions as common_permissions
 from imbi.common.auth.encryption import (
     encrypt_config_value,
 )
 from imbi.common.llm import discovery, drivers, generate
 from imbi.common.plugins import identity as plugin_identity
+from imbi.common.prompts import resolve as prompt_resolve
 
 LOGGER = logging.getLogger(__name__)
 
@@ -965,9 +968,19 @@ async def delete_ai_provider_workload_identity(
 
 
 class ServiceTokenRequest(pydantic.BaseModel):
-    """``failed``: the token that got a ``401``, so it is renewed."""
+    """``failed``: the token that got a ``401``, so it is renewed.
+
+    ``provider`` (``<org-slug>/<provider-slug>``) and ``user`` (an
+    email) ask for the token of a catalog provider that the service
+    calls for that user. Without them, the provider of the service.
+    """
 
     failed: str | None = None
+    provider: str | None = None
+    user: str | None = None
+    #: The slug of the organization of the call. The slackbot must set
+    #: it to the organization of its Slack workspace.
+    org: str | None = None
 
 
 class ServiceToken(pydantic.BaseModel):
@@ -987,29 +1000,41 @@ async def service_token(
         fastapi.Depends(permissions.require_permission('ai_provider:token')),
     ],
 ) -> ServiceToken:
-    """The access token of the AI Provider of the calling service.
+    """The access token of an AI Provider, for a calling service.
 
-    For the assistant and the slackbot (WIF plan 4.6). The provider
-    comes from ``IMBI_AI_PROVIDER_<SERVICE>`` (``<org-slug>/<provider-slug>``)
-    for the authenticated service account; the request names no
-    provider. Not in the OpenAPI document, so it is not an MCP tool.
+    For the assistant and the slackbot (WIF plan 4.6). Without
+    ``provider``, the provider comes from ``IMBI_AI_PROVIDER_<SERVICE>``
+    (``<org-slug>/<provider-slug>``) for the authenticated service
+    account. With ``provider`` and ``user``, it is that catalog provider
+    (ADR 0018): an ``anthropic`` provider in an organization of the
+    user. Not in the OpenAPI document, so it is not an MCP tool.
 
     Raises:
+        403: The provider is not in an organization of ``user``, is not
+            an ``anthropic`` provider, or for the slackbot, is not in
+            ``org``, the organization of its Slack workspace.
         404: The caller is not a service with an AI Provider, or the
             provider does not exist.
+        422: ``provider`` without ``user``.
         409: The provider does not use workload identity.
         502: No token could be minted.
         503: No token could be minted now; try again.
 
     """
-    ref = auth.service_account and settings.get_ai_providers().for_service(
-        auth.service_account.slug
-    )
-    if not ref:
-        raise fastapi.HTTPException(
-            status_code=404, detail='No AI provider is set for this caller'
+    if data.provider is not None:
+        ref = data.provider
+        node = await _user_provider(db, auth, ref, data.user, data.org)
+    else:
+        ref = (
+            settings.get_ai_providers().for_service(auth.service_account.slug)
+            if auth.service_account
+            else ''
         )
-    node = await fetch_service_provider(db, ref)
+        if not ref:
+            raise fastapi.HTTPException(
+                status_code=404, detail='No AI provider is set for this caller'
+            )
+        node = await fetch_service_provider(db, ref)
     if node.workload_identity is None:
         raise fastapi.HTTPException(
             status_code=409,
@@ -1025,6 +1050,73 @@ async def service_token(
             detail=f'No workload identity token: {exc.reason}',
         ) from None
     return ServiceToken(token=token.token, expires_at=token.expires_at)
+
+
+#: The services that may ask for the token of a catalog provider for a
+#: user. Each is installation-wide, not an account of one organization:
+#: a service account that an organization admin makes is not one.
+_USER_PROVIDER_SERVICES = frozenset(
+    {
+        common_permissions.ASSISTANT_ACCOUNT,
+        common_permissions.SLACKBOT_ACCOUNT,
+    }
+)
+
+#: The organization ``org_id`` when a Slack workspace is linked to it.
+_SLACK_ORG_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org_id}}})
+WHERE o.slack_team_id IS NOT NULL
+RETURN o.id AS id
+"""
+
+
+async def _user_provider(
+    db: graph.Graph,
+    auth: permissions.AuthContext,
+    ref: str,
+    user: str | None,
+    org: str | None,
+) -> models.AIProvider:
+    """The catalog provider ``ref`` that a service calls for ``user``."""
+    if (
+        auth.service_account is None
+        or auth.service_account.slug not in _USER_PROVIDER_SERVICES
+    ):
+        raise fastapi.HTTPException(
+            status_code=404, detail='No AI provider is set for this caller'
+        )
+    if not user:
+        raise fastapi.HTTPException(
+            status_code=422, detail='A provider needs the user of the call'
+        )
+    node = await fetch_service_provider(db, ref)
+    if node.organization.id not in await prompt_resolve.member_org_ids(
+        db, user
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'AI provider {ref!r} is not in an organization of '
+            'the user',
+        )
+    if node.driver != drivers.ANTHROPIC:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'AI provider {ref!r} is not an anthropic provider',
+        )
+    if auth.service_account.slug == common_permissions.SLACKBOT_ACCOUNT and (
+        org != node.organization.slug
+        or not await db.execute(
+            _SLACK_ORG_QUERY, {'org_id': node.organization.id}, ['id']
+        )
+    ):
+        # The slackbot works in the organization of its Slack workspace
+        # only, as its user tokens do (#1027).
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=f'AI provider {ref!r} is not in the organization of the '
+            'Slack workspace',
+        )
+    return node
 
 
 _CONFIGURED_QUERY: typing.LiteralString = """

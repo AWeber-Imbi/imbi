@@ -21,6 +21,8 @@ from imbi.assistant import (
     system_prompt,
 )
 from imbi.common import external_mcp, graph
+from imbi.common import models as common_models
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import resolve
 from imbi.common.prompts import system as prompt_system
 
@@ -89,27 +91,28 @@ def _require_assistant() -> None:
         )
 
 
-async def _check_model(
-    db: graph.Graph,
-    auth_ctx: AuthDep,
-    org_id: str,
-    model: str,
-    default: str,
-) -> None:
-    """Raise 403 when a non-admin user may not use ``model`` (#788).
+async def _catalog_model(
+    db: graph.Graph, user: common_models.User, org_id: str, model_id: str
+) -> prompt_system.ConsumerModel | None:
+    """Return the catalog model of the vendor ``model_id`` in the
+    organization ``org_id``, with every check of the resolver (enabled,
+    provider, teams, spend cap, driver). ``None``: the id is the
+    configured model and is not in the catalog.
 
-    The catalog of the organization of the conversation applies.
+    Raises:
+        imbi.common.prompts.resolve.ModelNotAllowed: Another id that is
+            not in the catalog.
+        llm_resolve.ModelUnusable: The model cannot be used.
+
     """
-    user = auth_ctx.require_user
-    if user.is_admin:
-        return
-    if not await resolve.member_may_use_model_id(
-        db, model, user.email, default, org_ids=[org_id]
-    ):
+    found = await prompt_system.request_model(
+        db, user.email, model_id, admin=user.is_admin, org_id=org_id
+    )
+    if found is None and model_id != settings.get_assistant_settings().model:
         raise resolve.ModelNotAllowed(
-            f'The model {model!r} is not in the catalog or is restricted '
-            'to teams that do not include you'
+            f'The model {model_id!r} is not in the catalog'
         )
+    return found
 
 
 # --- Conversation CRUD ---
@@ -129,23 +132,44 @@ async def create_conversation(
     """Create a new conversation."""
     _require_assistant()
     assistant_settings = settings.get_assistant_settings()
-    model = body.model if body and body.model else None
-    if model is None:
-        # A new conversation takes the model of the prompt version when
-        # it names one the assistant can call.
-        model = (
-            await prompt_system.load_model_id(
-                db,
-                assistant_settings.prompt_ref,
-                auth_ctx.require_user.email,
-                org_ids=[org_id],
+    user = auth_ctx.require_user
+    requested = body.model if body and body.model else None
+    # The model in the request, else the model of the prompt version,
+    # else the default model of the organization, else the configured
+    # model (ADR 0018).
+    try:
+        if requested is not None:
+            chosen = await _catalog_model(db, user, org_id, requested)
+        else:
+            # An operator override replaces the CMS prompt and its model.
+            chosen = None
+            if not assistant_settings.system_prompt:
+                chosen = await prompt_system.load_model(
+                    db,
+                    assistant_settings.prompt_ref,
+                    user.email,
+                    admin=user.is_admin,
+                    org_id=org_id,
+                )
+            chosen = chosen or await prompt_system.default_model(
+                db, user.email, admin=user.is_admin, org_id=org_id
             )
-            or assistant_settings.model
-        )
-    await _check_model(db, auth_ctx, org_id, model, assistant_settings.model)
+            if chosen is None:
+                chosen = await _catalog_model(
+                    db, user, org_id, assistant_settings.model
+                )
+        if chosen is not None:
+            client.client_for(chosen.provider, user.email)
+    except llm_resolve.ModelUnusable as e:
+        raise llm_resolve.http_error(e) from e
+    model = (
+        chosen.model_id
+        if chosen is not None
+        else requested or assistant_settings.model
+    )
     conv = await age_ops.create_conversation(
         db,
-        user_email=auth_ctx.require_user.email,
+        user_email=user.email,
         org_id=org_id,
         model=model,
     )
@@ -481,6 +505,7 @@ async def _build_tools_and_system(
     system = await system_prompt.build_system_prompt(
         db,
         auth_ctx,
+        org_id=org_id,
         tool_names=[
             *mcp_manager.get_tool_names(),
             mcp.REFRESH_TOOL_NAME,
@@ -762,9 +787,12 @@ async def _stream_response(
     tools: list[dict[str, typing.Any]] | None = None,
     auth_token: str | None = None,
     temperature: float | None = None,
+    api_client: anthropic.AsyncAnthropic | None = None,
 ) -> collections.abc.AsyncIterator[str]:
-    """Stream an SSE response from the Anthropic API."""
-    api_client = client.get_client()
+    """Stream an SSE response from the Anthropic API. ``api_client`` is
+    the client of the provider of the conversation; the client of the
+    service when ``None``."""
+    api_client = api_client or client.get_client()
     tracking = client.tracking(auth_ctx.require_user.email, conversation_id)
     assistant_settings = settings.get_assistant_settings()
     max_rounds = assistant_settings.max_tool_rounds
@@ -955,9 +983,20 @@ async def send_message(
             ),
         )
     # The allowed teams can change after the conversation starts.
-    await _check_model(
-        db, auth_ctx, org_id, conv.model, assistant_settings.model
-    )
+    # Each turn checks the model of the conversation again: the teams,
+    # the spend cap, the provider, and its credential can change after
+    # the conversation starts (ADR 0018).
+    try:
+        found = await _catalog_model(
+            db, auth_ctx.require_user, org_id, conv.model
+        )
+        api_client = (
+            None
+            if found is None
+            else client.client_for(found.provider, auth_ctx.require_user.email)
+        )
+    except llm_resolve.ModelUnusable as e:
+        raise llm_resolve.http_error(e) from e
 
     await age_ops.add_message(
         db,
@@ -972,9 +1011,12 @@ async def send_message(
     ]
 
     mcp_manager = mcp.get_manager()
-    tools, prompt = await _build_tools_and_system(
-        db, mcp_manager, auth_ctx, org_id
-    )
+    try:
+        tools, prompt = await _build_tools_and_system(
+            db, mcp_manager, auth_ctx, org_id
+        )
+    except llm_resolve.ModelUnusable as e:
+        raise llm_resolve.http_error(e) from e
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None
@@ -997,6 +1039,7 @@ async def send_message(
             tools=tools,
             auth_token=auth_token,
             temperature=temperature,
+            api_client=api_client,
         ),
         media_type='text/event-stream',
         headers={

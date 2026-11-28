@@ -669,6 +669,9 @@ cost = "NUMERIC(14, 6)"
 cache_write_1h_tokens = "BIGINT"
 cache_write_1h_cost_per_million = "NUMERIC(14, 6)"
 recorded_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+# The AIModel node id of the prices; NULL for an unknown model and for
+# a row older than the column.
+ai_model_id = "TEXT"
 
 [tables.primary_key]
 columns = ["id"]
@@ -677,6 +680,31 @@ columns = ["id"]
 name = "budget_ledger_idempotency_key"
 columns = ["ticket_id", "idempotency_key"]
 unique = true
+
+# The month-to-date spend of a model (its spend cap).
+[[tables.indexes]]
+name = "budget_ledger_ai_model_idx"
+columns = ["ai_model_id", "recorded_at"]
+
+# The AI model spend of this month from the ledger of a deleted ticket.
+# The monthly spend cap of a model counts these rows
+# (imbi.common.llm.resolve.MONTH_SPEND_QUERY), so a delete does not lower
+# the month-to-date spend of a model. The id is the id of the ledger row.
+[[tables]]
+name = "deleted_model_spend"
+
+[tables.columns]
+id = "UUID NOT NULL"
+ai_model_id = "TEXT NOT NULL"
+cost = "NUMERIC(14, 6) NOT NULL"
+recorded_at = "TIMESTAMP WITH TIME ZONE NOT NULL"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "deleted_model_spend_ai_model_idx"
+columns = ["ai_model_id", "recorded_at"]
 
 # One counter per organization for `T-<n>` short ids.
 [[tables]]

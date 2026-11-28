@@ -30,6 +30,7 @@ from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.llm import discovery, drivers, prices
+from imbi.common.llm import resolve as llm_resolve
 
 LOGGER = logging.getLogger(__name__)
 
@@ -173,6 +174,9 @@ class AIModelResponse(pydantic.BaseModel):
     default_temperature: float | None = None
     default_top_p: float | None = None
     monthly_spend_cap: decimal.Decimal | None = None
+    #: USD spent this calendar month (UTC) by prompt runs and agent
+    #: tasks. Only the list sets it.
+    month_to_date_spend: decimal.Decimal | None = None
     supports_structured_output: bool = False
     supports_forced_tool_choice: bool = True
     created_at: datetime.datetime | None = None
@@ -257,6 +261,14 @@ _UNLINK_OTHER_PROVIDERS_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{id: {id}}})-[r:SERVED_BY]->(p:AIProvider)
 WHERE p.id <> {provider_id}
 DELETE r
+"""
+
+
+#: The organizations and teams whose default model is the model.
+_DEFAULT_OF_QUERY: typing.LiteralString = """
+MATCH (s)-[:USES_DEFAULT_MODEL]->(:AIModel {{id: {id}}})
+      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
+RETURN s.slug AS slug
 """
 
 
@@ -608,14 +620,22 @@ async def list_ai_models(
     """List the model catalog of the organization, ordered by name.
 
     Returns:
-        Every configured model with its provider and allowed teams.
+        Every configured model with its provider, allowed teams, and
+        month-to-date spend.
 
     """
     _ = auth
     records = await db.execute(
         _LIST_QUERY, {'org_id': org_id}, ['m', 'p', 'o', 't']
     )
-    return sorted(_rows_to_responses(records), key=lambda r: r.name.lower())
+    responses = _rows_to_responses(records)
+    async with db.pool.connection() as conn:
+        spend = await llm_resolve.month_spend(conn, [r.id for r in responses])
+    for response in responses:
+        response.month_to_date_spend = spend.get(
+            response.id, decimal.Decimal(0)
+        )
+    return sorted(responses, key=lambda r: r.name.lower())
 
 
 @ai_models_router.post('/', response_model=AIModelResponse, status_code=201)
@@ -843,9 +863,23 @@ async def delete_ai_model(
 
     Raises:
         404: No such model.
+        409: The model is the default model of an organization or a
+            team.
 
     """
     _ = auth
+    records = await db.execute(
+        _DEFAULT_OF_QUERY, {'id': id, 'org_id': org_id}, ['slug']
+    )
+    if records:
+        names = sorted(str(graph.parse_agtype(r['slug'])) for r in records)
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'AI model {id!r} is the default model of '
+                f'{", ".join(names)}; choose another default first'
+            ),
+        )
     query: typing.LiteralString = """
     MATCH (m:AIModel {{id: {id}}})
           -[:BELONGS_TO]->(:Organization {{id: {org_id}}})

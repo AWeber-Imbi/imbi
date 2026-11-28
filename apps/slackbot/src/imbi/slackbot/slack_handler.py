@@ -28,7 +28,8 @@ from slack_sdk.http_retry import builtin_async_handlers
 from slackwright import forms, inflight, ingest, render, stores
 
 from imbi.common import external_mcp, valkey
-from imbi.common.prompts import skills
+from imbi.common.llm import resolve as llm_resolve
+from imbi.common.prompts import skills, system
 from imbi.slackbot import (
     agent,
     client,
@@ -277,12 +278,35 @@ async def _process(
             ],
             skill_list,
         )
+        # The prompt version model, else the default model of the user's
+        # organization, else the configured model (ADR 0018). A configured
+        # model in the catalog gets the checks and provider of the catalog;
+        # one absent from the catalog uses the service client.
+        model, provider = prompt.model_id, prompt.provider
+        if model is None and db is not None:
+            chosen = await system.default_model(
+                db, user.email, admin=user.is_admin, org_id=user.org_id
+            ) or await system.request_model(
+                db,
+                user.email,
+                slackbot_settings.model,
+                admin=user.is_admin,
+                org_id=user.org_id,
+            )
+            if chosen is not None:
+                model, provider = chosen
+        api_client = (
+            None
+            if provider is None
+            else client.client_for(provider, user.email, user.org_slug)
+        )
         answer = await agent.run_turn(
             messages=convo,
             system=prompt.text,
             tools=tools,
             auth_token=token,
-            model=prompt.model_id or slackbot_settings.model,
+            model=model or slackbot_settings.model,
+            api_client=api_client,
             max_tokens=prompt.max_tokens or slackbot_settings.max_tokens,
             max_rounds=slackbot_settings.max_tool_rounds,
             max_tool_result_chars=slackbot_settings.max_tool_result_chars,
@@ -295,6 +319,11 @@ async def _process(
             ),
             toolkit=toolkit,
         )
+    except llm_resolve.ModelUnusable as e:
+        # A configuration error that an admin can fix: tell the user why,
+        # and do not use another model (ADR 0018).
+        LOGGER.warning('Cannot use the AI model in %s/%s: %s', channel, ts, e)
+        answer = f'Sorry — I cannot use the AI model: {e.message}'
     except Exception:
         LOGGER.exception('Failed to handle event in %s/%s', channel, ts)
         answer = _ERROR_MESSAGE
