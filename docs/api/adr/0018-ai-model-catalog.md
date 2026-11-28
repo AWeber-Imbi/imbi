@@ -327,8 +327,9 @@ The consumers today:
   the provider is an Anthropic provider in an organization of the user; the
   Slack bot also sends `org`, and the provider must be in that organization,
   which must have a Slack workspace),
-  else the `ANTHROPIC_API_KEY` of the service with the base URL of the
-  provider, else `provider_credentials_unavailable`. A stored provider key
+  else the `ANTHROPIC_API_KEY` of the service with the driver default URL
+  (only for a provider without a custom base URL; the service key is never
+  sent to a custom base URL), else `provider_credentials_unavailable`. A stored provider key
   does not leave imbi-api.
 
 ## Amendment: the spend cap is enforced
