@@ -597,6 +597,30 @@ class FailedClaimTests(RunnerTestCase):
         check.assert_not_awaited()
         await self.assert_model_not_allowed(runner)
 
+    async def test_disabled_model_slug_is_closed(self) -> None:
+        # A disabled model is refused, also when an enabled model of the
+        # organization has the same provider model id.
+        runner = await self.register()
+        info = harness_api.prompt_resolve.ModelInfo(
+            model_id='claude-opus-5', enabled=False, driver='anthropic'
+        )
+        with (
+            self.patch_prompt('claude-opus-5'),
+            mock.patch.object(
+                harness_api.prompt_resolve,
+                'model_info',
+                mock.AsyncMock(return_value=info),
+            ),
+            mock.patch.object(
+                harness_api.prompt_resolve,
+                'team_may_use_model_id',
+                mock.AsyncMock(return_value=True),
+            ) as check,
+        ):
+            self.assertIsNone(await self.claim(runner))
+        check.assert_not_awaited()
+        await self.assert_model_not_allowed(runner)
+
     async def test_failed_outcome_write_releases_the_claim(self) -> None:
         runner = await self.register()
         with (

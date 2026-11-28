@@ -782,9 +782,9 @@ async def _identity(
         info = await prompt_resolve.model_info(
             db, prompt.model, org_ids=[task['organization_id']]
         )
-        if info is None:
+        if info is None or not info.enabled:
             raise prompt_resolve.ModelNotAllowed(
-                f'The organization has no model {prompt.model!r}'
+                f'The organization has no enabled model {prompt.model!r}'
             )
         prompt = prompt.model_copy(update={'model_id': info.model_id})
     # The runner sends prompt.model_id. Without one it uses its own
