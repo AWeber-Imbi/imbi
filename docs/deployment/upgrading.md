@@ -247,9 +247,17 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    until it is written again.
 8. **After you deploy imbi-api**, run **Remove Legacy Deployment Arrays**
    (`deployment-array-drop`) one time. It removes the old `deployments`
-   array from each `DEPLOYED_TO` edge. Nothing reads the array: the
-   `Deployment` nodes hold the deployments. The operation deletes no
-   edge and no node, and it is safe to run again.
+   array from each `DEPLOYED_TO` edge. Nothing reads the array. The
+   operation deletes no edge and no node, and it is safe to run again.
+   - The operation does not copy array entries into `Deployment` nodes.
+     It discards each entry that only the array holds, and a rollback
+     cannot restore it.
+   - **Migrate Deployment History** (`deployment-migration`, 2.26.0 to
+     2.28.x) copied the entries of each project into `Deployment` nodes.
+     If your install did not run it, upgrade to 2.28.x and run it before
+     you upgrade to this release.
+   - That operation did not copy the entries of a release that no project
+     owns. This operation discards them.
 
 ## 2.65.0
 

@@ -397,8 +397,9 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
                 'Remove the legacy deployments array from each release '
                 'to environment (DEPLOYED_TO) edge. Deployments are '
                 'Deployment nodes now, and nothing reads the array. It '
-                'deletes no edge and no node. Run it one time after the '
-                'upgrade. Safe to re-run.'
+                'copies no entry to a Deployment node, so an entry that '
+                'only the array holds is lost. It deletes no edge and no '
+                'node. Run it one time after the upgrade. Safe to re-run.'
             ),
             pause_key=None,
             enumerate=operations.enumerate_one_run,
