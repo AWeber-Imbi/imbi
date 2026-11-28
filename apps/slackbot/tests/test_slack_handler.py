@@ -548,11 +548,15 @@ class HandleEventTests(helpers.TestCase):
                     )
 
     async def test_unusable_default_is_an_error(self) -> None:
-        error = llm_resolve.ModelUnusable('unsupported_driver', 'gpt', 'no')
+        error = llm_resolve.ModelUnusable(
+            'spend_cap', 'opus', "AI model 'opus' reached its spend cap"
+        )
         run_turn, client = await self._model_for(None, error)
         run_turn.assert_not_awaited()
-        self.assertEqual(
-            client.posts[-1]['markdown_text'], slack_handler._ERROR_MESSAGE
+        # The user gets the reason, not the generic error.
+        self.assertIn(
+            "AI model 'opus' reached its spend cap",
+            client.posts[-1]['markdown_text'],
         )
 
     async def test_skills_reach_prompt_and_tools(self) -> None:

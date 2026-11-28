@@ -1098,7 +1098,7 @@ async def _user_provider(
             detail=f'AI provider {ref!r} is not in an organization of '
             'the user',
         )
-    if node.driver != 'anthropic':
+    if node.driver != drivers.ANTHROPIC:
         raise fastapi.HTTPException(
             status_code=403,
             detail=f'AI provider {ref!r} is not an anthropic provider',

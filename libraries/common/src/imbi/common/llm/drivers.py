@@ -54,6 +54,10 @@ class DriverInfo(pydantic.BaseModel):
     icon: str
 
 
+#: The driver of the Anthropic API, the only driver that the assistant
+#: and the Slack bot can call.
+ANTHROPIC = 'anthropic'
+
 DRIVERS: tuple[DriverInfo, ...] = (
     DriverInfo(
         slug='anthropic',

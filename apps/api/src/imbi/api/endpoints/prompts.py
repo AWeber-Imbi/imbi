@@ -1569,11 +1569,11 @@ async def _run_model(
             team_id=team_id,
             email=email,
             admin=auth.is_admin,
+            # A decision prompt runs on a TypeSafe model only.
+            drivers=None if prompt.kind == 'generative' else ('typesafe',),
         )
     except llm_resolve.ModelUnusable as e:
-        if e.reason == 'not_allowed':
-            raise prompt_resolve.ModelNotAllowed(e.message) from e
-        raise _unprocessable(e.message) from e
+        raise llm_resolve.http_error(e) from e
     if resolved.model is None:
         raise choose
     return resolved.model
@@ -1676,7 +1676,7 @@ async def run_prompt(
             ref,
             idempotency_key,
         )
-    if model.model_type != 'decision' or provider.driver != 'typesafe':
+    if model.model_type != 'decision':
         raise _unprocessable(
             f'AI model {model.slug!r} is not a TypeSafe decision model'
         )

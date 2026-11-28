@@ -16,19 +16,19 @@ that ``BELONGS_TO`` the organizations of the call. The defaults are
 organization.
 """
 
+import collections.abc
 import dataclasses
 import decimal
 import typing
 
+import fastapi
 import psycopg
 
 from imbi.common import graph, models
 from imbi.common.prompts import resolve as prompt_resolve
 
-#: ``unsupported_driver`` is for a consumer that can call only some
-#: drivers, and ``provider_credentials_unavailable`` for a consumer that
-#: has no credential for the provider; :func:`resolve_model` raises
-#: neither.
+#: ``provider_credentials_unavailable`` is for a consumer that has no
+#: credential for the provider; :func:`resolve_model` does not raise it.
 Reason = typing.Literal[
     'not_found',
     'disabled',
@@ -47,7 +47,7 @@ EXPLICIT_QUERY: typing.LiteralString = """
 MATCH (m:AIModel)-[:BELONGS_TO]->(o:Organization)
 WHERE o.id IN {org_ids} AND (m.id = {model} OR m.slug = {model})
 OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p, o
+RETURN m, p, o, m.enabled AS enabled
 ORDER BY o.slug
 """
 
@@ -57,22 +57,20 @@ MODEL_ID_QUERY: typing.LiteralString = """
 MATCH (m:AIModel)-[:BELONGS_TO]->(o:Organization)
 WHERE o.id IN {org_ids} AND m.model_id = {model_id}
 OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p, o
+RETURN m, p, o, m.enabled AS enabled
 ORDER BY o.slug
 """
 
-TEAM_DEFAULT_QUERY: typing.LiteralString = """
-MATCH (o:Organization {{id: {org}}})<-[:BELONGS_TO]-(:Team {{id: {team}}})
-      -[:USES_DEFAULT_MODEL]->(m:AIModel)-[:BELONGS_TO]->(o)
-OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p, o
-"""
-
-ORG_DEFAULT_QUERY: typing.LiteralString = """
-MATCH (o:Organization {{id: {org}}})-[:USES_DEFAULT_MODEL]->(m:AIModel)
-      -[:BELONGS_TO]->(o)
-OPTIONAL MATCH (m)-[:SERVED_BY]->(p:AIProvider)
-RETURN m, p, o
+#: The default model of the team ``{team}`` (``tm``, ``tp``) and of the
+#: organization (``om``, ``op``). The team must be in the organization.
+DEFAULTS_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{id: {org}}})
+OPTIONAL MATCH (o)<-[:BELONGS_TO]-(:Team {{id: {team}}})
+      -[:USES_DEFAULT_MODEL]->(tm:AIModel)-[:BELONGS_TO]->(o)
+OPTIONAL MATCH (tm)-[:SERVED_BY]->(tp:AIProvider)
+OPTIONAL MATCH (o)-[:USES_DEFAULT_MODEL]->(om:AIModel)-[:BELONGS_TO]->(o)
+OPTIONAL MATCH (om)-[:SERVED_BY]->(op:AIProvider)
+RETURN o, tm, tp, om, op
 """
 
 #: The cost of each AI model in the calendar month (UTC), from the
@@ -107,6 +105,14 @@ class ModelUnusable(Exception):
         self.message = message
 
 
+def http_error(error: ModelUnusable) -> fastapi.HTTPException:
+    """The HTTP error of an endpoint for ``error``: ``403``
+    (``model_not_allowed``) for ``not_allowed``, else ``422``."""
+    if error.reason == 'not_allowed':
+        return prompt_resolve.ModelNotAllowed(error.message)
+    return fastapi.HTTPException(status_code=422, detail=error.message)
+
+
 @dataclasses.dataclass(frozen=True)
 class ResolvedModel:
     """The model a call uses, and the level that named it."""
@@ -114,10 +120,6 @@ class ResolvedModel:
     source: Source
     #: ``None`` for ``env``: the caller uses its configured model.
     model: models.AIModel | None = None
-
-    @property
-    def provider(self) -> models.AIProvider | None:
-        return None if self.model is None else self.model.provider
 
 
 async def resolve_model(
@@ -129,6 +131,7 @@ async def resolve_model(
     team_id: str | None = None,
     email: str | None = None,
     admin: bool = False,
+    drivers: collections.abc.Collection[str] | None = None,
 ) -> ResolvedModel:
     """Return the model for a call in the organizations ``org_ids``.
 
@@ -145,48 +148,69 @@ async def resolve_model(
         email: The user of the call. A ``restricted`` model must allow
             one of the user's teams.
         admin: An admin may use a ``restricted`` model.
+        drivers: The drivers that the consumer can call; ``None`` for
+            every driver.
 
     Raises:
         ModelUnusable: The model that the first level names is missing,
-            disabled, served by a disabled provider, or not allowed.
+            disabled, served by a disabled provider or by a driver not
+            in ``drivers``, not allowed, or at its spend cap.
 
     """
-    levels: list[tuple[Source, str, dict[str, typing.Any]]] = []
-    if model is not None:
-        params = {'model': model, 'org_ids': list(org_ids)}
-        levels.append(('explicit', EXPLICIT_QUERY, params))
-    elif model_id is not None:
-        model = model_id
-        params = {'model_id': model_id, 'org_ids': list(org_ids)}
-        levels.append(('explicit', MODEL_ID_QUERY, params))
-    elif len(org_ids) == 1:
-        if team_id is not None:
-            params = {'org': org_ids[0], 'team': team_id}
-            levels.append(('team', TEAM_DEFAULT_QUERY, params))
-        levels.append(('org', ORG_DEFAULT_QUERY, {'org': org_ids[0]}))
-    for source, query, params in levels:
-        records = await db.execute(query, params, ['m', 'p', 'o'])
-        if not records:
-            if source == 'explicit':
-                raise ModelUnusable(
-                    'not_found',
-                    str(model),
-                    f'AI model {model!r} is not in the catalog',
-                )
-            continue
-        record = next(
-            (
-                r
-                for r in records
-                if (prompt_resolve.vertex_props(r['m']) or {}).get('enabled')
-                is not False
-            ),
-            records[0],
+    source: Source = 'explicit'
+    if model is not None or model_id is not None:
+        name = str(model or model_id)
+        query, key = (
+            (EXPLICIT_QUERY, 'model')
+            if model is not None
+            else (MODEL_ID_QUERY, 'model_id')
         )
-        found = _parse(record, str(model))
-        await _check(db, found, team_id, email, admin=admin)
-        return ResolvedModel(source=source, model=found)
-    return ResolvedModel(source='env')
+        records = await db.execute(
+            query,
+            {key: name, 'org_ids': list(org_ids)},
+            ['m', 'p', 'o', 'enabled'],
+        )
+        if not records:
+            raise ModelUnusable(
+                'not_found', name, f'AI model {name!r} is not in the catalog'
+            )
+        record = prompt_resolve.first_enabled(records)
+    elif len(org_ids) == 1:
+        records = await db.execute(
+            DEFAULTS_QUERY,
+            {'org': org_ids[0], 'team': team_id},
+            ['o', 'tm', 'tp', 'om', 'op'],
+        )
+        row = records[0] if records else {}
+        if prompt_resolve.vertex_props(row.get('tm')) is not None:
+            source, record = 'team', {'m': row['tm'], 'p': row['tp']}
+        elif prompt_resolve.vertex_props(row.get('om')) is not None:
+            source, record = 'org', {'m': row['om'], 'p': row['op']}
+        else:
+            return ResolvedModel(source='env')
+        record['o'] = row['o']
+        name = ''
+    else:
+        return ResolvedModel(source='env')
+    found = _parse(record, name)
+    await _check(db, found, team_id, email, admin=admin, drivers=drivers)
+    return ResolvedModel(source=source, model=found)
+
+
+async def over_cap(
+    conn: psycopg.AsyncConnection[typing.Any],
+    ai_model_id: str | None,
+    cap: decimal.Decimal | None,
+) -> decimal.Decimal | None:
+    """Return the month-to-date spend of the AIModel ``ai_model_id`` when
+    it is at or over ``cap``; ``None`` when it is under, or there is no
+    model or no cap."""
+    if ai_model_id is None or cap is None:
+        return None
+    spend = (await month_spend(conn, [ai_model_id])).get(
+        ai_model_id, decimal.Decimal(0)
+    )
+    return spend if spend >= cap else None
 
 
 async def month_spend(
@@ -227,6 +251,7 @@ async def _check(
     email: str | None,
     *,
     admin: bool,
+    drivers: collections.abc.Collection[str] | None,
 ) -> None:
     slug = model.slug
     if not model.enabled:
@@ -238,32 +263,30 @@ async def _check(
             f'AI provider {model.provider.slug!r} of AI model {slug!r} '
             'is disabled',
         )
-    allowed = (
-        admin
-        or model.access_scope != 'restricted'
-        or (
-            (email is not None or team_id is not None)
-            and (
-                email is None
-                or await prompt_resolve.member_allowed(
-                    db, slug, email, org_ids=[model.organization.id]
-                )
-            )
-            and (
-                team_id is None
-                or await prompt_resolve.team_allowed(
-                    db, slug, team_id, org_ids=[model.organization.id]
-                )
-            )
-        )
-    )
-    if not allowed:
+    if drivers is not None and model.provider.driver not in drivers:
         raise ModelUnusable(
-            'not_allowed',
+            'unsupported_driver',
             slug,
-            f'The model {slug!r} is restricted to teams that do not '
-            'include the caller',
+            f'AI model {slug!r} is served by driver '
+            f'{model.provider.driver!r}; only {", ".join(sorted(drivers))} '
+            'can be used here',
         )
+    if not admin and model.access_scope == 'restricted':
+        try:
+            await prompt_resolve.check_model_teams(
+                db,
+                slug,
+                f'The model {slug!r} is restricted to teams that do not '
+                'include the caller',
+                org_ids=[model.organization.id],
+                email=email,
+                team_id=team_id,
+            )
+        except prompt_resolve.ModelNotAllowed as e:
+            detail = typing.cast('dict[str, str]', e.detail)
+            raise ModelUnusable(
+                'not_allowed', slug, detail['message']
+            ) from None
     cap = model.monthly_spend_cap
     if cap is None:
         return
@@ -271,8 +294,8 @@ async def _check(
     # calls can go over the cap by their cost. Reserve the cost before
     # the call if that overshoot is too large.
     async with db.pool.connection() as conn:
-        spend = (await month_spend(conn, [model.id])).get(model.id, 0)
-    if spend >= cap:
+        spend = await over_cap(conn, model.id, cap)
+    if spend is not None:
         raise ModelUnusable(
             'spend_cap',
             slug,

@@ -28,6 +28,7 @@ from slack_sdk.http_retry import builtin_async_handlers
 from slackwright import forms, inflight, ingest, render, stores
 
 from imbi.common import external_mcp, valkey
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import skills, system
 from imbi.slackbot import (
     agent,
@@ -310,6 +311,11 @@ async def _process(
             ),
             toolkit=toolkit,
         )
+    except llm_resolve.ModelUnusable as e:
+        # A configuration error that an admin can fix: tell the user why,
+        # and do not use another model (ADR 0018).
+        LOGGER.warning('Cannot use the AI model in %s/%s: %s', channel, ts, e)
+        answer = f'Sorry — I cannot use the AI model: {e.message}'
     except Exception:
         LOGGER.exception('Failed to handle event in %s/%s', channel, ts)
         answer = _ERROR_MESSAGE

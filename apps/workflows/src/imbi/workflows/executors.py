@@ -273,6 +273,9 @@ class Api:
         return typing.cast('dict[str, typing.Any]', response.json())
 
 
+#: The driver of the decision models of a Model decision step.
+_TYPESAFE = 'typesafe'
+
 #: imbi-api records a release before its build; a failed build leaves
 #: it with an open ``build-failure`` blocker and no tag on the remote.
 _COMMIT_TAGS_QUERY: typing.LiteralString = """
@@ -410,6 +413,7 @@ class Executors:
                 [call.organization_id],
                 model=params.model_id,
                 team_id=call.owner_team_id,
+                drivers=(_TYPESAFE,),
             )
         except llm_resolve.ModelUnusable as e:
             raise StepError(
@@ -419,7 +423,7 @@ class Executors:
             ) from e
         model = typing.cast('models.AIModel', resolved.model)
         provider = model.provider
-        if model.model_type != 'decision' or provider.driver != 'typesafe':
+        if model.model_type != 'decision':
             raise StepError('model_unavailable', retry=False)
         api_key = encryption.decrypt_config_value(
             provider.credentials_encrypted

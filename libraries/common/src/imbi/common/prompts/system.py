@@ -21,13 +21,14 @@ import logging
 import typing
 
 from imbi.common import graph, models
+from imbi.common.llm import drivers
 from imbi.common.llm import resolve as llm_resolve
 from imbi.common.prompts import rendering, resolve
 
 LOGGER = logging.getLogger(__name__)
 
-#: The provider driver whose models the consumers can call.
-_SUPPORTED_DRIVER = 'anthropic'
+#: The provider drivers whose models the consumers can call.
+_DRIVERS = (drivers.ANTHROPIC,)
 
 Source = typing.Literal['cms', 'fallback', 'override']
 
@@ -189,24 +190,6 @@ async def _fallback(
     return SystemPrompt(text=text, source='fallback')
 
 
-def _supported(model: models.AIModel) -> models.AIModel:
-    """Return ``model`` when an Anthropic provider serves it.
-
-    Raises:
-        llm_resolve.ModelUnusable: ``unsupported_driver``.
-
-    """
-    if model.provider.driver != _SUPPORTED_DRIVER:
-        raise llm_resolve.ModelUnusable(
-            'unsupported_driver',
-            model.slug,
-            f'AI model {model.slug!r} is served by driver '
-            f'{model.provider.driver!r}; only {_SUPPORTED_DRIVER!r} is '
-            'supported here',
-        )
-    return model
-
-
 class ConsumerModel(typing.NamedTuple):
     """A model id that a consumer sends, and its catalog provider."""
 
@@ -242,12 +225,11 @@ async def default_model(
 
     """
     resolved = await llm_resolve.resolve_model(
-        db, await _org_ids(db, email, org_id), email=email
+        db, await _org_ids(db, email, org_id), email=email, drivers=_DRIVERS
     )
     if resolved.model is None:
         return None
-    model = _supported(resolved.model)
-    return ConsumerModel(model.model_id, model.provider)
+    return ConsumerModel(resolved.model.model_id, resolved.model.provider)
 
 
 async def request_model(
@@ -275,12 +257,13 @@ async def request_model(
             model_id=model_id,
             email=email,
             admin=admin,
+            drivers=_DRIVERS,
         )
     except llm_resolve.ModelUnusable as e:
         if e.reason == 'not_found':
             return None
         raise
-    model = _supported(typing.cast('models.AIModel', resolved.model))
+    model = typing.cast('models.AIModel', resolved.model)
     return ConsumerModel(model.model_id, model.provider)
 
 
@@ -312,22 +295,19 @@ async def _model(
         await _org_ids(db, email, org_id),
         model=version.model,
         email=email,
+        drivers=_DRIVERS,
     )
-    model = _supported(typing.cast('models.AIModel', resolved.model))
+    model = typing.cast('models.AIModel', resolved.model)
     model_id = version.model_id or model.model_id
     # The stored id can differ from the catalog row of the slug after a
-    # catalog edit, so the check is on the id that is sent.
-    if model_id != model.model_id and not (
-        email is not None
-        and await resolve.member_may_use_model_id(
-            db, model_id, email, org_ids=[model.organization.id]
-        )
-    ):
-        raise llm_resolve.ModelUnusable(
-            'not_allowed',
-            model.slug,
-            f'The model id {model_id!r} is not in the catalog or is '
-            'restricted to teams that do not include the user',
+    # catalog edit, so the id that is sent gets the same checks.
+    if model_id != model.model_id:
+        await llm_resolve.resolve_model(
+            db,
+            [model.organization.id],
+            model_id=model_id,
+            email=email,
+            drivers=_DRIVERS,
         )
     return ConsumerModel(model_id, model.provider)
 

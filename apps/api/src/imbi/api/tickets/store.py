@@ -3370,7 +3370,16 @@ class TicketStore:
                 await write.update(totals)
                 if remaining is not None and remaining < 0:
                     await _close(write, 'exceeded_ceiling', 'budget', system)
-                elif await _over_spend_cap(write.conn, ai_model_id, spend_cap):
+                # ponytail: concurrent reports of other tasks can each see
+                # the spend under the cap, so the spend can go over the cap
+                # by the cost of the calls in flight. Lock the AIModel id
+                # if that overshoot is too large.
+                elif (
+                    await llm_resolve.over_cap(
+                        write.conn, ai_model_id, spend_cap
+                    )
+                    is not None
+                ):
                     await _close(
                         write, 'exceeded_ceiling', 'spend_cap', system
                     )
@@ -3891,22 +3900,6 @@ async def _release_dependents(
         if write.events:
             released.append(write)
     return released
-
-
-async def _over_spend_cap(
-    conn: psycopg.AsyncConnection[typing.Any],
-    ai_model_id: str | None,
-    cap: decimal.Decimal | None,
-) -> bool:
-    """Return ``True`` when the month-to-date spend of the AIModel is at
-    or over ``cap``."""
-    # ponytail: concurrent reports of other tasks can each see the spend
-    # under the cap, so the spend can go over the cap by the cost of the
-    # calls in flight. Lock the AIModel id if that overshoot is too large.
-    if ai_model_id is None or cap is None:
-        return False
-    spend = await llm_resolve.month_spend(conn, [ai_model_id])
-    return spend.get(ai_model_id, 0) >= cap
 
 
 async def _close(

@@ -143,7 +143,6 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
         assert found.model is not None
         self.assertEqual(found.model.model_id, 'claude-chat')
         self.assertEqual(found.model.provider.driver, 'anthropic')
-        self.assertEqual(found.provider, found.model.provider)
         # A consumer with no organization reads each organization of
         # the user.
         found = await self.resolve(org=['org-b', 'org-a'], model='chat')
@@ -179,6 +178,13 @@ class ResolveModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.reason, 'not_found')
         await self.assert_unusable('disabled', model='off')
         await self.assert_unusable('provider_disabled', org='org-b', model='q')
+
+    async def test_drivers(self) -> None:
+        found = await self.resolve(model='chat', drivers=('anthropic',))
+        self.assertEqual(found.source, 'explicit')
+        await self.assert_unusable(
+            'unsupported_driver', model='chat', drivers=('typesafe',)
+        )
 
     async def test_restricted_access(self) -> None:
         ok: list[dict[str, typing.Any]] = [

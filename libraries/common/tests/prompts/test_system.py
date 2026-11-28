@@ -183,8 +183,13 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         # The provider comes with the model, for its credential.
         assert resolved.model is not None
         self.assertIs(result.provider, resolved.model.provider)
+        # The resolver refuses a driver other than Anthropic.
         resolver.assert_awaited_once_with(
-            mock.ANY, ['org-1'], model='default-chat', email='dev@example.com'
+            mock.ANY,
+            ['org-1'],
+            model='default-chat',
+            email='dev@example.com',
+            drivers=('anthropic',),
         )
 
     async def test_no_user_has_no_catalog_model(self) -> None:
@@ -193,16 +198,6 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
             result = await self.load(email=None)
         self.assertIsNone(result.model_id)
         resolver.assert_not_awaited()
-
-    async def test_other_driver_is_an_error(self) -> None:
-        found = _version(model='gpt', model_id='gpt-5')
-        with (
-            self.patch_resolve(found),
-            self.patch_model(_model('gpt', 'gpt-5', 'openai')),
-            self.assertRaises(llm_resolve.ModelUnusable) as raised,
-        ):
-            await self.load()
-        self.assertEqual(raised.exception.reason, 'unsupported_driver')
 
     async def test_unusable_model_is_an_error(self) -> None:
         # No other model is used in its place (ADR 0018).
@@ -228,31 +223,30 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_stale_model_id_is_checked(self) -> None:
         # A catalog edit moved the slug to a new id; the version keeps
-        # the old one, and the old one is what is sent.
+        # the old one, and the old one is what is sent, with the same
+        # checks of the resolver.
         found = _version(model='opus', model_id='claude-opus-old')
         resolved = _model('opus', 'claude-opus-5-5')
-        for allowed in (False, True):
+        error = llm_resolve.ModelUnusable('not_allowed', 'opus', 'no')
+        for stale in (resolved, error):
             with (
-                self.subTest(allowed=allowed),
+                self.subTest(stale=stale),
                 self.patch_resolve(found),
-                self.patch_model(resolved),
-                mock.patch.object(
-                    resolve,
-                    'member_may_use_model_id',
-                    mock.AsyncMock(return_value=allowed),
-                ) as check,
+                self.patch_model(None) as resolver,
             ):
-                if allowed:
+                resolver.side_effect = [resolved, stale]
+                if stale is resolved:
                     result = await self.load(email='dev@example.com')
                     self.assertEqual(result.model_id, 'claude-opus-old')
                 else:
                     with self.assertRaises(llm_resolve.ModelUnusable):
                         await self.load(email='dev@example.com')
-                check.assert_awaited_once_with(
+                resolver.assert_awaited_with(
                     mock.ANY,
-                    'claude-opus-old',
-                    'dev@example.com',
-                    org_ids=['org-1'],
+                    ['org-1'],
+                    model_id='claude-opus-old',
+                    email='dev@example.com',
+                    drivers=('anthropic',),
                 )
 
     async def test_graph_error_in_the_model_check_falls_back(self) -> None:
@@ -300,7 +294,10 @@ class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
                 mock.AsyncMock(), 'dev@example.com'
             )
         resolver.assert_awaited_once_with(
-            mock.ANY, ['org-1'], email='dev@example.com'
+            mock.ANY,
+            ['org-1'],
+            email='dev@example.com',
+            drivers=('anthropic',),
         )
         return found
 
@@ -327,17 +324,15 @@ class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
             )
         member_orgs.assert_not_called()
         resolver.assert_awaited_once_with(
-            mock.ANY, ['org-2'], email='dev@example.com'
+            mock.ANY,
+            ['org-2'],
+            email='dev@example.com',
+            drivers=('anthropic',),
         )
 
     async def test_no_default_is_none(self) -> None:
         resolved = llm_resolve.ResolvedModel(source='env')
         self.assertIsNone(await self.default(resolved))
-
-    async def test_other_driver_is_an_error(self) -> None:
-        with self.assertRaises(llm_resolve.ModelUnusable) as raised:
-            await self.default(_model('gpt', 'gpt-5', 'openai'))
-        self.assertEqual(raised.exception.reason, 'unsupported_driver')
 
     async def test_unusable_default_is_an_error(self) -> None:
         error = llm_resolve.ModelUnusable('disabled', 'chat', 'no')
@@ -371,6 +366,7 @@ class RequestModelTestCase(unittest.IsolatedAsyncioTestCase):
             model_id='claude-x',
             email='dev@example.com',
             admin=True,
+            drivers=('anthropic',),
         )
         return found
 
@@ -385,7 +381,7 @@ class RequestModelTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_unusable_or_other_driver_is_an_error(self) -> None:
         for result in (
             llm_resolve.ModelUnusable('disabled', 'claude-x', 'no'),
-            _model('x', 'claude-x', 'openai'),
+            llm_resolve.ModelUnusable('unsupported_driver', 'x', 'no'),
         ):
             with (
                 self.subTest(result=result),

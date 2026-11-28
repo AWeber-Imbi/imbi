@@ -91,7 +91,11 @@ def first_enabled(
     orders the rows by organization slug, so the choice is stable.
     """
     return next(
-        (r for r in records if graph.parse_agtype(r['enabled']) is not False),
+        (
+            r
+            for r in records
+            if graph.parse_agtype(r.get('enabled')) is not False
+        ),
         records[0],
     )
 

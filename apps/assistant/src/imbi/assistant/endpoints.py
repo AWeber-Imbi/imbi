@@ -115,13 +115,6 @@ async def _catalog_model(
     return found
 
 
-def _unusable(error: llm_resolve.ModelUnusable) -> fastapi.HTTPException:
-    """The HTTP error for a prompt version model that cannot be used."""
-    if error.reason == 'not_allowed':
-        return resolve.ModelNotAllowed(error.message)
-    return fastapi.HTTPException(status_code=422, detail=error.message)
-
-
 # --- Conversation CRUD ---
 
 
@@ -160,7 +153,7 @@ async def create_conversation(
         if chosen is not None:
             client.client_for(chosen.provider, user.email)
     except llm_resolve.ModelUnusable as e:
-        raise _unusable(e) from e
+        raise llm_resolve.http_error(e) from e
     model = (
         chosen.model_id
         if chosen is not None
@@ -995,7 +988,7 @@ async def send_message(
             else client.client_for(found.provider, auth_ctx.require_user.email)
         )
     except llm_resolve.ModelUnusable as e:
-        raise _unusable(e) from e
+        raise llm_resolve.http_error(e) from e
 
     await age_ops.add_message(
         db,
@@ -1015,7 +1008,7 @@ async def send_message(
             db, mcp_manager, auth_ctx, org_id
         )
     except llm_resolve.ModelUnusable as e:
-        raise _unusable(e) from e
+        raise llm_resolve.http_error(e) from e
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None
