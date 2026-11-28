@@ -505,6 +505,11 @@ custom_fields = "JSONB NOT NULL DEFAULT '{}'"
 # The place of the ticket in the backlog: lower ranks first. NULL: not
 # ranked; unranked tickets follow the ranked ones.
 backlog_rank = "DOUBLE PRECISION"
+# The AI model and the AI provider that the last claim of an agent ticket
+# resolved (graph node ids, ADR 0022 amendment). Usage prices and the
+# model key of the runner use them. NULL before the first claim.
+ai_model_id = "TEXT"
+ai_provider_id = "TEXT"
 
 [tables.primary_key]
 columns = ["id"]

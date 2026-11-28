@@ -1337,7 +1337,7 @@ class ModelKeyRequestTests(unittest.TestCase):
                 'command': 'echo "key=$K"',
                 'secrets': [
                     {
-                        'reference': 'secret://production/anthropic/key',
+                        'reference': 'secret://imbi/model',
                         'purpose': 'model_inference',
                         'env': 'K',
                     }

@@ -128,6 +128,8 @@ export type AIPriceSyncModel = Schemas['PriceSyncModel']
 export type AIPriceSyncPreview = Schemas['PriceSyncPreview']
 
 export interface AIProvider {
+  /** Agent runners may send the key to an http:// base URL. */
+  allow_insecure_http?: boolean
   auth_kind: AIProviderAuthKind
   base_url: null | string
   created_at?: string
@@ -157,6 +159,7 @@ export type AIProviderAuthKind =
   | 'workload_identity'
 
 export interface AIProviderCreate {
+  allow_insecure_http?: boolean
   api_key?: null | string
   base_url?: null | string
   description?: null | string

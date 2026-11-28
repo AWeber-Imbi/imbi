@@ -300,7 +300,7 @@ one:
 4. Click **Save**.
 
 The tab also lists the secrets that the runner uses for the agent, for
-example the model key, the repository tokens, and the MCP server header
+example the repository tokens and the MCP server header
 secrets. The agent never gets these values.
 
 To remove a secret, click **X** on its row. This removes the agent from
@@ -426,15 +426,15 @@ Open **Agents > Settings > Platform**. Each organization has one base
 configuration. Each save writes a new version. Every task pins the version
 that was current when the task was made.
 
+The model and its key are not in the base configuration. They come from the
+AI catalog: see [Configure the model](../deployment/agent-runners.md#5-configure-the-model).
+
 An agent can only narrow the base configuration. An agent save that widens
 a setting returns `422`. When Imbi merges the two, it always uses the
 stricter value.
 
 | Field | What it does |
 |---|---|
-| Model upstream | **Anthropic API** or **LiteLLM gateway** |
-| Base URL | The upstream URL. Empty is the Anthropic API |
-| Key | The `secret://` reference of the model key. See [Configure the model key](../deployment/agent-runners.md#5-configure-the-model-key) |
 | Permission mode | `plan`, `default`, `acceptEdits`, or `bypassPermissions`, strictest first. Agents can set a stricter mode only |
 | Sandbox | **Require the sandbox** and **Allow unsandboxed commands** |
 | Allowed tools | Built-in tools, separated by commas. Empty allows all. `Skill` and `Agent` are on only for an agent that turns them on in its **Tools** tab |

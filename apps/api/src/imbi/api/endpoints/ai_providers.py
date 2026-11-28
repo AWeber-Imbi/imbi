@@ -52,6 +52,7 @@ from imbi.common.auth.encryption import (
     encrypt_config_value,
 )
 from imbi.common.llm import discovery, drivers, generate
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.plugins import identity as plugin_identity
 from imbi.common.prompts import resolve as prompt_resolve
 
@@ -91,6 +92,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
     'enabled',
     'region',
     'project_id',
+    'allow_insecure_http',
 )
 
 #: Paths a patch may not target. Credential state is reachable only
@@ -130,6 +132,8 @@ class AIProviderCreate(pydantic.BaseModel):
     region: str | None = None
     project_id: str | None = None
     api_key: str | None = None
+    #: Needs ``ai_model:credentials``; ``openai_compatible`` only.
+    allow_insecure_http: bool = False
 
 
 class AIProviderResponse(pydantic.BaseModel):
@@ -145,6 +149,7 @@ class AIProviderResponse(pydantic.BaseModel):
     enabled: bool = True
     region: str | None = None
     project_id: str | None = None
+    allow_insecure_http: bool = False
     auth_kind: AuthKind = 'none'
     workload_identity: models.AIProviderWorkloadIdentity | None = None
     has_credentials: bool = False
@@ -230,6 +235,7 @@ def to_response(
         enabled=node.enabled,
         region=node.region,
         project_id=node.project_id,
+        allow_insecure_http=node.allow_insecure_http,
         auth_kind=auth_kind(
             node.driver, has_credentials, node.workload_identity is not None
         ),
@@ -247,12 +253,6 @@ def to_response(
 
 _LIST_QUERY: typing.LiteralString = """
 MATCH (p:AIProvider)-[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
-RETURN p, o
-"""
-
-_GET_QUERY: typing.LiteralString = """
-MATCH (p:AIProvider {{id: {id}}})
-      -[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
 RETURN p, o
 """
 
@@ -298,27 +298,17 @@ async def model_counts(
     return counts
 
 
-def _parse(record: dict[str, typing.Any]) -> models.AIProvider:
-    """Parse a ``p, o`` row into an ``AIProvider``."""
-    props: typing.Any = graph.parse_agtype(record['p'])
-    return models.AIProvider.model_validate(
-        {**props, 'organization': graph.parse_agtype(record['o'])}
-    )
-
-
 async def fetch_provider(
     db: graph.Graph, org_id: str, id: str
 ) -> models.AIProvider:
     """Fetch a provider of the organization or raise 404."""
-    records = await db.execute(
-        _GET_QUERY, {'id': id, 'org_id': org_id}, ['p', 'o']
-    )
-    if not records:
+    provider = await llm_resolve.find_provider(db, org_id, id)
+    if provider is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {id!r} not found',
         )
-    return _parse(records[0])
+    return provider
 
 
 async def fetch_service_provider(
@@ -333,7 +323,7 @@ async def fetch_service_provider(
         raise fastapi.HTTPException(
             status_code=404, detail=f'AI provider {ref!r} not found'
         )
-    return _parse(records[0])
+    return llm_resolve.parse_provider(records[0])
 
 
 async def _assert_slug_free(
@@ -381,6 +371,21 @@ async def _assert_driver_serves_models(
                     'models; change or move those models first'
                 ),
             )
+
+
+def _check_insecure_http(
+    auth: permissions.AuthContext, before: bool, after: bool
+) -> None:
+    """Refuse a change of ``allow_insecure_http`` without
+    ``ai_model:credentials``: the flag controls where the key goes."""
+    if before != after and not (
+        auth.is_admin or 'ai_model:credentials' in auth.permissions
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Permission ai_model:credentials is required to change '
+            'allow_insecure_http',
+        )
 
 
 def _build(payload: dict[str, typing.Any]) -> models.AIProvider:
@@ -453,7 +458,7 @@ async def list_ai_providers(
     counts = await model_counts(db, org_id)
     responses = [
         to_response(node, *counts.get(node.id, (0, 0)))
-        for node in (_parse(record) for record in records)
+        for node in (llm_resolve.parse_provider(record) for record in records)
     ]
     return sorted(responses, key=lambda r: r.name.lower())
 
@@ -480,12 +485,14 @@ async def create_ai_provider(
         The created provider, without credentials.
 
     Raises:
+        403: ``allow_insecure_http`` without ``ai_model:credentials``.
         409: A provider of the organization has the same slug.
-        422: Invalid configuration (bad ``base_url``, or
-            ``openai_compatible`` without one).
+        422: Invalid configuration (bad ``base_url``,
+            ``openai_compatible`` without one, or
+            ``allow_insecure_http`` with another driver).
 
     """
-    _ = auth
+    _check_insecure_http(auth, False, data.allow_insecure_http)
     payload = data.model_dump(exclude={'api_key', 'slug'})
     payload['slug'] = data.slug or slugify.slugify(data.name)
     # The membership check found the organization.
@@ -519,7 +526,7 @@ async def create_ai_provider(
         raise fastapi.HTTPException(
             status_code=500, detail='AI provider create returned no row'
         )
-    return to_response(_parse(records[0]))
+    return to_response(llm_resolve.parse_provider(records[0]))
 
 
 @ai_providers_router.get('/{id}', response_model=AIProviderResponse)
@@ -576,13 +583,15 @@ async def patch_ai_provider(
 
     Raises:
         400: Invalid patch or a read-only path.
+        403: A change of ``allow_insecure_http`` without
+            ``ai_model:credentials``.
         404: No such provider.
-        409: The new slug is taken, or the new driver does not serve
-            the model type of a model of this provider.
+        409: The new slug is taken, the new driver does not serve
+            the model type of a model of this provider, or
+            ``allow_insecure_http`` changed after the read.
         422: The patched configuration is invalid.
 
     """
-    _ = auth
     existing = await fetch_provider(db, org_id, id)
     current = {field: getattr(existing, field) for field in _PATCHABLE_FIELDS}
     current['icon'] = None if existing.icon is None else str(existing.icon)
@@ -593,6 +602,9 @@ async def patch_ai_provider(
             'organization': existing.organization,
             'org_id': org_id,
         }
+    )
+    _check_insecure_http(
+        auth, existing.allow_insecure_http, node.allow_insecure_http
     )
     node.id = existing.id
     node.created_at = existing.created_at
@@ -618,7 +630,10 @@ async def patch_ai_provider(
     if node.driver != existing.driver:
         await _assert_driver_serves_models(db, id, node.driver)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    node = await persist(
+        db, node, insecure_http_was=existing.allow_insecure_http
+    )
+    return to_response(node, *counts.get(id, (0, 0)))
 
 
 @ai_providers_router.delete('/{id}', status_code=204)
@@ -700,6 +715,7 @@ async def set_ai_provider_credentials(
 
     Raises:
         404: No such provider.
+        409: ``allow_insecure_http`` changed after the read.
 
     """
     _ = auth
@@ -717,7 +733,10 @@ async def set_ai_provider_credentials(
     node.credential_updated_at = datetime.datetime.now(datetime.UTC)
     LOGGER.info('Replaced credentials for AI provider %s', id)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 @ai_providers_router.delete(
@@ -744,6 +763,7 @@ async def delete_ai_provider_credentials(
 
     Raises:
         404: No such provider.
+        409: ``allow_insecure_http`` changed after the read.
 
     """
     _ = auth
@@ -753,7 +773,10 @@ async def delete_ai_provider_credentials(
     node.credential_updated_at = None
     LOGGER.info('Removed credentials for AI provider %s', id)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 @ai_providers_router.post('/{id}/discover', response_model=DiscoveryResponse)
@@ -890,7 +913,8 @@ async def set_ai_provider_workload_identity(
     Raises:
         403: No ``secret_provider:write`` in the organization.
         404: No such provider.
-        409: The provider has a stored key.
+        409: The provider has a stored key, or
+            ``allow_insecure_http`` changed after the read.
         422: The driver cannot use workload identity, the provider has a
             ``base_url``, no exchanger is installed for the vendor, or
             the target is not valid.
@@ -935,7 +959,10 @@ async def set_ai_provider_workload_identity(
         org_id,
     )
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 @ai_providers_router.delete(
@@ -956,6 +983,7 @@ async def delete_ai_provider_workload_identity(
 
     Raises:
         404: No such provider.
+        409: ``allow_insecure_http`` changed after the read.
 
     """
     _ = auth
@@ -964,7 +992,10 @@ async def delete_ai_provider_workload_identity(
     tokens.CACHE.forget(id)
     LOGGER.info('Removed workload identity for AI provider %s', id)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 class ServiceTokenRequest(pydantic.BaseModel):
@@ -1139,28 +1170,49 @@ async def _configured_model_ids(db: graph.Graph, provider_id: str) -> set[str]:
 
 
 async def persist(
-    db: graph.Graph, node: models.AIProvider
+    db: graph.Graph,
+    node: models.AIProvider,
+    *,
+    insecure_http_was: bool | None = None,
 ) -> models.AIProvider:
-    """Write a mutated provider back."""
+    """Write a mutated provider back.
+
+    When ``insecure_http_was`` is set, the write applies only while the
+    stored ``allow_insecure_http`` has that value. A write that a stale
+    read authorized cannot then put back a flag that a caller with
+    ``ai_model:credentials`` changed after the read.
+    """
     node.updated_at = datetime.datetime.now(datetime.UTC)
     props = node.model_dump(
         mode='json', exclude={'id', 'created_at', 'organization'}
     )
     set_stmt = set_clause('p', props)
+    guard = (
+        ''
+        if insecure_http_was is None
+        else 'WHERE coalesce(p.allow_insecure_http, false) = '
+        f'{"true" if insecure_http_was else "false"} '
+    )
     query = (
         f'MATCH (p:AIProvider {{{{id: {{id}}}}}})'
-        f'-[:BELONGS_TO]->(o:Organization) {set_stmt} RETURN p, o'
+        f'-[:BELONGS_TO]->(o:Organization) {guard}{set_stmt} RETURN p, o'
     )
     with conflict_on_unique_violation(
         f'AI provider with slug {node.slug!r} already exists'
     ):
         records = await db.execute(query, {**props, 'id': node.id}, ['p', 'o'])
+    if not records and insecure_http_was is not None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'AI provider {node.id!r} changed during the update; '
+            f'read it again and retry',
+        )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {node.id!r} not found',
         )
-    return _parse(records[0])
+    return llm_resolve.parse_provider(records[0])
 
 
 __all__ = [

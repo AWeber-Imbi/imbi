@@ -113,9 +113,12 @@ class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
         slug: str,
         model_id: str,
         org: str | None = None,
+        *,
+        provider: str | None = None,
         **prices: typing.Any,
-    ) -> None:
-        """Add a model to the catalog of ``org`` (default: the task's)."""
+    ) -> str:
+        """Add a model to the catalog of ``org`` (default: the task's);
+        return its id. ``provider`` is the id of its AI provider."""
         org = org or self.org
         props: dict[str, typing.Any] = {
             'id': f'{org}-{slug}',
@@ -142,6 +145,69 @@ class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
             {'id': props['id']},
             ['ok'],
         )
+        if provider is not None:
+            await self.graph.execute(
+                'MATCH (m:AIModel {{id: {id}}}), (p:AIProvider {{id: {p}}})'
+                ' CREATE (m)-[:SERVED_BY]->(p) RETURN m.id AS id',
+                {'id': props['id'], 'p': provider},
+                ['id'],
+            )
+        return str(props['id'])
+
+    async def make_provider(
+        self,
+        slug: str,
+        driver: str = 'anthropic',
+        org: str | None = None,
+        **props: typing.Any,
+    ) -> str:
+        """Add an AI provider to the catalog of ``org`` (default: the
+        task's); return its id."""
+        org = org or self.org
+        values: dict[str, typing.Any] = {
+            'id': f'{org}-{slug}',
+            'org_id': org,
+            'slug': slug,
+            'name': slug,
+            'driver': driver,
+            'enabled': True,
+            **props,
+        }
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org_id}}})'
+            f' CREATE (p:AIProvider {props_template(values)})'
+            ' CREATE (p)-[:BELONGS_TO]->(o) RETURN p.id AS id',
+            values,
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (p:AIProvider {{id: {id}}}) DETACH DELETE p RETURN 1 AS ok',
+            {'id': values['id']},
+            ['ok'],
+        )
+        return str(values['id'])
+
+    async def set_org_default(
+        self, model: str | None, org: str | None = None
+    ) -> None:
+        """Make ``model`` the default model of ``org`` (default: the
+        task's); ``None`` removes the default."""
+        org = org or self.org
+        await self.graph.execute(
+            'MATCH (o:Organization {{id: {org}}})-[d:USES_DEFAULT_MODEL]->()'
+            ' DELETE d RETURN 1 AS ok',
+            {'org': org},
+            ['ok'],
+        )
+        if model is not None:
+            await self.graph.execute(
+                'MATCH (o:Organization {{id: {org}}}),'
+                ' (m:AIModel {{id: {model}}})'
+                ' CREATE (o)-[:USES_DEFAULT_MODEL]->(m) RETURN 1 AS ok',
+                {'org': org, 'model': model},
+                ['ok'],
+            )
 
 
 class AccessTests(HarnessTestCase):
@@ -1430,6 +1496,85 @@ class UsageTests(HarnessTestCase):
         response = await self.report('u-1', model_id='other-only')
         self.assertEqual(response.status_code, 201, response.text)
         self.assertIsNone(response.json()['cost'])
+
+    async def pin(self, ai_model_id: str, ai_provider_id: str) -> None:
+        async with self.store._pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET ai_model_id = %s,'
+                ' ai_provider_id = %s WHERE id = %s',
+                (ai_model_id, ai_provider_id, uuid.UUID(self.task['id'])),
+            )
+
+    async def test_a_pinned_task_is_priced_from_its_provider(self) -> None:
+        # Two providers serve the same provider model id at other prices.
+        # Without the pin, the slug order would choose 'a-cheap'.
+        cheap = await self.make_provider('cheap')
+        pinned = await self.make_provider('pinned')
+        await self.make_model(
+            'a-cheap',
+            'claude-shared',
+            provider=cheap,
+            output_cost_per_million='1',
+        )
+        # The same provider has another model with that id. Without the
+        # model pin, the slug order would choose 'a-same-provider'.
+        await self.make_model(
+            'a-same-provider',
+            'claude-shared',
+            provider=pinned,
+            output_cost_per_million='2',
+        )
+        ai_model_id = await self.make_model(
+            'b-pinned', 'claude-shared', provider=pinned
+        )
+        await self.pin(ai_model_id, pinned)
+        response = await self.report('u-1', model_id='claude-shared')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            decimal.Decimal(response.json()['cost']), decimal.Decimal('0.021')
+        )
+        (row,) = await self.ledger()
+        self.assertEqual(row['ai_model_id'], ai_model_id)
+
+    async def test_a_pinned_task_does_not_price_other_providers(
+        self,
+    ) -> None:
+        other = await self.make_provider('other')
+        await self.pin('gone', await self.make_provider('pinned'))
+        await self.make_model('elsewhere', 'claude-elsewhere', provider=other)
+        response = await self.report('u-1', model_id='claude-elsewhere')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(response.json()['cost'])
+
+    async def test_a_pinned_model_keeps_its_price_after_a_model_id_edit(
+        self,
+    ) -> None:
+        pinned = await self.make_provider('pinned')
+        ai_model_id = await self.make_model(
+            'renamed', 'claude-before', provider=pinned
+        )
+        # A model of the provider with another name is not used.
+        await self.make_model('other', 'claude-other', provider=pinned)
+        await self.pin(ai_model_id, pinned)
+        # An operator changes the provider model id while the task runs.
+        await self.graph.execute(
+            'MATCH (m:AIModel {{id: {id}}}) SET m.model_id = {model_id}'
+            ' RETURN m.id AS id',
+            {'id': ai_model_id, 'model_id': 'claude-after'},
+            ['id'],
+        )
+        response = await self.report('u-1', model_id='claude-before')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNotNone(response.json()['cost'])
+        (row,) = await self.ledger()
+        self.assertEqual(row['ai_model_id'], ai_model_id)
+        # Another model of the provider keeps its own price.
+        response = await self.report('u-2', model_id='claude-other')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [row['ai_model_id'] for row in await self.ledger()],
+            [ai_model_id, f'{self.org}-other'],
+        )
 
     async def test_message_id_goes_on_the_event_only(self) -> None:
         response = await self.report('u-1', message_id='msg_01abc')

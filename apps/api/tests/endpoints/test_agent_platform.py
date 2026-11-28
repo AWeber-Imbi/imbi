@@ -201,20 +201,9 @@ class ConfigTests(PlatformTestCase):
         )
         self.assertEqual(response.status_code, 403, response.text)
 
-    async def test_refuses_unknown_marketplaces_and_bad_refs(self) -> None:
+    async def test_refuses_unknown_marketplaces(self) -> None:
         response = await self.put_config(allowed_marketplaces=['nope'])
         self.assertEqual(response.status_code, 422, response.text)
-        response = await self.put_config(
-            model_upstream={'kind': 'litellm', 'key_ref': 'not a ref'}
-        )
-        self.assertEqual(response.status_code, 422, response.text)
-        insecure = {'kind': 'litellm', 'base_url': 'http://llm:4000'}
-        response = await self.put_config(model_upstream=insecure)
-        self.assertEqual(response.status_code, 422, response.text)
-        response = await self.put_config(
-            model_upstream={**insecure, 'allow_insecure_http': True}
-        )
-        self.assertEqual(response.status_code, 200, response.text)
 
     async def test_default_plugins_are_pinned(self) -> None:
         await self.add_marketplace()
@@ -623,7 +612,16 @@ class BundleTests(PlatformTestCase):
         self.assertEqual(bundle['config']['permission_mode'], 'default')
         self.assertEqual(bundle['config']['plugins'], [])
         self.assertEqual(bundle['repositories'], [])
-        self.assertNotIn('secret', str(bundle['config']['model_upstream']))
+        # From the AI provider of the task, not the configuration.
+        self.assertEqual(
+            bundle['config']['model_upstream'],
+            {
+                'kind': 'anthropic',
+                'base_url': 'https://api.anthropic.com',
+                'allow_insecure_http': False,
+                'key_ref': 'secret://imbi/model',
+            },
+        )
 
     async def test_bundle_of_a_pinned_version_does_not_change(self) -> None:
         await self.add_marketplace()
@@ -640,7 +638,7 @@ class BundleTests(PlatformTestCase):
         self.assertEqual(response.json()['platform_config_version'], 1)
         task = await self.task_row(response.json()['short_id'])
         before = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(before.platform_config_version, 1)
         assert before.config is not None
@@ -660,7 +658,7 @@ class BundleTests(PlatformTestCase):
 
         await self.put_config(system_prompt_prefix='two')
         after = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(after, before)
         # A new task pins the new version.
@@ -681,7 +679,7 @@ class BundleTests(PlatformTestCase):
         response = await self.create_task(project_ids=[self.project_id])
         task = await self.task_row(response.json()['short_id'])
         bundle = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(
             [(r.host, r.name) for r in bundle.repositories],
@@ -692,7 +690,7 @@ class BundleTests(PlatformTestCase):
             {'github-repository': 'https://github.com/ops/billing'}
         )
         bundle = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(bundle.repositories, [])
 
@@ -707,4 +705,5 @@ class BundleTests(PlatformTestCase):
                 self.secret_store,
                 {**task, 'platform_config_version': 9},
                 self.org,
+                0,
             )

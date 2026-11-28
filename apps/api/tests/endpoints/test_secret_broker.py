@@ -372,6 +372,8 @@ class SecretEndpointTestCase(
         for change in (
             {'reference': 'secret://production/pg/app#token'},
             {'reference': 'secret://Production/pg'},
+            # Reserved for the model key (ADR 0022 amendment).
+            {'reference': 'secret://imbi/model'},
             {'locator': {'key': 'x', 'arn': 'y'}},
             {'provider_id': str(uuid.uuid4())},
             {'allowed_delivery_modes': ['argument']},

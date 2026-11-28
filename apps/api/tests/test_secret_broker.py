@@ -6,6 +6,7 @@ the fake provider and captured audit events.
 
 import asyncio
 import base64
+import datetime
 import logging
 import pathlib
 import pickle
@@ -22,7 +23,13 @@ from apps.api.tests.secret_support import MATERIAL
 from imbi.api import secret_broker
 from imbi.api.endpoints import secret_broker as secrets_api
 from imbi.api.harness import sweeper
-from imbi.api.secret_broker import audit, broker, providers, store
+from imbi.api.secret_broker import (
+    audit,
+    broker,
+    model_key,
+    providers,
+    store,
+)
 from imbi.api.tickets import store as task_store
 from imbi.common.auth import encryption
 
@@ -1126,6 +1133,175 @@ class MaterializeTestCase(secret_support.SecretCase):
         assert row is not None
         self.assertEqual(row['state'], 'failed')
         self.assertEqual((await self.audit_events())[-1].result, 'failed')
+
+
+class ModelKeyTestCase(secret_support.SecretCase):
+    """``secret://imbi/model``: the key of the AI provider that the claim
+    pinned on the task (ADR 0022 amendment)."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.ai_provider = {
+            'id': f'{self.org}-anthropic',
+            'org_id': self.org,
+            'slug': 'anthropic',
+            'name': 'Anthropic',
+            'driver': 'anthropic',
+            'enabled': True,
+            'credentials_encrypted': encryption.encrypt_config_value(
+                'sk-model'
+            ),
+        }
+        self.graph = mock.Mock()
+        self.graph.execute = mock.AsyncMock(side_effect=self._records)
+        patcher = mock.patch.object(
+            providers._Host,  # pyright: ignore[reportPrivateUsage]
+            'graph',
+            return_value=self.graph,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        await self.pin(self.ai_provider['id'])
+
+    async def _records(
+        self, _query: str, params: dict[str, str], _columns: list[str]
+    ) -> list[dict[str, typing.Any]]:
+        if params['id'] != self.ai_provider['id'] or params['org_id'] != (
+            self.org
+        ):
+            return []
+        return [
+            {
+                'p': self.ai_provider,
+                'o': {'id': self.org, 'name': self.org, 'slug': self.org},
+            }
+        ]
+
+    async def pin(self, ai_provider_id: str | None) -> None:
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET ai_provider_id = %s WHERE id = %s',
+                (ai_provider_id, self.task_id),
+            )
+
+    def model_request(self, **changes: typing.Any) -> broker.ResolutionRequest:
+        return self.request(
+            **{
+                'reference': model_key.REFERENCE,
+                'purpose': 'model_inference',
+                'delivery_mode': 'file_descriptor',
+                'delivery_target': '3',
+            }
+            | changes
+        )
+
+    async def materialize(self) -> broker.Materialization:
+        created = await self.broker.create_resolution(
+            self.context(), self.model_request()
+        )
+        return await self.broker.materialize(
+            self.executor(),
+            self.materialize_request(
+                created.handle, purpose='model_inference'
+            ),
+        )
+
+    async def _denied(self, code: str, reason: str, **changes: object) -> None:
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await self.broker.create_resolution(
+                self.context(), self.model_request(**changes)
+            )
+        self.assertEqual(
+            (ctx.exception.code, ctx.exception.reason), (code, reason)
+        )
+
+    async def test_stored_key_needs_no_binding_or_grant(self) -> None:
+        result = await self.materialize()
+        self.assertEqual(result.material, 'sk-model')
+        self.assertFalse(result.bearer)
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                'SELECT binding_id, grant_id, provider_id, ai_provider_id'
+                ' FROM secrets.resolutions WHERE task_id = %s',
+                (self.task_id,),
+            )
+            rows = await cur.fetchall()
+        self.assertEqual(rows, [(None, None, None, self.ai_provider['id'])])
+        events = await self.audit_events()
+        self.assertEqual(
+            [e.type for e in events],
+            ['secret_resolution_allowed', 'secret_materialized'],
+        )
+        for event in events:
+            self.assertEqual(event.provider_id, self.ai_provider['id'])
+            self.assertEqual(event.purpose, 'model_inference')
+
+    async def test_workload_identity_token_is_bearer(self) -> None:
+        self.ai_provider['credentials_encrypted'] = None
+        self.ai_provider['workload_identity'] = {
+            'organization_id': self.org,
+            'target': {},
+        }
+        expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+            hours=1
+        )
+        token = mock.Mock(token='wif-token', expires_at=expires)
+        with mock.patch(
+            'imbi.api.llm.tokens.get', mock.AsyncMock(return_value=token)
+        ):
+            result = await self.materialize()
+        self.assertEqual(result.material, 'wif-token')
+        self.assertTrue(result.bearer)
+        self.assertEqual(result.credential_expires_at, expires)
+
+    async def test_provider_without_credential_fails(self) -> None:
+        self.ai_provider['credentials_encrypted'] = None
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await self.materialize()
+        self.assertEqual(ctx.exception.reason, 'ai_provider_no_credential')
+
+    async def test_disabled_provider_is_refused(self) -> None:
+        self.ai_provider['enabled'] = False
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await self.materialize()
+        self.assertEqual(ctx.exception.reason, 'ai_provider_disabled')
+
+    async def test_provider_of_another_org_is_not_found(self) -> None:
+        await self.pin('other-provider')
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await self.materialize()
+        self.assertEqual(ctx.exception.reason, 'ai_provider_not_found')
+
+    async def test_task_without_a_pin_is_refused(self) -> None:
+        await self.pin(None)
+        await self._denied('secret_access_denied', 'model_not_pinned')
+
+    async def test_other_purpose_is_refused(self) -> None:
+        await self._denied(
+            'secret_access_denied', 'model_key_purpose', purpose='github_write'
+        )
+
+    async def test_environment_delivery_is_refused(self) -> None:
+        await self._denied(
+            'delivery_mode_not_allowed',
+            'setup_purpose_file_descriptor_only',
+            delivery_mode='environment',
+            delivery_target='KEY',
+        )
+
+    async def test_new_pin_after_create_is_refused(self) -> None:
+        created = await self.broker.create_resolution(
+            self.context(), self.model_request()
+        )
+        await self.pin('another')
+        with self.assertRaises(providers.BrokerError) as ctx:
+            await self.broker.materialize(
+                self.executor(),
+                self.materialize_request(
+                    created.handle, purpose='model_inference'
+                ),
+            )
+        self.assertEqual(ctx.exception.reason, 'ai_provider_changed')
 
 
 class LeaseTestCase(secret_support.SecretCase):

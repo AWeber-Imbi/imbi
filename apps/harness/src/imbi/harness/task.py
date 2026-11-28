@@ -1126,8 +1126,9 @@ class TaskRun:
         self.layout.make_task(str(self.task['id']))
         upstream: Body = self.config.get('model_upstream') or {}
         base_url = str(upstream.get('base_url') or ANTHROPIC_API)
-        # imbi-api refuses this on write, but an older stored version
-        # can still have it. Do not send the key without TLS.
+        # imbi-api allows http:// only for a provider with
+        # allow_insecure_http (an in-cluster gateway). Do not send the key
+        # without TLS otherwise.
         if urllib.parse.urlsplit(
             base_url
         ).scheme != 'https' and not upstream.get('allow_insecure_http'):
@@ -2170,6 +2171,14 @@ class TaskRun:
             return ''
         return _history(entries[drop:], cut + drop)
 
+    def model_id(self) -> str | None:
+        """The model of the task: the catalog model that imbi-api
+        resolved at claim, else (an older imbi-api) the prompt model, else
+        the runner's configured model."""
+        model: Body = self.bundle.get('model') or {}
+        prompt: Body = self.bundle.get('prompt') or {}
+        return model.get('model_id') or prompt.get('model_id') or self.model
+
     def options(self, proxy_url: str) -> sdk.ClaudeAgentOptions:
         allowed, denied = self.tools()
         prompt: Body = self.bundle.get('prompt') or {}
@@ -2270,7 +2279,7 @@ class TaskRun:
             plugins=[
                 {'type': 'local', 'path': str(path)} for path in self.plugins
             ],
-            model=prompt.get('model_id') or self.model,
+            model=self.model_id(),
             thinking={'type': 'adaptive', 'display': 'summarized'},
             effort=_effort(params),
             # The SDK default (1 MiB) fails the task on one large message.

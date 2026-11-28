@@ -39,6 +39,7 @@ import type {
  * carries its own permission.
  */
 export interface ProviderFormValues {
+  allow_insecure_http: boolean
   api_key: null | string
   base_url: null | string
   description: null | string
@@ -50,6 +51,8 @@ export interface ProviderFormValues {
 }
 
 interface ProviderDialogProps {
+  /** The user holds `ai_model:credentials`: may change the http:// flag. */
+  canSetInsecureHttp?: boolean
   /** Preselected driver for a "Set up" ghost row. Create mode only. */
   defaultDriver?: string
   /** Why deletion is blocked, if it is. Renders as a tooltip. */
@@ -59,7 +62,8 @@ interface ProviderDialogProps {
   isPending: boolean
   onClose: () => void
   onDelete?: () => void
-  onSubmit: (values: ProviderFormValues) => void
+  /** `opened` is the provider as the dialog read it on mount. */
+  onSubmit: (values: ProviderFormValues, opened?: AIProvider | null) => void
   open: boolean
   /** Present in edit mode; null or omitted creates a new provider. */
   provider?: AIProvider | null
@@ -67,6 +71,7 @@ interface ProviderDialogProps {
 
 // fallow-ignore-next-line complexity
 export function ProviderDialog({
+  canSetInsecureHttp = false,
   defaultDriver,
   deleteBlockedReason,
   drivers,
@@ -98,7 +103,13 @@ export function ProviderDialog({
   const [region, setRegion] = useState(provider?.region ?? '')
   const [projectId, setProjectId] = useState(provider?.project_id ?? '')
   const [enabled, setEnabled] = useState(provider?.enabled ?? true)
+  const [insecureHttp, setInsecureHttp] = useState(
+    provider?.allow_insecure_http ?? false,
+  )
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // The fields start from this value; a save sends only the fields that
+  // the user changed from it, not values from a later list refresh.
+  const [opened] = useState(provider)
 
   const driver = drivers.find((d) => d.slug === driverSlug)
   const needsRegion = driverSlug === 'bedrock' || driverSlug === 'vertex'
@@ -113,22 +124,27 @@ export function ProviderDialog({
     const next = drivers.find((d) => d.slug === slug)
     setDriverSlug(slug)
     setBaseUrl('')
+    if (slug !== 'openai_compatible') setInsecureHttp(false)
     if (name.trim() === '' || drivers.some((d) => d.name === name)) {
       setName(next?.name ?? '')
     }
   }
 
   const handleSubmit = () =>
-    onSubmit({
-      api_key: editing ? null : apiKey.trim() || null,
-      base_url: baseUrl.trim() || null,
-      description: description.trim() || null,
-      driver: driverSlug as AIProviderDriverSlug,
-      enabled,
-      name: name.trim(),
-      project_id: needsProject ? projectId.trim() || null : null,
-      region: needsRegion ? region.trim() || null : null,
-    })
+    onSubmit(
+      {
+        allow_insecure_http: driverSlug === 'openai_compatible' && insecureHttp,
+        api_key: editing ? null : apiKey.trim() || null,
+        base_url: baseUrl.trim() || null,
+        description: description.trim() || null,
+        driver: driverSlug as AIProviderDriverSlug,
+        enabled,
+        name: name.trim(),
+        project_id: needsProject ? projectId.trim() || null : null,
+        region: needsRegion ? region.trim() || null : null,
+      },
+      opened,
+    )
 
   return (
     <Dialog
@@ -210,6 +226,27 @@ export function ProviderDialog({
               value={baseUrl}
             />
           </FormField>
+          {driverSlug === 'openai_compatible' && (
+            <div className="border-tertiary flex items-center justify-between gap-3 rounded-md border p-3">
+              <div>
+                <div className="text-primary text-sm font-medium">
+                  Allow http:// for agents
+                </div>
+                <p className="text-tertiary text-sm">
+                  Agent runners send this provider's key without TLS. Use this
+                  only for a gateway in the same protected cluster.
+                  {!canSetInsecureHttp &&
+                    ' Changing it needs the ai_model:credentials permission.'}
+                </p>
+              </div>
+              <Switch
+                aria-label="Allow http:// for agents"
+                checked={insecureHttp}
+                disabled={!canSetInsecureHttp}
+                onCheckedChange={setInsecureHttp}
+              />
+            </div>
+          )}
           {needsRegion && (
             <FormField htmlFor="ai-provider-region" label="Region">
               <Input

@@ -1481,7 +1481,9 @@ export interface paths {
          *
          *     Imbi takes the organization, agent, project, task, and runner from
          *     the agent token, the chain, and the task. Exactly one grant must
-         *     allow the request. A repeat with the same ``Idempotency-Key`` gives
+         *     allow the request, except for ``secret://imbi/model``: that request
+         *     needs no grant, and the model that the claim pinned for the task
+         *     decides it. A repeat with the same ``Idempotency-Key`` gives
          *     the unused resolution a new handle.
          *
          *     Raises:
@@ -2418,9 +2420,11 @@ export interface paths {
          *         The created provider, without credentials.
          *
          *     Raises:
+         *         403: ``allow_insecure_http`` without ``ai_model:credentials``.
          *         409: A provider of the organization has the same slug.
-         *         422: Invalid configuration (bad ``base_url``, or
-         *             ``openai_compatible`` without one).
+         *         422: Invalid configuration (bad ``base_url``,
+         *             ``openai_compatible`` without one, or
+         *             ``allow_insecure_http`` with another driver).
          */
         post: operations["create_ai_provider_api_organizations__org_slug__ai_providers__post"];
         delete?: never;
@@ -2487,9 +2491,12 @@ export interface paths {
          *
          *     Raises:
          *         400: Invalid patch or a read-only path.
+         *         403: A change of ``allow_insecure_http`` without
+         *             ``ai_model:credentials``.
          *         404: No such provider.
-         *         409: The new slug is taken, or the new driver does not serve
-         *             the model type of a model of this provider.
+         *         409: The new slug is taken, the new driver does not serve
+         *             the model type of a model of this provider, or
+         *             ``allow_insecure_http`` changed after the read.
          *         422: The patched configuration is invalid.
          */
         patch: operations["patch_ai_provider_api_organizations__org_slug__ai_providers__id__patch"];
@@ -2519,6 +2526,7 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
+         *         409: ``allow_insecure_http`` changed after the read.
          */
         put: operations["set_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_put"];
         post?: never;
@@ -2534,6 +2542,7 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
+         *         409: ``allow_insecure_http`` changed after the read.
          */
         delete: operations["delete_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_delete"];
         options?: never;
@@ -2604,7 +2613,8 @@ export interface paths {
          *     Raises:
          *         403: No ``secret_provider:write`` in the organization.
          *         404: No such provider.
-         *         409: The provider has a stored key.
+         *         409: The provider has a stored key, or
+         *             ``allow_insecure_http`` changed after the read.
          *         422: The driver cannot use workload identity, the provider has a
          *             ``base_url``, no exchanger is installed for the vendor, or
          *             the target is not valid.
@@ -2617,6 +2627,7 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
+         *         409: ``allow_insecure_http`` changed after the read.
          */
         delete: operations["delete_ai_provider_workload_identity_api_organizations__org_slug__ai_providers__id__workload_identity_delete"];
         options?: never;
@@ -6421,8 +6432,7 @@ export interface paths {
          *         422: An allowed marketplace is not registered, a default
          *             plugin is not in an allowed marketplace's catalog or has
          *             ``server_settings`` (an MCP server turned off or given
-         *             secrets), or the model upstream URL is ``http://`` without
-         *             ``allow_insecure_http``.
+         *             secrets).
          */
         put: operations["put_agent_platform_config_api_organizations__org_slug__agent_platform_config__put"];
         post?: never;
@@ -11502,6 +11512,11 @@ export interface components {
             project_id?: string | null;
             /** Api Key */
             api_key?: string | null;
+            /**
+             * Allow Insecure Http
+             * @default false
+             */
+            allow_insecure_http: boolean;
         };
         /**
          * AIProviderCredentials
@@ -11542,6 +11557,11 @@ export interface components {
             region?: string | null;
             /** Project Id */
             project_id?: string | null;
+            /**
+             * Allow Insecure Http
+             * @default false
+             */
+            allow_insecure_http: boolean;
             /**
              * Auth Kind
              * @default none
@@ -11946,7 +11966,6 @@ export interface components {
          * @description The base agent configuration of an organization.
          */
         AgentPlatformConfig: {
-            model_upstream?: components["schemas"]["ModelUpstream"];
             /**
              * Allowed Marketplaces
              * @default []
@@ -12150,8 +12169,6 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
-            /** Model Key Ref */
-            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []
@@ -12204,8 +12221,6 @@ export interface components {
             plugins: components["schemas"]["AgentPlugin"][];
             /** Github App Binding */
             github_app_binding?: string | null;
-            /** Model Key Ref */
-            model_key_ref?: string | null;
             /**
              * Secrets
              * @default []
@@ -13857,6 +13872,22 @@ export interface components {
             code_verifier?: string | null;
             /** Refresh Token */
             refresh_token?: string | null;
+        };
+        /**
+         * BundleModel
+         * @description The catalog model of a task, resolved at claim (ADR 0022
+         *     amendment).
+         */
+        BundleModel: {
+            /** Slug */
+            slug: string;
+            /** Model Id */
+            model_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "explicit" | "team" | "org" | "env";
         };
         /**
          * BundlePrompt
@@ -16549,6 +16580,7 @@ export interface components {
             prompt?: components["schemas"]["BundlePrompt"] | null;
             /** Prompt Error */
             prompt_error?: string | null;
+            model?: components["schemas"]["BundleModel"] | null;
             /** Platform Config Version */
             platform_config_version?: number | null;
             config?: components["schemas"]["MergedConfig"] | null;
@@ -18030,7 +18062,7 @@ export interface components {
          * @description The configuration that a runner applies to one task.
          */
         MergedConfig: {
-            model_upstream: components["schemas"]["ModelUpstream"];
+            model_upstream?: components["schemas"]["ModelUpstream"] | null;
             /** Plugins */
             plugins: components["schemas"]["AgentPlugin"][];
             /** Allowed Tools */
@@ -18085,7 +18117,8 @@ export interface components {
         };
         /**
          * ModelUpstream
-         * @description Where the runner's model proxy sends model calls.
+         * @description Where the runner's model proxy sends model calls. imbi-api derives
+         *     it from the AI provider of the task (ADR 0022 amendment).
          */
         ModelUpstream: {
             /**
@@ -22545,21 +22578,14 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Binding Id
-             * Format: uuid
-             */
-            binding_id: string;
-            /**
-             * Grant Id
-             * Format: uuid
-             */
-            grant_id: string;
-            /**
-             * Provider Id
-             * Format: uuid
-             */
-            provider_id: string;
+            /** Binding Id */
+            binding_id: string | null;
+            /** Grant Id */
+            grant_id: string | null;
+            /** Provider Id */
+            provider_id: string | null;
+            /** Ai Provider Id */
+            ai_provider_id?: string | null;
             /** Reference */
             reference: string;
             /** Agent Id */

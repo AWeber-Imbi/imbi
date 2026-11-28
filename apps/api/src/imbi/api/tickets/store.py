@@ -563,6 +563,11 @@ class TaskClosed(ValueError):
     """The task is closed. A closed task does not change."""
 
 
+class AttemptStale(ValueError):
+    """The claim of this attempt is not the claim of the current attempt
+    of the chain: its lease expired and a newer attempt holds the task."""
+
+
 class RolesChanged(ValueError):
     """The roles of the task are not the roles that the caller read."""
 
@@ -3432,17 +3437,36 @@ class TicketStore:
         reason: str | None,
         actor: Actor,
         structured_output: Row | None = None,
+        *,
+        attempt: int | None = None,
     ) -> Row:
         """Close the task with ``outcome``; see :func:`_close`.
 
         Keep the ``structured_output`` that the agent returned, if any.
+        With ``attempt``, the write applies only while the claim of
+        ``attempt`` is the claim of the current attempt of the chain, as
+        in :meth:`~imbi.api.harness.store.HarnessStore.pin_model`. The
+        check locks the chain row, so an attempt increment waits until
+        the close commits.
 
         Raises:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
+            AttemptStale: ``attempt`` is not the current attempt.
 
         """
         async with self._write(organization_id, short_id) as write:
+            if attempt is not None:
+                cursor = await write.conn.execute(
+                    'SELECT 1 FROM harness.claims k JOIN harness.chains c'
+                    ' ON c.root_ticket_id = k.chain_id'
+                    ' AND c.attempt = k.attempt'
+                    ' WHERE k.ticket_id = %s AND k.attempt = %s'
+                    ' FOR SHARE OF c',
+                    (write.task['id'], attempt),
+                )
+                if await cursor.fetchone() is None:
+                    raise AttemptStale(short_id)
             await _close(write, outcome, reason, actor)
             if structured_output is not None:
                 await write.update(
