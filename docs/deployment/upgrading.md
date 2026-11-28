@@ -80,7 +80,8 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    2.65.0 first. If your install is on 2.28.x or older and did not run
    **Migrate Deployment History** (`deployment-migration`), upgrade to
    2.28.x and run it before you upgrade past 2.28.x. 2.29.0 removed it,
-   and step 8 discards the deployment entries that it did not copy.
+   and **Remove Legacy Deployment Arrays** (`deployment-array-drop`)
+   discards the deployment entries that it did not copy.
    Do the steps of each release up to 2.65.0 in the order
    that the upgrade procedure gives, including the steps that you must
    do before you deploy. This release removes these maintenance
