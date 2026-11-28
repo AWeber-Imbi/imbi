@@ -1025,7 +1025,7 @@ class RemoteDeployment(pydantic.BaseModel):
     """A deployment observed on the remote for resync.
 
     Returned by :meth:`DeploymentCapability.list_recent_deployments` so
-    the host can backfill ``Release`` nodes and ``DEPLOYED_TO`` edges when
+    the host can backfill ``Release`` and ``Deployment`` nodes when
     webhook delivery has lapsed or when bringing a project online for
     the first time.  ``environment`` is the remote's environment name as
     reported (callers map it to the project's local environment slug).
@@ -1670,7 +1670,7 @@ class DeploymentCapability(CapabilityHandler):
         """Return the most recent ``limit`` deployments per environment.
 
         Optional -- powers the deployment resync flow that backfills
-        ``Release`` nodes and ``DEPLOYED_TO`` edges when webhook delivery
+        ``Release`` and ``Deployment`` nodes when webhook delivery
         has lapsed.  Capabilities that advertise the
         ``supports_deployment_sync`` hint MUST implement this; others
         raise :class:`NotImplementedError` (the host treats that as

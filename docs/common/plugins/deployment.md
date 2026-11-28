@@ -111,8 +111,8 @@ These default to returning `'unknown'` or `None`, or raising
   workflow dropdown when an operator wires up the per-environment
   dispatch edge.
 - **`list_recent_deployments`** — return the most recent deployments per
-  environment for the resync flow that backfills `Release` nodes and
-  `DEPLOYED_TO` edges when webhook delivery has lapsed. Capabilities that
+  environment for the resync flow that backfills `Release` and
+  `Deployment` nodes when webhook delivery has lapsed. Capabilities that
   set the `supports_deployment_sync` hint **must** implement this; each
   returned `RemoteDeployment` must carry a stable `external_run_id` so
   the host can dedupe. Status values use the host's canonical
