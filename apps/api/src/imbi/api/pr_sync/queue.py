@@ -238,6 +238,17 @@ async def _handle_entries(
     for msg_id, raw_fields in entries:
         fields = _decode_fields(raw_fields)
         if check_dlq and await _maybe_dead_letter(client, msg_id, fields):
+            if project_id := fields.get('project_id'):
+                await set_status(
+                    db,
+                    project_id,
+                    status='failed',
+                    requested_by=fields.get('requested_by') or 'system',
+                    error=(
+                        f'PR sync failed after {MAX_DELIVERIES} attempts. '
+                        'See server logs for details.'
+                    ),
+                )
             continue
         try:
             await _process_message(db, fields)

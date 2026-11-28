@@ -101,6 +101,19 @@ class AnalysisReport(pydantic.BaseModel):
     results: list[AnalysisResult]
 
 
+class ProjectLookupFailed(fastapi.HTTPException):
+    """A project lookup that a plugin needs failed; try again later.
+
+    Not a plugin failure, so it is not stored in the report.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=503,
+            detail={'error': 'project_lookup_failed', 'retry': True},
+        )
+
+
 def _handler(resolved: ResolvedCapability) -> AnalysisCapability:
     """Instantiate and type-narrow an analysis plugin handler."""
     return typing.cast('AnalysisCapability', resolved.capability_cls())
@@ -115,7 +128,11 @@ async def _build_context(
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
-    service_connections = await lookup_project_exists_in(db, project_id)
+    try:
+        service_connections = await lookup_project_exists_in(db, project_id)
+    except Exception as exc:
+        LOGGER.exception('EXISTS_IN lookup for project %s failed', project_id)
+        raise ProjectLookupFailed from exc
     dependencies = await lookup_project_dependencies(db, project_id)
     project_facts = await fetch_project_props(db, project_id)
     return PluginContext(
@@ -222,6 +239,8 @@ async def _run_one(
         items: list[AnalysisResultItem] = await call_with_timeout(
             handler.analyze(ctx, credentials)
         )
+    except ProjectLookupFailed:
+        raise
     except Exception:
         # The traceback (and any URLs / query fragments / credentials
         # the plugin might have embedded in the exception message) is
@@ -720,11 +739,25 @@ async def remediate_project_finding(
         fastapi.Depends(permissions.require_permission('project:write')),
     ],
 ) -> RemediateResponse:
-    """Apply one finding's fix, then return the refreshed report."""
+    """Apply one finding's fix, then return the refreshed report.
+
+    If the refresh cannot look up the project, the result is returned
+    with the previous report. With no previous report, the 503 stays.
+    """
     result = await _remediate_one(
         db, org_slug, project_id, body.plugin_id, body.remediation_id, auth
     )
-    report = await run_and_persist(db, org_slug, project_id, auth)
+    try:
+        report = await run_and_persist(db, org_slug, project_id, auth)
+    except ProjectLookupFailed:
+        previous = await _fetch_report(db, project_id)
+        if previous is None:
+            raise
+        LOGGER.warning(
+            'Analysis refresh after remediate failed for project %s',
+            project_id,
+        )
+        report = previous
     return RemediateResponse(result=result, report=report)
 
 
@@ -741,7 +774,9 @@ async def remediate_all_for_project(
     Returns ``None`` when the project has no persisted report (nothing to
     remediate). Each finding is remediated independently; a failure on one
     is captured in its outcome rather than aborting the rest. Analysis is
-    re-run once at the end so the returned report reflects every fix.
+    re-run once at the end so the returned report reflects every fix. If
+    that re-run cannot look up the project, the outcomes are returned with
+    the previous report.
 
     Shared by the per-project endpoint and the ``remediate`` maintenance
     sweep, so both apply findings identically.  ``sweepable_only``
@@ -797,8 +832,16 @@ async def remediate_all_for_project(
         )
     if sweepable_only and not outcomes:
         return RemediateAllResponse(outcomes=outcomes, report=report)
-    fresh = await run_and_persist(db, org_slug, project_id, auth)
-    return RemediateAllResponse(outcomes=outcomes, report=fresh)
+    try:
+        report = await run_and_persist(db, org_slug, project_id, auth)
+    except ProjectLookupFailed:
+        # Keep the outcomes of the fixes already applied. The returned
+        # report is the previous one, because analysis cannot run now.
+        LOGGER.warning(
+            'Analysis refresh after remediate-all failed for project %s',
+            project_id,
+        )
+    return RemediateAllResponse(outcomes=outcomes, report=report)
 
 
 @project_analysis_router.post(

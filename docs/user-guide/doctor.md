@@ -40,6 +40,10 @@ An analysis runs these checks:
 If a plugin fails, the report shows one **Fail** finding, "\<plugin\>
 analysis failed". The server log has the details.
 
+If Imbi cannot read the project's integration links, the analysis stops
+with an error (503 `project_lookup_failed`) and keeps the previous
+report. A fix stops with the same error. Try again later.
+
 ## Read the results
 
 The **Analysis Results** card shows the findings in three groups, in this

@@ -331,6 +331,28 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         # Sort puts fail first, then warn, then pass.
         self.assertEqual(['fail', 'warn', 'pass'], statuses)
 
+    def test_run_returns_503_when_exists_in_lookup_fails(self) -> None:
+        # A failed lookup is not a plugin failure: no report is stored,
+        # so the previous report stays, and the caller can retry.
+        self.mocks['lookup_project_exists_in'].side_effect = RuntimeError
+        with (
+            mock.patch(
+                f'{_MODULE}.resolve_all_capabilities',
+                return_value=[_resolved('p1', _PassPlugin)],
+            ),
+            mock.patch(f'{_MODULE}._persist_report') as persist,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/run'
+                )
+        self.assertEqual(503, resp.status_code, resp.text)
+        self.assertEqual(
+            {'error': 'project_lookup_failed', 'retry': True},
+            resp.json()['detail'],
+        )
+        persist.assert_not_called()
+
     def test_run_captures_plugin_exception_as_fail_result(self) -> None:
         with mock.patch(
             f'{_MODULE}.resolve_all_capabilities',
@@ -510,6 +532,27 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual('failed', result['status'])
         self.assertEqual('refused', result['message'])
 
+    def test_remediate_returns_503_when_exists_in_lookup_fails(self) -> None:
+        self.mocks['lookup_project_exists_in'].side_effect = RuntimeError
+        with mock.patch(
+            f'{_MODULE}.resolve_all_capabilities',
+            return_value=[_resolved('p1', _RemediablePlugin)],
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/remediate',
+                    json={
+                        'plugin_id': 'p1',
+                        'finding_slug': 'fix-plugin:drift',
+                        'remediation_id': 'fix-it',
+                    },
+                )
+        self.assertEqual(503, resp.status_code, resp.text)
+        self.assertEqual(
+            'project_lookup_failed', resp.json()['detail']['error']
+        )
+        self.mocks['persist_service_writeback'].assert_not_called()
+
     def test_remediate_unknown_plugin_returns_404(self) -> None:
         with mock.patch(
             f'{_MODULE}.resolve_all_capabilities',
@@ -676,6 +719,97 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         body = resp.json()
         self.assertEqual(1, len(body['outcomes']))
         self.assertEqual('failed', body['outcomes'][0]['result']['status'])
+
+    def test_remediate_all_keeps_outcomes_when_exists_in_fails(self) -> None:
+        # A persistent EXISTS_IN failure also fails the closing refresh.
+        # The outcomes must still be returned, with the previous report.
+        from imbi.api.endpoints.project_analysis import (
+            AnalysisReport,
+            AnalysisResult,
+        )
+
+        self.mocks['lookup_project_exists_in'].side_effect = RuntimeError
+        report = AnalysisReport(
+            id='r1',
+            project_id='proj-1',
+            created_at=datetime.datetime.now(datetime.UTC),
+            overall_status='warn',
+            results=[
+                AnalysisResult(
+                    slug='fix-plugin:drift',
+                    title='t',
+                    description='d',
+                    status='warn',
+                    plugin_slug='fix-plugin',
+                    plugin_id='p1',
+                    remediation=RemediationOffer(id='fix-it', label='Fix'),
+                ),
+            ],
+        )
+        with (
+            mock.patch(f'{_MODULE}._fetch_report', return_value=report),
+            mock.patch(
+                f'{_MODULE}.resolve_all_capabilities',
+                return_value=[_resolved('p1', _RemediablePlugin)],
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis'
+                    '/remediate-all'
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        body = resp.json()
+        self.assertEqual(1, len(body['outcomes']))
+        self.assertEqual('failed', body['outcomes'][0]['result']['status'])
+        self.assertEqual('r1', body['report']['id'])
+
+    def _remediate_with_failed_refresh(
+        self, previous: typing.Any
+    ) -> typing.Any:
+        from imbi.api.endpoints.project_analysis import ProjectLookupFailed
+
+        with (
+            mock.patch(
+                f'{_MODULE}.remediate_blueprint',
+                return_value=RemediationResult(status='fixed', message='ok'),
+            ),
+            mock.patch(
+                f'{_MODULE}.run_and_persist',
+                side_effect=ProjectLookupFailed(),
+            ),
+            mock.patch(f'{_MODULE}._fetch_report', return_value=previous),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                return client.post(
+                    '/organizations/acme/projects/proj-1/analysis/remediate',
+                    json={
+                        'plugin_id': 'built-in',
+                        'finding_slug': 'x',
+                        'remediation_id': 'set-default:foo',
+                    },
+                )
+
+    def test_remediate_keeps_result_when_refresh_fails(self) -> None:
+        # The fix is applied, so a failed refresh must not report a 503.
+        from imbi.api.endpoints.project_analysis import AnalysisReport
+
+        previous = AnalysisReport(
+            id='r1',
+            project_id='proj-1',
+            created_at=datetime.datetime.now(datetime.UTC),
+            overall_status='warn',
+            results=[],
+        )
+        resp = self._remediate_with_failed_refresh(previous)
+        self.assertEqual(200, resp.status_code, resp.text)
+        body = resp.json()
+        self.assertEqual('fixed', body['result']['status'])
+        self.assertEqual('r1', body['report']['id'])
+
+    def test_remediate_refresh_fails_without_previous_report(self) -> None:
+        resp = self._remediate_with_failed_refresh(None)
+        self.assertEqual(503, resp.status_code, resp.text)
 
 
 class RemediateAllSweepableTestCase(unittest.IsolatedAsyncioTestCase):
