@@ -1317,8 +1317,12 @@ class ClaudeSettingsTests(unittest.TestCase):
 
 
 class ModelUpstreamTests(unittest.TestCase):
-    def provider(self, driver: str, base_url: str | None) -> typing.Any:
-        return mock.Mock(driver=driver, base_url=base_url)
+    def provider(
+        self, driver: str, base_url: str | None, insecure: bool = False
+    ) -> typing.Any:
+        return mock.Mock(
+            driver=driver, base_url=base_url, allow_insecure_http=insecure
+        )
 
     def test_anthropic_provider(self) -> None:
         self.assertEqual(
@@ -1337,6 +1341,12 @@ class ModelUpstreamTests(unittest.TestCase):
         self.assertEqual(upstream.kind, 'litellm')
         self.assertEqual(upstream.base_url, 'http://litellm:4000')
         self.assertFalse(upstream.allow_insecure_http)
+
+    def test_gateway_flag_is_carried(self) -> None:
+        upstream = platform.upstream(
+            self.provider('openai_compatible', 'http://litellm:4000', True)
+        )
+        self.assertTrue(upstream.allow_insecure_http)
 
 
 class PinTests(unittest.TestCase):

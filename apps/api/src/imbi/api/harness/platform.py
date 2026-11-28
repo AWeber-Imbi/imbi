@@ -32,7 +32,8 @@ class ModelUpstream(pydantic.BaseModel):
     kind: typing.Literal['anthropic', 'litellm'] = 'anthropic'
     #: The upstream base URL. ``None`` is the Anthropic API.
     base_url: str | None = None
-    #: Always false: the runner does not send the key without TLS.
+    #: The ``allow_insecure_http`` of the AI provider: the runner sends
+    #: the key to an ``http://`` base URL only with it.
     allow_insecure_http: bool = False
     #: The ``secret://`` reference of the upstream key.
     key_ref: str | None = None
@@ -51,6 +52,7 @@ def upstream(provider: models.AIProvider) -> ModelUpstream:
     return ModelUpstream(
         kind='anthropic' if provider.driver == 'anthropic' else 'litellm',
         base_url=base_url,
+        allow_insecure_http=provider.allow_insecure_http,
         key_ref=model_key.REFERENCE,
     )
 

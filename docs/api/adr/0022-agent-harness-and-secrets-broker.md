@@ -481,14 +481,20 @@ Rejected alternatives:
 The identity bundle keeps `config.model_upstream`, but imbi-api derives it
 from the resolved provider: `kind` is `anthropic` for the `anthropic`
 driver and `litellm` for `openai_compatible`, `base_url` is the provider
-URL or the driver default, `allow_insecure_http` is false, and `key_ref` is
+URL or the driver default, `allow_insecure_http` is the flag of the
+provider, and `key_ref` is
 `secret://imbi/model`. A new `model` field gives the model slug, the
 provider model id, and the resolution level. The runner uses
 `model.model_id`. imbi-api also sets `prompt.model_id` to the resolved
 provider model id.
 
 An `http://` provider URL fails the task with `model_upstream_insecure`, as
-before. The runner does not send a key without TLS.
+before, unless the provider has `allow_insecure_http`. The runner does not
+send a key without TLS otherwise. The flag replaces
+`model_upstream.allow_insecure_http`: only an `openai_compatible` provider
+can have it, and only a holder of `ai_model:credentials` can change it,
+because it controls where the key goes. The derived `model_upstream`
+carries it.
 
 ### Spend
 

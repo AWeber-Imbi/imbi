@@ -2418,9 +2418,11 @@ export interface paths {
          *         The created provider, without credentials.
          *
          *     Raises:
+         *         403: ``allow_insecure_http`` without ``ai_model:credentials``.
          *         409: A provider of the organization has the same slug.
-         *         422: Invalid configuration (bad ``base_url``, or
-         *             ``openai_compatible`` without one).
+         *         422: Invalid configuration (bad ``base_url``,
+         *             ``openai_compatible`` without one, or
+         *             ``allow_insecure_http`` with another driver).
          */
         post: operations["create_ai_provider_api_organizations__org_slug__ai_providers__post"];
         delete?: never;
@@ -2487,6 +2489,8 @@ export interface paths {
          *
          *     Raises:
          *         400: Invalid patch or a read-only path.
+         *         403: A change of ``allow_insecure_http`` without
+         *             ``ai_model:credentials``.
          *         404: No such provider.
          *         409: The new slug is taken, or the new driver does not serve
          *             the model type of a model of this provider.
@@ -11501,6 +11505,11 @@ export interface components {
             project_id?: string | null;
             /** Api Key */
             api_key?: string | null;
+            /**
+             * Allow Insecure Http
+             * @default false
+             */
+            allow_insecure_http: boolean;
         };
         /**
          * AIProviderCredentials
@@ -11541,6 +11550,11 @@ export interface components {
             region?: string | null;
             /** Project Id */
             project_id?: string | null;
+            /**
+             * Allow Insecure Http
+             * @default false
+             */
+            allow_insecure_http: boolean;
             /**
              * Auth Kind
              * @default none

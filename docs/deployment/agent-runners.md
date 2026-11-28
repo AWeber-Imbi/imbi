@@ -144,8 +144,11 @@ Do these steps in each organization that the pool serves.
 3. Set the **default model** of the organization. A team default or the
    model of an agent's prompt version replaces it for those agents.
 4. The provider URL must use `https://`, because the proxy sends the key to
-   it. A task on an `http://` provider closes with `model_upstream_insecure`.
-   For a gateway, enter the root URL; a trailing `/v1` is removed.
+   it. For a protected in-cluster gateway only (`openai_compatible`), you
+   can use `http://`: turn on **Allow http:// for agents** in the provider
+   dialog (`allow_insecure_http`, needs `ai_model:credentials`). Otherwise a
+   task on an `http://` provider closes with `model_upstream_insecure`. For a
+   gateway, enter the root URL; a trailing `/v1` is removed.
 
 When a runner claims a task, imbi-api resolves the model: the model of the
 agent's prompt version, then the default of the agent's owner team, then the
@@ -682,7 +685,7 @@ Find the error code first:
 | `model_spend_cap` | The month-to-date spend of the resolved model is at or over its monthly spend cap | Raise the cap, or wait for the next month (UTC), then retry the task |
 | `model_unsupported_driver` | The provider of the resolved model uses a driver other than `anthropic` or `openai_compatible` | Use a model of an `anthropic` or `openai_compatible` provider |
 | `prompt_render_failed` | The agent's pinned prompt version did not render, usually because the template uses a variable that its variable schema does not declare. The runner log shows `Prompt of <task> did not render` with the error | Declare the variable in a new prompt version and point the agent at it |
-| `model_upstream_insecure` | The URL of the model's provider uses `http://`. The runner does not send the key without TLS | Change the provider URL to `https://`. See [step 5](#5-configure-the-model) |
+| `model_upstream_insecure` | The URL of the model's provider uses `http://` and the provider does not have **Allow http:// for agents**. The runner does not send the key without TLS | Change the provider URL to `https://`. For a protected in-cluster gateway only, turn on the flag. See [step 5](#5-configure-the-model) |
 | `model_key_refused` | The broker refused the `model_inference` request for `secret://imbi/model` | The audit event gives the reason. `model_not_pinned`: the runner has an older imbi-api claim; retry the task |
 | `model_key_unavailable` | The executor could not get the key value | Check the provider of the model: `ai_provider_no_credential` (no key and no workload identity), `ai_provider_disabled`, or a workload identity error |
 | `workspace_checkout_refused` | The broker refused the `workspace_checkout` token | Check the GitHub grants of [step 6](#6-configure-github-access) |

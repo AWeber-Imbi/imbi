@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { useAIModels, useTeams } from '@/hooks/useOrgResources'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { buildDiffPatch } from '@/lib/json-patch'
@@ -72,6 +73,7 @@ const NO_TEAMS: Team[] = []
 // absent: models point at the provider and the request shape must not
 // change under them.
 const PROVIDER_PATCH_FIELDS = [
+  'allow_insecure_http',
   'base_url',
   'description',
   'enabled',
@@ -109,6 +111,8 @@ const MODEL_PATCH_FIELDS = [
 export function AIModelsManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
+  // The http:// flag controls where the key goes (ADR 0022 amendment).
+  const canSetInsecureHttp = useHasPermission('ai_model:credentials', orgSlug)
   const navigate = useNavigate()
   const { action, slug } = useParams<{ action?: string; slug?: string }>()
   const [searchParams] = useSearchParams()
@@ -443,6 +447,7 @@ export function AIModelsManagement() {
 
       {providerDialogOpen && (
         <ProviderDialog
+          canSetInsecureHttp={canSetInsecureHttp}
           defaultDriver={searchParams.get('driver') ?? undefined}
           drivers={drivers}
           error={createProviderMutation.error}
@@ -450,6 +455,7 @@ export function AIModelsManagement() {
           onClose={goToList}
           onSubmit={(values) =>
             createProviderMutation.mutate({
+              allow_insecure_http: values.allow_insecure_http,
               api_key: values.api_key,
               base_url: values.base_url,
               description: values.description,
@@ -465,6 +471,7 @@ export function AIModelsManagement() {
 
       {providerEditOpen && editingProvider && (
         <ProviderDialog
+          canSetInsecureHttp={canSetInsecureHttp}
           deleteBlockedReason={
             editingProvider.model_count > 0
               ? 'Delete or move its models first'
@@ -661,6 +668,7 @@ function currentProviderState(
 ): Record<string, unknown> {
   if (!provider) return {}
   return {
+    allow_insecure_http: provider.allow_insecure_http ?? false,
     base_url: provider.base_url,
     description: provider.description,
     enabled: provider.enabled,

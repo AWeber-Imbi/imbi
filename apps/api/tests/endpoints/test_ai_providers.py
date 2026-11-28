@@ -960,6 +960,85 @@ SOURCE = {
 }
 
 
+class InsecureHttpTestCase(AIProviderTestBase):
+    """``allow_insecure_http``: ``openai_compatible`` only, and a change
+    needs ``ai_model:credentials`` (ADR 0022 amendment)."""
+
+    is_admin = False
+
+    GATEWAY: typing.ClassVar[dict[str, typing.Any]] = {
+        'driver': 'openai_compatible',
+        'base_url': 'http://litellm.imbi:4000',
+    }
+
+    def create(self, **body: typing.Any) -> typing.Any:
+        router = self.route(
+            (CREATE, [{'p': provider_props(**self.GATEWAY, **body)}])
+        )
+        response = self.client.post(
+            BASE + '/', json={'name': 'Gateway', **self.GATEWAY, **body}
+        )
+        return response, router
+
+    def test_create_needs_the_credentials_permission(self) -> None:
+        self.auth_context.permissions = {'ai_model:create'}
+        response, _ = self.create(allow_insecure_http=True)
+        self.assertEqual(response.status_code, 403, response.text)
+        response, _ = self.create()
+        self.assertEqual(response.status_code, 201, response.text)
+
+    def test_create_with_the_credentials_permission(self) -> None:
+        self.auth_context.permissions = {
+            'ai_model:create',
+            'ai_model:credentials',
+        }
+        response, router = self.create(allow_insecure_http=True)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertTrue(response.json()['allow_insecure_http'])
+        self.assertTrue(router.params_for(CREATE)['allow_insecure_http'])
+
+    def test_other_drivers_are_refused(self) -> None:
+        self.auth_context.permissions = {
+            'ai_model:create',
+            'ai_model:credentials',
+        }
+        self.route()
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Anthropic',
+                'driver': 'anthropic',
+                'allow_insecure_http': True,
+            },
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+
+    def patch(
+        self, existing: bool, operations: list[typing.Any]
+    ) -> typing.Any:
+        stored = provider_props(**self.GATEWAY, allow_insecure_http=existing)
+        self.route(
+            (GET_PROVIDER, [{'p': stored}]),
+            (UPDATE, [{'p': {**stored, 'allow_insecure_http': True}}]),
+        )
+        return self.client.patch(f'{BASE}/prv-1', json=operations)
+
+    def test_patch_needs_the_credentials_permission(self) -> None:
+        turn_on = [
+            {'op': 'replace', 'path': '/allow_insecure_http', 'value': True}
+        ]
+        self.auth_context.permissions = {'ai_model:update'}
+        self.assertEqual(self.patch(False, turn_on).status_code, 403)
+        # Another field of a provider with the flag needs no more.
+        rename = [{'op': 'replace', 'path': '/name', 'value': 'LiteLLM'}]
+        self.assertEqual(self.patch(True, rename).status_code, 200)
+        self.auth_context.permissions = {
+            'ai_model:update',
+            'ai_model:credentials',
+        }
+        self.assertEqual(self.patch(False, turn_on).status_code, 200)
+
+
 class WorkloadIdentityTestCase(AIProviderTestBase):
     """``PUT`` / ``DELETE`` ``/{id}/workload-identity`` and its effects."""
 

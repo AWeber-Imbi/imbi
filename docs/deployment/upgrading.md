@@ -258,8 +258,11 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
        old model key is in a secret provider, so copy it into the AI
        provider yourself.
     2. Set the default model of the organization.
-    3. The provider URL must use `https://`. An in-cluster gateway on
-       `http://` no longer works for agents.
+    3. The provider URL must use `https://`, unless the provider is
+       `openai_compatible` and has **Allow http:// for agents**
+       (`allow_insecure_http`). If the organization used
+       `model_upstream.allow_insecure_http` for an in-cluster gateway, set
+       this flag on its new provider; it needs `ai_model:credentials`.
 
    Without a model, each task closes with `model_not_configured` when a
    runner claims it. A task needs no `model_inference` grant for the

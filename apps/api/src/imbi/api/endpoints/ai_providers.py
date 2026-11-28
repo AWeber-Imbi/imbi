@@ -91,6 +91,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
     'enabled',
     'region',
     'project_id',
+    'allow_insecure_http',
 )
 
 #: Paths a patch may not target. Credential state is reachable only
@@ -130,6 +131,8 @@ class AIProviderCreate(pydantic.BaseModel):
     region: str | None = None
     project_id: str | None = None
     api_key: str | None = None
+    #: Needs ``ai_model:credentials``; ``openai_compatible`` only.
+    allow_insecure_http: bool = False
 
 
 class AIProviderResponse(pydantic.BaseModel):
@@ -145,6 +148,7 @@ class AIProviderResponse(pydantic.BaseModel):
     enabled: bool = True
     region: str | None = None
     project_id: str | None = None
+    allow_insecure_http: bool = False
     auth_kind: AuthKind = 'none'
     workload_identity: models.AIProviderWorkloadIdentity | None = None
     has_credentials: bool = False
@@ -230,6 +234,7 @@ def to_response(
         enabled=node.enabled,
         region=node.region,
         project_id=node.project_id,
+        allow_insecure_http=node.allow_insecure_http,
         auth_kind=auth_kind(
             node.driver, has_credentials, node.workload_identity is not None
         ),
@@ -383,6 +388,21 @@ async def _assert_driver_serves_models(
             )
 
 
+def _check_insecure_http(
+    auth: permissions.AuthContext, before: bool, after: bool
+) -> None:
+    """Refuse a change of ``allow_insecure_http`` without
+    ``ai_model:credentials``: the flag controls where the key goes."""
+    if before != after and not (
+        auth.is_admin or 'ai_model:credentials' in auth.permissions
+    ):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Permission ai_model:credentials is required to change '
+            'allow_insecure_http',
+        )
+
+
 def _build(payload: dict[str, typing.Any]) -> models.AIProvider:
     """Validate provider properties into a node or raise 422."""
     try:
@@ -480,12 +500,14 @@ async def create_ai_provider(
         The created provider, without credentials.
 
     Raises:
+        403: ``allow_insecure_http`` without ``ai_model:credentials``.
         409: A provider of the organization has the same slug.
-        422: Invalid configuration (bad ``base_url``, or
-            ``openai_compatible`` without one).
+        422: Invalid configuration (bad ``base_url``,
+            ``openai_compatible`` without one, or
+            ``allow_insecure_http`` with another driver).
 
     """
-    _ = auth
+    _check_insecure_http(auth, False, data.allow_insecure_http)
     payload = data.model_dump(exclude={'api_key', 'slug'})
     payload['slug'] = data.slug or slugify.slugify(data.name)
     # The membership check found the organization.
@@ -576,13 +598,14 @@ async def patch_ai_provider(
 
     Raises:
         400: Invalid patch or a read-only path.
+        403: A change of ``allow_insecure_http`` without
+            ``ai_model:credentials``.
         404: No such provider.
         409: The new slug is taken, or the new driver does not serve
             the model type of a model of this provider.
         422: The patched configuration is invalid.
 
     """
-    _ = auth
     existing = await fetch_provider(db, org_id, id)
     current = {field: getattr(existing, field) for field in _PATCHABLE_FIELDS}
     current['icon'] = None if existing.icon is None else str(existing.icon)
@@ -593,6 +616,9 @@ async def patch_ai_provider(
             'organization': existing.organization,
             'org_id': org_id,
         }
+    )
+    _check_insecure_http(
+        auth, existing.allow_insecure_http, node.allow_insecure_http
     )
     node.id = existing.id
     node.created_at = existing.created_at

@@ -986,6 +986,11 @@ class AIProvider(Node):
     #: Set for the ``workload_identity`` auth kind. Exclusive with a
     #: stored key.
     workload_identity: AIProviderWorkloadIdentity | None = None
+    #: Let the agent runner send the key to an ``http://`` base URL, for
+    #: a protected in-cluster gateway only (``openai_compatible``). It
+    #: controls where the key goes, so only a holder of
+    #: ``ai_model:credentials`` can change it.
+    allow_insecure_http: bool = False
 
     @pydantic.field_validator('workload_identity', mode='before')
     @classmethod
@@ -1021,6 +1026,10 @@ class AIProvider(Node):
             self.base_url = None
         if self.driver == 'openai_compatible' and not self.base_url:
             raise ValueError("driver 'openai_compatible' requires a base_url")
+        if self.allow_insecure_http and self.driver != 'openai_compatible':
+            raise ValueError(
+                "allow_insecure_http needs driver 'openai_compatible'"
+            )
         if self.workload_identity is not None:
             # D8: the token goes only to the default vendor endpoint.
             # The driver check is in imbi-api: it needs the installed
