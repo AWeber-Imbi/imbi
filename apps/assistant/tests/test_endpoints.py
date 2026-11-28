@@ -621,6 +621,7 @@ class CreateConversationEndpointTestCase(
                 ),
             ):
                 await endpoints.create_conversation(
+                    org_id='org-1',
                     db=mock.AsyncMock(),
                     auth_ctx=_make_auth_context(is_admin=True),
                     body=None,
@@ -1277,6 +1278,7 @@ class SendMessageEndpointTestCase(
             self.assertRaises(fastapi.HTTPException) as ctx,
         ):
             await endpoints.send_message(
+                org_id='org-1',
                 conversation_id='conv-123',
                 body=models.SendMessageRequest(content='Hello'),
                 db=mock.AsyncMock(),

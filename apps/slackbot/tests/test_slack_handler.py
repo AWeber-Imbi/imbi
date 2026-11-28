@@ -470,7 +470,7 @@ class HandleEventTests(helpers.TestCase):
     ) -> tuple[mock.AsyncMock, FakeSlackClient]:
         """Run a turn with ``prompt_model`` from the prompt version and
         ``default`` from :func:`prompt_system.default_model`."""
-        user = identity.ImbiUser('ada@example.com', 'Ada')
+        user = identity.ImbiUser('ada@example.com', 'Ada', 'acme', 'org-1')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         prompt = prompt_system.SystemPrompt(
             text='cms text', source='cms', model_id=prompt_model
