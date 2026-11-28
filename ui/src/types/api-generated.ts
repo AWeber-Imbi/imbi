@@ -2570,8 +2570,10 @@ export interface paths {
          *
          *     Raises:
          *         404: No such provider.
-         *         409: The provider has no stored credentials.
-         *         422: The driver does not support discovery.
+         *         409: The provider has no stored credentials (Bedrock uses the
+         *             AWS credentials of the process instead).
+         *         422: The driver does not support discovery, or Vertex refused
+         *             to list models for the key.
          *         502: The provider rejected or failed the call, or no workload
          *             identity token could be minted.
          */
