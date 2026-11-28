@@ -171,8 +171,11 @@ service uses the credential of the provider of that model, in this order:
    organization of that user (else `403`). The Slack bot also names the
    organization of its Slack workspace: the provider must be in that
    organization, and the organization must have a Slack workspace.
-2. Else `ANTHROPIC_API_KEY` of the service, sent to the base URL of the
-   provider.
+2. Else `ANTHROPIC_API_KEY` of the service, but only when the provider
+   has no custom base URL. The service sends the key to the driver default
+   URL only. An organization admin sets the base URL, and the key is for
+   all organizations, so the service key is never sent to a custom base
+   URL. A provider with a custom base URL needs a workload identity.
 3. Else the call fails (`provider_credentials_unavailable`): the assistant
    returns `422`, and the Slack bot replies with an error.
 

@@ -6,8 +6,10 @@ credential of a provider is, in this order:
 1. Its workload identity: a token for that provider from imbi-api
    (``POST /ai-providers/token`` with the provider and the user). This
    needs the API token of the service.
-2. The ``ANTHROPIC_API_KEY`` of the service, sent to the base URL of the
-   provider.
+2. The ``ANTHROPIC_API_KEY`` of the service, sent only to the default
+   base URL of the driver. A provider with a custom base URL needs a
+   workload identity: the key is for all organizations, so it never goes
+   to a URL that an organization admin sets.
 
 With neither, the provider cannot be used.
 """
@@ -82,6 +84,17 @@ class ProviderClients:
         # A provider without a base URL uses the default of its driver,
         # never ANTHROPIC_BASE_URL from the environment of the service.
         base_url = drivers.resolve_base_url(provider.driver, provider.base_url)
+        default_url = drivers.resolve_base_url(provider.driver, None)
+        if not token and base_url != default_url:
+            # An organization admin sets the base URL. The key of the
+            # service is for all organizations, so it never goes there.
+            raise resolve.ModelUnusable(
+                'provider_credentials_unavailable',
+                ref,
+                f'AI provider {ref!r} has a custom base URL and no workload '
+                'identity this service can use. The service API key is '
+                'never sent to a custom base URL',
+            )
         settings = (ref, token, base_url)
         key = (provider.id, user, org) if token else (provider.id, None, None)
         found = self._clients.get(key)

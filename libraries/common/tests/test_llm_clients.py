@@ -56,16 +56,42 @@ class ProviderClientsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(client.auth_token, 'imbi-ai-provider')
 
-    def test_the_key_of_the_service_with_the_provider_base_url(self) -> None:
+    def test_the_key_of_the_service_never_goes_to_a_custom_base_url(
+        self,
+    ) -> None:
+        # An organization admin sets the base URL; the key of the service
+        # is for all organizations.
         for api_token in ('', 'ik_1_s'):
-            with self.subTest(api_token=api_token):
-                client = _clients(api_token, 'sk-env').get(
+            client_class = mock.Mock()
+            found = clients.ProviderClients(
+                api_url='http://imbi-api:8000',
+                api_token=api_token,
+                api_key='sk-env',
+                client_class=client_class,
+            )
+            with (
+                self.subTest(api_token=api_token),
+                self.assertRaises(resolve.ModelUnusable) as raised,
+            ):
+                found.get(
                     _provider(base_url='https://llm.example.com'), 'ada@x'
+                )
+            self.assertEqual(
+                raised.exception.reason, 'provider_credentials_unavailable'
+            )
+            self.assertIn('never sent', str(raised.exception))
+            client_class.assert_not_called()
+
+    def test_the_key_of_the_service_with_the_default_base_url(self) -> None:
+        for base_url in (None, 'https://api.anthropic.com/'):
+            with self.subTest(base_url=base_url):
+                client = _clients('', 'sk-env').get(
+                    _provider(base_url=base_url), 'ada@x'
                 )
                 self.assertEqual(client.api_key, 'sk-env')
                 self.assertEqual(
                     str(client.base_url).rstrip('/'),
-                    'https://llm.example.com',
+                    'https://api.anthropic.com',
                 )
 
     def test_no_credential_is_an_error(self) -> None:
