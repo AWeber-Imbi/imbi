@@ -586,8 +586,9 @@ async def patch_ai_provider(
         403: A change of ``allow_insecure_http`` without
             ``ai_model:credentials``.
         404: No such provider.
-        409: The new slug is taken, or the new driver does not serve
-            the model type of a model of this provider.
+        409: The new slug is taken, the new driver does not serve
+            the model type of a model of this provider, or
+            ``allow_insecure_http`` changed after the read.
         422: The patched configuration is invalid.
 
     """
@@ -629,7 +630,10 @@ async def patch_ai_provider(
     if node.driver != existing.driver:
         await _assert_driver_serves_models(db, id, node.driver)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    node = await persist(
+        db, node, insecure_http_was=existing.allow_insecure_http
+    )
+    return to_response(node, *counts.get(id, (0, 0)))
 
 
 @ai_providers_router.delete('/{id}', status_code=204)
@@ -1150,22 +1154,43 @@ async def _configured_model_ids(db: graph.Graph, provider_id: str) -> set[str]:
 
 
 async def persist(
-    db: graph.Graph, node: models.AIProvider
+    db: graph.Graph,
+    node: models.AIProvider,
+    *,
+    insecure_http_was: bool | None = None,
 ) -> models.AIProvider:
-    """Write a mutated provider back."""
+    """Write a mutated provider back.
+
+    When ``insecure_http_was`` is set, the write applies only while the
+    stored ``allow_insecure_http`` has that value. A write that a stale
+    read authorized cannot then put back a flag that a caller with
+    ``ai_model:credentials`` changed after the read.
+    """
     node.updated_at = datetime.datetime.now(datetime.UTC)
     props = node.model_dump(
         mode='json', exclude={'id', 'created_at', 'organization'}
     )
     set_stmt = set_clause('p', props)
+    guard = (
+        ''
+        if insecure_http_was is None
+        else 'WHERE coalesce(p.allow_insecure_http, false) = '
+        f'{"true" if insecure_http_was else "false"} '
+    )
     query = (
         f'MATCH (p:AIProvider {{{{id: {{id}}}}}})'
-        f'-[:BELONGS_TO]->(o:Organization) {set_stmt} RETURN p, o'
+        f'-[:BELONGS_TO]->(o:Organization) {guard}{set_stmt} RETURN p, o'
     )
     with conflict_on_unique_violation(
         f'AI provider with slug {node.slug!r} already exists'
     ):
         records = await db.execute(query, {**props, 'id': node.id}, ['p', 'o'])
+    if not records and insecure_http_was is not None:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'AI provider {node.id!r} changed during the update; '
+            f'read it again and retry',
+        )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
