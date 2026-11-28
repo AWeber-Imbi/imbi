@@ -331,6 +331,34 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         # Sort puts fail first, then warn, then pass.
         self.assertEqual(['fail', 'warn', 'pass'], statuses)
 
+    def test_run_looks_up_the_project_once_for_all_plugins(self) -> None:
+        with (
+            mock.patch(
+                f'{_MODULE}.resolve_all_capabilities',
+                return_value=[
+                    _resolved('p1', _PassPlugin),
+                    _resolved('p2', _FailPlugin),
+                ],
+            ),
+            mock.patch(
+                f'{_MODULE}.lookup_project_dependencies', return_value=[]
+            ) as dependencies,
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                resp = client.post(
+                    '/organizations/acme/projects/proj-1/analysis/run'
+                )
+        self.assertEqual(200, resp.status_code, resp.text)
+        for name in (
+            'lookup_project_slugs',
+            'lookup_project_links',
+            'lookup_project_type_slugs',
+            'lookup_project_exists_in',
+            'fetch_project_props',
+        ):
+            self.assertEqual(1, self.mocks[name].await_count, name)
+        dependencies.assert_awaited_once()
+
     def test_run_returns_503_when_exists_in_lookup_fails(self) -> None:
         # A failed lookup is not a plugin failure: no report is stored,
         # so the previous report stays, and the caller can retry.
@@ -338,7 +366,10 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         with (
             mock.patch(
                 f'{_MODULE}.resolve_all_capabilities',
-                return_value=[_resolved('p1', _PassPlugin)],
+                return_value=[
+                    _resolved('p1', _PassPlugin),
+                    _resolved('p2', _FailPlugin),
+                ],
             ),
             mock.patch(f'{_MODULE}._persist_report') as persist,
         ):
@@ -352,6 +383,8 @@ class ProjectAnalysisTestCase(unittest.TestCase):
             resp.json()['detail'],
         )
         persist.assert_not_called()
+        # One attempt for all plugins, not one for each plugin.
+        self.mocks['lookup_project_exists_in'].assert_awaited_once()
 
     def test_run_captures_plugin_exception_as_fail_result(self) -> None:
         with mock.patch(
