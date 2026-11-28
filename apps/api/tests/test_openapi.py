@@ -298,6 +298,56 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
                 client=httpx.AsyncClient(base_url='http://localhost'),
             )
 
+    def test_fastmcp_sends_a_bare_object_body_unwrapped(self) -> None:
+        """A tool sends a ``dict`` body as the request body (#1013).
+
+        fastmcp 3 sent ``{"body": {...}}`` for a body with no
+        properties, so ``patch_deployment_fields`` always failed with
+        422. The same applies to each endpoint with a bare ``dict``
+        body.
+        """
+        import asyncio
+
+        import fastmcp
+        import httpx2
+
+        app = fastapi.FastAPI(title='Test', version='1.0.0')
+
+        @app.patch('/deployments/{deployment_id}')
+        async def patch_deployment_fields(
+            deployment_id: str, body: dict[str, typing.Any]
+        ) -> dict[str, typing.Any]:
+            return body
+
+        spec = openapi.create_custom_openapi(app)()
+        sent: list[bytes] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            sent.append(request.content)
+            return httpx2.Response(200, json={})
+
+        async def call() -> None:
+            async with httpx2.AsyncClient(
+                base_url='http://localhost',
+                transport=httpx2.MockTransport(handler),
+            ) as client:
+                server = fastmcp.FastMCP.from_openapi(
+                    openapi_spec=spec, client=client
+                )
+                async with fastmcp.Client(server) as connected:
+                    (tool,) = await connected.list_tools()
+                    await connected.call_tool(
+                        tool.name,
+                        {
+                            'deployment_id': 'd1',
+                            'body': {'watch': {'state': 'ok'}},
+                        },
+                    )
+
+        asyncio.run(call())
+
+        self.assertEqual([b'{"watch":{"state":"ok"}}'], sent)
+
     def test_custom_openapi_caches_result(self) -> None:
         """Test that the schema is cached."""
         import fastapi
