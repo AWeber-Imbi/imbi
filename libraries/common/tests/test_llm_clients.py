@@ -105,11 +105,26 @@ class ProviderClientsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNot(other, ada)
 
-    def test_the_cache_is_bounded(self) -> None:
+    def test_a_key_client_is_shared_by_users(self) -> None:
+        # The key of the service does not depend on the user.
         found = _clients(api_key='sk-env')
         provider = _provider()
+        self.assertIs(
+            found.get(provider, 'ada@x'), found.get(provider, 'bob@x')
+        )
+
+    async def test_the_cache_is_bounded_and_closes_dropped_clients(
+        self,
+    ) -> None:
+        found = _clients('ik_1_s')
+        provider = _provider(workload_identity=WIF)
         first = found.get(provider, 'u0')
-        with mock.patch.object(clients, 'MAX_CLIENTS', 2):
+        with (
+            mock.patch.object(clients, 'MAX_CLIENTS', 2),
+            mock.patch.object(first, 'close', mock.AsyncMock()) as close,
+        ):
             found.get(provider, 'u1')
             found.get(provider, 'u2')
             self.assertIsNot(found.get(provider, 'u0'), first)
+            await found.aclose()
+        close.assert_awaited_once()

@@ -12,6 +12,7 @@ credential of a provider is, in this order:
 With neither, the provider cannot be used.
 """
 
+import asyncio
 import collections
 
 import anthropic
@@ -30,11 +31,11 @@ MAX_CLIENTS = 256
 
 
 class ProviderClients:
-    """The cached clients of one service, one for each provider and user.
+    """The cached clients of one service.
 
     A workload identity token is minted for one user (imbi-api checks the
-    organizations of that user), so a client is never shared between
-    users.
+    organizations of that user), so such a client is for one user. A
+    client with the key of the service is for every user of the provider.
     """
 
     def __init__(
@@ -49,12 +50,15 @@ class ProviderClients:
         self._api_token = api_token
         self._api_key = api_key
         self._client_class = client_class
-        #: By provider id and user, oldest use first: the client and the
-        #: settings it was made with.
+        #: By provider id, user, and organization (``None`` for a client
+        #: with the key of the service), oldest use first: the client and
+        #: the settings it was made with.
         self._clients: collections.OrderedDict[
-            tuple[str, str, str | None],
+            tuple[str, str | None, str | None],
             tuple[anthropic.AsyncAnthropic, tuple[str, bool, str | None]],
         ] = collections.OrderedDict()
+        #: Closes of dropped clients that are still running.
+        self._closing: set[asyncio.Task[None]] = set()
 
     def get(
         self, provider: models.AIProvider, user: str, org: str | None = None
@@ -68,14 +72,18 @@ class ProviderClients:
 
         """
         ref = provider_ref(provider)
-        wif = provider.workload_identity is not None
-        settings = (ref, wif, provider.base_url)
-        key = (provider.id, user, org)
+        token = provider.workload_identity is not None and bool(
+            self._api_token
+        )
+        settings = (ref, token, provider.base_url)
+        key = (provider.id, user, org) if token else (provider.id, None, None)
         found = self._clients.get(key)
-        if found is not None and found[1] == settings:
-            self._clients.move_to_end(key)
-            return found[0]
-        if wif and self._api_token:
+        if found is not None:
+            if found[1] == settings:
+                self._clients.move_to_end(key)
+                return found[0]
+            self._close(found[0])
+        if token:
             client = tokens.bearer_client(
                 tokens.ServiceToken(
                     self._api_url,
@@ -98,16 +106,24 @@ class ProviderClients:
                 f'AI provider {ref!r} has no workload identity this service '
                 'can use, and ANTHROPIC_API_KEY is not set',
             )
-        # ponytail: a replaced or dropped client is not closed, because a
-        # turn can still use it; its connections close when it is
-        # collected. Close it after its last use if that leaks sockets.
         self._clients[key] = (client, settings)
         self._clients.move_to_end(key)
         while len(self._clients) > MAX_CLIENTS:
-            self._clients.popitem(last=False)
+            self._close(self._clients.popitem(last=False)[1][0])
         return client
+
+    def _close(self, client: anthropic.AsyncAnthropic) -> None:
+        """Close a dropped client in the background.
+
+        ponytail: a turn that still holds the client gets a closed
+        connection pool; count the users of a client if that happens.
+        """
+        task = asyncio.get_running_loop().create_task(client.close())
+        self._closing.add(task)
+        task.add_done_callback(self._closing.discard)
 
     async def aclose(self) -> None:
         for client, _settings in self._clients.values():
             await client.close()
         self._clients.clear()
+        await asyncio.gather(*self._closing)

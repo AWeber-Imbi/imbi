@@ -608,9 +608,6 @@ async def _insert(
     )
 
 
-ZERO = decimal.Decimal(0)
-
-
 @ai_models_router.get('/', response_model=list[AIModelResponse])
 async def list_ai_models(
     org_id: OrgId,
