@@ -17,23 +17,13 @@ import {
 } from '@/components/admin/secrets/types'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 import {
   type AccessRow,
   accessRows,
-  bindingOf,
-  canSupplyRunner,
   coveringGrant,
   covers,
-  fieldReferences,
   GITHUB_PURPOSES,
   purposeSuggestions,
 } from './access'
@@ -41,12 +31,6 @@ import type { SettingsDraft } from './agentDraft'
 import { agentsPath } from './agentsNav'
 import { Field } from './OverviewTab'
 import { type GrantAgent, useAgentGrant } from './useAgentGrant'
-
-// The purpose of the runner's model key resolution.
-const MODEL_PURPOSE = 'model_inference'
-
-// Radix Select refuses an empty item value.
-const ORG_KEY = '__organization__'
 
 interface AccessTabProps {
   agent: GrantAgent | null
@@ -178,20 +162,6 @@ export function AccessTab({
           </ul>
         )}
       </section>
-
-      <ModelKey
-        bindings={bindings.data ?? []}
-        canGrant={canGrant}
-        covered={(bindingId) =>
-          covers(mine, bindingId, MODEL_PURPOSE, 'file_descriptor')
-        }
-        isPending={save.isPending}
-        loaded={bindings.isSuccess}
-        onChange={(reference) => onChange({ ...value, modelKeyRef: reference })}
-        onGrant={(binding) => ensure(binding, MODEL_PURPOSE, 'file_descriptor')}
-        showGrant={Boolean(agent) && canRead}
-        value={value.modelKeyRef}
-      />
 
       {agent && canRead && (
         <AgentSecrets
@@ -415,116 +385,10 @@ function GrantTable({
   )
 }
 
-/**
- * The agent's model key. Empty uses the key of the organization's
- * model upstream. The broker gives the key to the runner only when a
- * model_inference grant names the agent and the binding.
- */
 // The agent's own GitHub App: a binding of an enabled github_app provider.
 function isGitHubAppBinding(
   _binding: SecretBinding,
   provider?: SecretProvider,
 ): boolean {
   return provider?.type === 'github_app' && provider.enabled
-}
-
-function ModelKey({
-  bindings,
-  canGrant,
-  covered,
-  isPending,
-  loaded,
-  onChange,
-  onGrant,
-  showGrant,
-  value,
-}: {
-  bindings: SecretBinding[]
-  canGrant: (binding: SecretBinding) => boolean
-  covered: (bindingId: string) => boolean
-  isPending: boolean
-  loaded: boolean
-  onChange: (reference: string) => void
-  onGrant: (binding: SecretBinding) => void
-  showGrant: boolean
-  value: string
-}) {
-  const references = fieldReferences(bindings.filter(canSupplyRunner))
-  // Keep a saved value visible after its binding is gone or disabled.
-  if (value && !references.includes(value)) references.push(value)
-  const [, field] = value.split('#')
-  const binding = bindingOf(bindings, value)
-  // A field that is not in the field list is not usable. A binding
-  // without a field list accepts only a reference without a field.
-  const usable = binding
-    ? canSupplyRunner(binding) &&
-      (binding.allowed_fields.length
-        ? binding.allowed_fields.includes(field ?? '')
-        : field === undefined)
-    : false
-  const ok = binding ? covered(binding.id) : false
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="text-overline text-tertiary uppercase">Model key</div>
-      <Field
-        help="The key that the runner uses for model calls. Saved with the agent."
-        htmlFor="agent-model-key"
-        label="Binding"
-      >
-        <Select
-          onValueChange={(next) => onChange(next === ORG_KEY ? '' : next)}
-          value={value || ORG_KEY}
-        >
-          <SelectTrigger
-            aria-label="Model key binding"
-            className="text-sm"
-            id="agent-model-key"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ORG_KEY}>The organization's key</SelectItem>
-            {references.map((reference) => (
-              <SelectItem key={reference} value={reference}>
-                {reference}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      {loaded && value && !binding && (
-        <p className="text-danger text-sm">
-          This binding does not exist. Select a different binding.
-        </p>
-      )}
-      {binding && !usable && (
-        <p className="text-danger text-sm">
-          This binding cannot supply a model key. Select a different binding.
-        </p>
-      )}
-      {binding && usable && showGrant && (
-        <div className="border-tertiary flex items-center gap-3 rounded-lg border px-3 py-2">
-          {ok ? (
-            <Check className="text-success size-4" />
-          ) : (
-            <X className="text-tertiary size-4" />
-          )}
-          <span className="flex-1 text-sm">Call the model</span>
-          <span className="text-tertiary font-mono text-xs">
-            {MODEL_PURPOSE}
-          </span>
-          {!ok && canGrant(binding) && (
-            <Button
-              disabled={isPending}
-              onClick={() => onGrant(binding)}
-              size="sm"
-              variant="outline"
-            >
-              Grant
-            </Button>
-          )}
-        </div>
-      )}
-    </section>
-  )
 }

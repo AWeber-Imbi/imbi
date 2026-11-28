@@ -61,7 +61,9 @@ POOL_CLIENT_SECRET = os.environ['POOL_CLIENT_SECRET']
 MODEL_KEY = os.environ['MODEL_KEY']
 PUBLIC_URL = os.environ.get('PUBLIC_URL', 'http://harness-fake-api:8080')
 REFERENCE = 'secret://production/github/token'
-MODEL_REFERENCE = 'secret://production/anthropic/key'
+#: The reserved reference of the model key of a task (ADR 0022
+#: amendment): the key of the AI provider that the claim pinned.
+MODEL_REFERENCE = 'secret://imbi/model'
 APP_REFERENCE = 'secret://production/github/app'
 HEADER_REFERENCE = 'secret://production/greeter/token'
 #: The relayed MCP server of the greeter plugin, on the TLS port.
@@ -505,6 +507,7 @@ def _bundle(task: Row) -> Row:
             else []
         ),
         'prompt': {'ref': 'agents/test@1', 'system': 'You are a test.'},
+        'model': {'slug': 'fake', 'model_id': 'fake', 'source': 'org'},
         'repositories': repositories,
         'config': {
             'model_upstream': {

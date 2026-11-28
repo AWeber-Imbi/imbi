@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { useAIModels, useTeams } from '@/hooks/useOrgResources'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { buildDiffPatch } from '@/lib/json-patch'
@@ -72,6 +73,7 @@ const NO_TEAMS: Team[] = []
 // absent: models point at the provider and the request shape must not
 // change under them.
 const PROVIDER_PATCH_FIELDS = [
+  'allow_insecure_http',
   'base_url',
   'description',
   'enabled',
@@ -109,6 +111,8 @@ const MODEL_PATCH_FIELDS = [
 export function AIModelsManagement() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
+  // The http:// flag controls where the key goes (ADR 0022 amendment).
+  const canSetInsecureHttp = useHasPermission('ai_model:credentials', orgSlug)
   const navigate = useNavigate()
   const { action, slug } = useParams<{ action?: string; slug?: string }>()
   const [searchParams] = useSearchParams()
@@ -158,12 +162,23 @@ export function AIModelsManagement() {
     onSuccess: closeAndRefresh,
   })
   const updateProviderMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: ProviderFormValues }) =>
+    mutationFn: ({
+      id,
+      opened,
+      values,
+    }: {
+      id: string
+      opened?: AIProvider | null
+      values: ProviderFormValues
+    }) =>
       updateAIProvider(
         orgSlug,
         id,
+        // Diff against the provider as the dialog opened it: a list
+        // refresh while it is open must not put back a value that another
+        // user changed (for example `allow_insecure_http`).
         buildDiffPatch(
-          currentProviderState(providers.find((p) => p.id === id)),
+          currentProviderState(opened ?? undefined),
           values as unknown as Record<string, unknown>,
           { fields: PROVIDER_PATCH_FIELDS },
         ),
@@ -443,6 +458,7 @@ export function AIModelsManagement() {
 
       {providerDialogOpen && (
         <ProviderDialog
+          canSetInsecureHttp={canSetInsecureHttp}
           defaultDriver={searchParams.get('driver') ?? undefined}
           drivers={drivers}
           error={createProviderMutation.error}
@@ -450,6 +466,7 @@ export function AIModelsManagement() {
           onClose={goToList}
           onSubmit={(values) =>
             createProviderMutation.mutate({
+              allow_insecure_http: values.allow_insecure_http,
               api_key: values.api_key,
               base_url: values.base_url,
               description: values.description,
@@ -465,6 +482,7 @@ export function AIModelsManagement() {
 
       {providerEditOpen && editingProvider && (
         <ProviderDialog
+          canSetInsecureHttp={canSetInsecureHttp}
           deleteBlockedReason={
             editingProvider.model_count > 0
               ? 'Delete or move its models first'
@@ -478,8 +496,12 @@ export function AIModelsManagement() {
           key={editingProvider.id}
           onClose={goToList}
           onDelete={() => deleteProviderMutation.mutate(editingProvider.id)}
-          onSubmit={(values) =>
-            updateProviderMutation.mutate({ id: editingProvider.id, values })
+          onSubmit={(values, opened) =>
+            updateProviderMutation.mutate({
+              id: editingProvider.id,
+              opened,
+              values,
+            })
           }
           open
           provider={editingProvider}
@@ -661,6 +683,7 @@ function currentProviderState(
 ): Record<string, unknown> {
   if (!provider) return {}
   return {
+    allow_insecure_http: provider.allow_insecure_http ?? false,
     base_url: provider.base_url,
     description: provider.description,
     enabled: provider.enabled,

@@ -784,6 +784,16 @@ class ConfigTestCase(TaskTestCase):
         self.assertEqual(matcher.timeout, task.HOOK_TIMEOUT)
         self.assertEqual(self.make().options('u').permission_mode, 'dontAsk')
 
+    def test_model_precedence(self) -> None:
+        subject = self.make()
+        subject.model = 'claude-env'
+        subject.bundle['model'] = {'model_id': 'claude-catalog'}
+        self.assertEqual(subject.options('u').model, 'claude-catalog')
+        del subject.bundle['model']
+        self.assertEqual(subject.options('u').model, 'claude-x')
+        del subject.bundle['prompt']['model_id']
+        self.assertEqual(subject.options('u').model, 'claude-env')
+
     def test_options_model_params(self) -> None:
         subject = self.make()
         subject.bundle['prompt']['params'] = {

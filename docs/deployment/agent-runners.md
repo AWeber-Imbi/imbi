@@ -129,34 +129,34 @@ claim. To delete a pool, use `DELETE /harness/pools/{name}`. Imbi refuses
 the delete with `409 pool_in_use` while a runner of the pool is not
 offline.
 
-### 5. Configure the model key
+### 5. Configure the model
 
-The runner sends model calls through a proxy in the pod. The proxy gets the
-model API key from the secrets broker. Do these steps in each organization
-that the pool serves.
+The runner sends model calls through a proxy in the pod. The model and its
+key come from the AI catalog of the organization
+([ADR 0022](../api/adr/0022-agent-harness-and-secrets-broker.md#amendment-the-model-comes-from-the-ai-catalog-2026-11-27)).
+Do these steps in each organization that the pool serves.
 
-1. Add a binding for the model key, with **Allowed delivery modes** set to
-   `file_descriptor` only. See [Secrets](../admin/secrets.md#add-a-binding).
-2. Add a grant for the agents, with the purpose `model_inference` and the
-   delivery mode `file_descriptor`.
-3. Open **Agents > Settings > Platform**.
-4. In **Model upstream**, select `anthropic` or `litellm`.
-5. Optional: enter the **Base URL** of the upstream. Empty is the Anthropic
-   API. The URL must use `https://`, because the model proxy sends the model
-   key to it. For a protected in-cluster upstream only, for example a
-   LiteLLM gateway in the same cluster, you can use `http://`. To do this,
-   turn on **Allow http://** (`model_upstream.allow_insecure_http`).
-6. In **Key**, enter the `secret://` reference of the binding. This is
-   `model_upstream.key_ref` in the platform configuration.
-7. Click **Save version**.
+1. Open **Admin > &lt;Org&gt; Admin > AI Models**. Add an AI provider with
+   the driver `anthropic`, or `openai_compatible` for a gateway that
+   accepts Anthropic Messages requests (for example LiteLLM). Give it a
+   key or a workload identity. Agents cannot use the other drivers.
+2. Add the models of the provider, with their prices.
+3. Set the **default model** of the organization. A team default or the
+   model of an agent's prompt version replaces it for those agents.
+4. The provider URL must use `https://`, because the proxy sends the key to
+   it. For a protected in-cluster gateway only (`openai_compatible`), you
+   can use `http://`: turn on **Allow http:// for agents** in the provider
+   dialog (`allow_insecure_http`, needs `ai_model:credentials`). Otherwise a
+   task on an `http://` provider closes with `model_upstream_insecure`. For a
+   gateway, enter the root URL; a trailing `/v1` is removed.
 
-An agent can use its own key instead of the organization's key. Open the
-agent, click **Edit**, then **Access**. In **Model key**, select the binding,
-and click **Grant** to add its `model_inference` grant. Then save the agent.
-The grant applies immediately, but the agent keeps its previous key until
-you save it. The binding must allow the delivery mode `file_descriptor`,
-and it cannot be a provider key. The agent still uses
-the upstream and the base URL of the organization.
+When a runner claims a task, imbi-api resolves the model: the model of the
+agent's prompt version, then the default of the agent's owner team, then the
+default of the organization. When that model cannot be used, the task closes
+(see [Task failure reasons](#task-failure-reasons)); imbi-api does not try
+the next level. The runner gets the key of the model's provider through a
+`model_inference` resolution of the reserved reference
+`secret://imbi/model`. This needs no binding and no grant.
 
 ### 6. Configure GitHub access
 
@@ -678,12 +678,16 @@ Find the error code first:
 
 | Reason | Cause | Fix |
 |---|---|---|
-| `model_not_allowed` | No enabled catalog model with the model id of the agent's prompt version allows the owner team of the agent: the model is restricted to other teams, disabled, or gone. Imbi closes the task when a runner claims it; the task does not run | Allow the owner team on the model in **Admin > &lt;Org&gt; Admin > AI Models**, or point the agent at a prompt version with another model. The closed task keeps its prompt version, so then retry the task (**Retry**, `POST .../tasks/{short_id}/retry`) or submit a new one. The retry uses the current versions of the agent |
-| `prompt_render_failed` | The agent's pinned prompt version did not render, usually because the template uses a variable that its variable schema does not declare. The runner log shows `Prompt of <task> did not render` with the error | Declare the variable in a new prompt version and point the agent at it |
-| `model_key_missing` | The platform configuration has no `model_upstream.key_ref` | Do [step 5](#5-configure-the-model-key) |
-| `model_upstream_insecure` | The model upstream URL uses `http://` and `model_upstream.allow_insecure_http` is off. The runner does not send the key without TLS | Change the **Base URL** to `https://`. For a protected in-cluster upstream only, turn on **Allow http://**. See [step 5](#5-configure-the-model-key) |
-| `model_key_refused` | The broker refused the `model_inference` request | Check the grant: the agent, the binding, the purpose `model_inference`, and the delivery mode `file_descriptor`. The binding is the agent's **Model key**, or the organization's key when the agent has none |
-| `model_key_unavailable` | The executor could not get the key value | Validate the binding. Check the provider |
+| `model_not_configured` | No level names a model: the prompt version has no model, and the owner team and the organization have no default model. Imbi closes the task when a runner claims it | Do [step 5](#5-configure-the-model), then retry the task (**Retry**, `POST .../tasks/{short_id}/retry`) |
+| `model_not_allowed` | The resolved model is restricted to teams that do not include the owner team of the agent | Allow the owner team on the model in **Admin > &lt;Org&gt; Admin > AI Models**, or point the agent at a prompt version with another model, then retry the task. The retry uses the current versions of the agent |
+| `model_not_found` | The model of the prompt version is not in the catalog of the organization, or has no provider | Add the model, or point the agent at another prompt version, then retry the task |
+| `model_disabled`, `model_provider_disabled` | The resolved model or its provider is disabled. Imbi does not use the next level | Turn the model or the provider on, or change the model, then retry the task |
+| `model_spend_cap` | The month-to-date spend of the resolved model is at or over its monthly spend cap | Raise the cap, or wait for the next month (UTC), then retry the task |
+| `model_unsupported_driver` | The provider of the resolved model uses a driver other than `anthropic` or `openai_compatible` | Use a model of an `anthropic` or `openai_compatible` provider |
+| `prompt_render_failed` | The agent's pinned prompt version did not render, usually because the template uses a variable that its variable schema does not declare. The runner log (or, when no model resolves without the prompt, the API log) shows `Prompt of <task> did not render` with the error | Declare the variable in a new prompt version and point the agent at it |
+| `model_upstream_insecure` | The URL of the model's provider uses `http://` and the provider does not have **Allow http:// for agents**. The runner does not send the key without TLS | Change the provider URL to `https://`. For a protected in-cluster gateway only, turn on the flag. See [step 5](#5-configure-the-model) |
+| `model_key_refused` | The broker refused the `model_inference` request for `secret://imbi/model` | The audit event gives the reason. `model_not_pinned`: the runner has an older imbi-api claim; retry the task |
+| `model_key_unavailable` | The executor could not get the key value | Check the provider of the model: `ai_provider_no_credential` (no key and no workload identity), `ai_provider_disabled`, or a workload identity error |
 | `workspace_checkout_refused` | The broker refused the `workspace_checkout` token | Check the GitHub grants of [step 6](#6-configure-github-access) |
 | `workspace_checkout_failed` | The clone of a project repository failed | Check that the GitHub App can read the repository |
 | `marketplace_fetch_failed` | The clone of a plugin marketplace or plugin repository failed | When the binding's `repositories` is not empty, put each marketplace and external plugin repository in it. Install the App on each GitHub organization. A marketplace that is not on public github.com needs a token |

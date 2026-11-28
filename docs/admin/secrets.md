@@ -285,7 +285,7 @@ Grant them with the `file_descriptor` delivery mode only.
 
 | Purpose | Used for |
 |---|---|
-| `model_inference` | The model API key, from the agent's model settings |
+| `model_inference` | The model API key. The runner gets the key of the AI provider of the task's model through the reserved reference `secret://imbi/model`, with no binding and no grant ([Agent runners](../deployment/agent-runners.md#5-configure-the-model)). No binding can use the `imbi` scope |
 | `workspace_checkout` | Cloning the project repositories |
 | `marketplace_fetch` | Fetching plugins from private marketplaces |
 | `mcp_header` | A header of a plugin's MCP server, from the secrets that the agent's **Tools and plugins** section maps to the server's header variables |
@@ -404,8 +404,12 @@ Anthropic Console, and OpenAI setup that these steps need.
    federation rule: `organization_id`, `federation_rule_id`,
    `service_account_id`, and `workspace_id` (only when the rule has more
    than one workspace).
-4. Grant the agent `model_inference` on its binding, and set the binding
-   as the agent's **Model key**.
+4. Grant the agent a purpose on the binding for the commands that need the
+   token.
+
+The agent runner does not use these bindings for its model key. It uses
+the key or the workload identity of the AI provider of the task's model
+(see [AI Models](ai-models.md#use-workload-identity-instead-of-a-key)).
 
 An agent cannot use the binding of another agent. Removing the identity
 source stops all token exchanges for the organization.

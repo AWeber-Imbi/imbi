@@ -378,6 +378,160 @@ token types that only the harness routes accept.
 - Vault, lease renewal, pattern grants, and approval workflows for secrets.
 - Escalation policy (ADR 0020).
 
+## Amendment: the model comes from the AI catalog (2026-11-27)
+
+Status of this amendment: Accepted (Gavin, 2026-11-27). The owner decided:
+
+- The key of the task's provider needs no `model_inference` grant.
+- The harness has no environment level.
+- This change does not support Bedrock or Vertex. A follow-up issue tracks
+  them.
+
+The organization's `model_upstream` (`kind`, `base_url`,
+`allow_insecure_http`, `key_ref`) and the agent's `model_key_ref` are a
+second model configuration next to the per-organization AI catalog
+([ADR 0018](0018-ai-model-catalog.md)). The catalog has the spend cap, the
+team rules, and the workload identity. `model_upstream` has none of them. The
+harness now uses the catalog, as every other consumer does.
+
+### Model resolution at claim
+
+imbi-api resolves the model of a task at each claim with the shared resolver
+(`imbi.common.llm.resolve`). The order is:
+
+1. the model of the agent's prompt version
+2. the default model of the agent's owner team
+3. the default model of the organization
+
+The first level that names a model wins. When that model cannot be used,
+the claim does not try the next level. The task closes `failed_external`
+with the reason `model_<reason>`: `model_not_found`, `model_disabled`,
+`model_provider_disabled`, `model_not_allowed`, `model_spend_cap`, or
+`model_unsupported_driver`. When no level names a model, the reason is
+`model_not_configured`. The harness has no environment level: an environment
+model has no catalog provider, so it has no key.
+
+The claim records the AIModel id and the AIProvider id on the task. The
+usage prices, the spend cap, and the key resolution use these ids.
+
+### Drivers
+
+The CLI speaks the Anthropic Messages protocol to the loopback proxy. The
+proxy forwards `POST /v1/messages` and `/v1/messages/count_tokens` only.
+Thus:
+
+| Driver | Harness | Proxy credential header |
+|---|---|---|
+| `anthropic` | Yes | `x-api-key`, or `Authorization: Bearer` for a workload identity token |
+| `openai_compatible` | Yes, as an Anthropic Messages gateway (for example LiteLLM) | `Authorization: Bearer` |
+| `openai`, `typesafe` | No: other protocol | — |
+| `bedrock`, `vertex` | No | — |
+
+The CLI can call Bedrock and Vertex itself, but then it signs with cloud
+credentials in its own environment. The model's `Bash` can read that
+environment, and the calls do not go through the proxy, so the task budget
+and the usage reports stop. Support needs a proxy that signs (SigV4, or a
+Google access token) and reads Bedrock and Vertex responses. That is a
+separate decision, tracked in a follow-up issue.
+
+An `openai_compatible` provider that does not accept Anthropic Messages
+requests fails at the first model call, not at claim. imbi-api cannot know
+the protocol of a gateway.
+
+### Credentials
+
+The key stays on the broker path of this ADR: a `model_inference`
+resolution, delivered by the executor on a file descriptor, held in runner
+memory, and audited in `secret_audit_events`. Only the source changes.
+
+- The reserved reference `secret://imbi/model` means "the AIProvider of
+  this task". The broker reads the AIProvider id from the task, not from the
+  runner. A runner cannot ask for the key of another provider. No binding
+  can use the `imbi` scope.
+- The resolution has no binding and no grant. The claim already authorized
+  the model with the resolver (team rules, enabled, cap). A
+  `model_inference` grant on a binding no longer gives a model key.
+- At materialization, the broker checks that the provider is enabled and in
+  the task's organization. Then it returns the decrypted stored key, or a
+  workload identity token (`bearer`, with `expires_at`) from the token cache
+  of imbi-api. The proxy already renews an expiring token and retries once
+  after a `401`.
+- The audit events and the task events are as before. `provider_id` holds
+  the AIProvider id, and the reference is `secret://imbi/model`.
+- An agent no longer has its own model key. A per-agent workload identity
+  binding does not give the model key; the workload identity of the
+  AIProvider, which is per organization, does.
+
+The decrypted key goes only where the `model_upstream` key went: imbi-api,
+the executor, and the runner memory.
+
+Rejected alternatives:
+
+- **A secret provider type for AIProviders, with a binding and a grant for
+  each.** No broker change, but each AIProvider needs a binding that imbi-api
+  keeps in sync, and each agent needs a grant that repeats the team rules of
+  the model.
+- **A short-lived key in the claim response.** The bundle has no secret
+  material (see above), and the claim response has no audit event.
+- **The proxy calls imbi-api for each model call.** imbi-api goes into the
+  path of every model call, and its latency and outages stop every task.
+
+### What the runner receives
+
+The identity bundle keeps `config.model_upstream`, but imbi-api derives it
+from the resolved provider: `kind` is `anthropic` for the `anthropic`
+driver and `litellm` for `openai_compatible`, `base_url` is the provider
+URL or the driver default, `allow_insecure_http` is the flag of the
+provider, and `key_ref` is
+`secret://imbi/model`. A new `model` field gives the model slug, the
+provider model id, and the resolution level. The runner uses
+`model.model_id`. imbi-api also sets `prompt.model_id` to the resolved
+provider model id.
+
+An `http://` provider URL fails the task with `model_upstream_insecure`, as
+before, unless the provider has `allow_insecure_http`. The runner does not
+send a key without TLS otherwise. The flag replaces
+`model_upstream.allow_insecure_http`: only an `openai_compatible` provider
+can have it, and only a holder of `ai_model:credentials` can change it,
+because it controls where the key goes. The derived `model_upstream`
+carries it.
+
+### Spend
+
+- At claim, the resolver refuses a model at or over its monthly cap.
+- At each usage report, imbi-api prices the call from the models of the
+  task's provider, by the provider model id. When the month-to-date spend of
+  that AIModel reaches its cap, the task closes `exceeded_ceiling` with the
+  reason `spend_cap`, as for `budget`. Other open tasks on the model close
+  at their next report. The overshoot is one model call for each open task.
+- The proxy forwards any model id to the task's provider. A call to a model
+  that the provider has no AIModel for is unpriced, and no cap applies to
+  it, as before.
+
+### `model_upstream` and `model_key_ref`
+
+Both are removed from the write models and the UI. Stored platform
+configuration versions and agent versions keep the fields, and imbi-api
+ignores them on read. No data migration copies a `model_upstream` key into
+an AIProvider: the key lives in a secret provider, and a migration would
+have to read it. Before the upgrade, an organization that runs agents sets a
+default model (or prompt models) on an `anthropic` or `openai_compatible`
+provider. Without one, its tasks close with `model_not_configured`.
+
+### Compatibility
+
+An older runner reads the derived `model_upstream` and asks for
+`secret://imbi/model` with its current code, so it works with the new
+imbi-api. It takes the model from `prompt.model_id`, or from
+`IMBI_HARNESS_MODEL` when the task has no prompt. Thus the support is only
+for tasks with a prompt. For a task with no prompt, an older runner sends
+`IMBI_HARNESS_MODEL` to the provider of the resolved model, not the pinned
+model: the provider can refuse the call, or the task runs a model that is
+not the pinned one. The upgrade notes tell operators to start the runners
+with the new image, not an older one. A newer runner with an
+older imbi-api gets the configured `model_upstream` and no `model`, and works
+as before.
+
 ## Consequences
 
 - **A token can leave the pod.** `run_with_secret` with open egress lets a

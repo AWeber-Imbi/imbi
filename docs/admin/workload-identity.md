@@ -217,11 +217,10 @@ most 50 identity providers.
 
 ## Step 5: Imbi
 
-- For each agent: add an **Anthropic workload identity** provider (one for
-  the organization), a `dynamic` binding with the rule ids, a
-  `model_inference` grant with delivery `file_descriptor`, and set the
-  binding as the agent's **Model key**. See
-  [Secrets, Workload identity](secrets.md#workload-identity), steps 2 to 4.
+- For agents: the runner uses the workload identity of the AI Provider of
+  the task's model (next item). Per-agent bindings
+  ([Secrets, Workload identity](secrets.md#workload-identity)) are only for
+  commands that need the token.
 - For each AI Provider: select the organization and enter the target ids.
   See
   [AI Models](ai-models.md#use-workload-identity-instead-of-a-key).
@@ -277,8 +276,8 @@ or the OpenAI dashboard. Check these first:
 4. Keep the old API key binding or key for one week, but do not use it.
    Then delete it, and revoke the key in the vendor console.
 
-To roll back an agent, set its **Model key** to the old binding. To roll
-back an AI Provider, click **Stop using workload identity** and set a key.
+To roll back an AI Provider (and the agents that use its models), click
+**Stop using workload identity** and set a key.
 To stop all minting for an organization, remove its identity source.
 
 ## Monitoring

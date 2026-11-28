@@ -45,7 +45,7 @@ import psycopg.errors
 import psycopg_pool
 from psycopg import rows
 
-from imbi.api.secret_broker import audit, providers
+from imbi.api.secret_broker import audit, model_key, providers
 from imbi.api.tickets import log
 from imbi.api.tickets import store as task_store
 from imbi.common import settings
@@ -405,6 +405,9 @@ class Decision:
     binding: Row
     provider: Row
     grant: Row
+    #: Set only for :data:`model_key.REFERENCE`: the AI provider of the
+    #: task, with no binding, provider, or grant row.
+    ai_provider_id: str | None = None
 
 
 # --- Policy ---------------------------------------------------------------
@@ -551,6 +554,37 @@ def _check_provider(provider: Row | None, binding: Row) -> Row:
     return provider
 
 
+def _check_request(purpose: str, delivery_mode: str, ttl_seconds: int) -> None:
+    """The checks of every request that need no stored row.
+
+    Raises:
+        BrokerError: The purpose, the delivery mode, or the lifetime is
+            not allowed.
+
+    """
+    if not PURPOSE.fullmatch(purpose):
+        raise providers.BrokerError('secret_access_denied', 'invalid_purpose')
+    _refuse_retired(purpose)
+    if delivery_mode not in DELIVERY_MODES:
+        raise providers.BrokerError('delivery_mode_not_allowed')
+    if purpose in SETUP_PURPOSES and delivery_mode != 'file_descriptor':
+        # A backstop to the grants: a setup secret never goes into the
+        # environment of a command that the model chose.
+        raise providers.BrokerError(
+            'delivery_mode_not_allowed', 'setup_purpose_file_descriptor_only'
+        )
+    if ttl_seconds < 1 or ttl_seconds > MAX_TTL_SECONDS:
+        raise providers.BrokerError('requested_ttl_too_large')
+
+
+def _model_key_decision(ai_provider_id: str) -> Decision:
+    """The decision for :data:`model_key.REFERENCE`: the AI provider that
+    the claim pinned on the task. No binding and no grant apply; the
+    claim authorized the model (ADR 0022 amendment)."""
+    binding, provider = model_key.decision_rows(ai_provider_id)
+    return Decision(binding, provider, {'id': None}, ai_provider_id)
+
+
 async def evaluate(
     conn: Conn,
     organization_id: str,
@@ -571,19 +605,7 @@ async def evaluate(
         BrokerError: The request is denied.
 
     """
-    if not PURPOSE.fullmatch(purpose):
-        raise providers.BrokerError('secret_access_denied', 'invalid_purpose')
-    _refuse_retired(purpose)
-    if delivery_mode not in DELIVERY_MODES:
-        raise providers.BrokerError('delivery_mode_not_allowed')
-    if purpose in SETUP_PURPOSES and delivery_mode != 'file_descriptor':
-        # A backstop to the grants: a setup secret never goes into the
-        # environment of a command that the model chose.
-        raise providers.BrokerError(
-            'delivery_mode_not_allowed', 'setup_purpose_file_descriptor_only'
-        )
-    if ttl_seconds < 1 or ttl_seconds > MAX_TTL_SECONDS:
-        raise providers.BrokerError('requested_ttl_too_large')
+    _check_request(purpose, delivery_mode, ttl_seconds)
     binding = _check_binding(
         await _fetch_one(
             conn,
@@ -632,8 +654,9 @@ async def evaluate(
     return Decision(binding, provider, grants[0])
 
 
-async def _check_task(conn: Conn, context: ResolutionContext) -> None:
-    """The task must be open and match the trusted context.
+async def _check_task(conn: Conn, context: ResolutionContext) -> Row:
+    """The task must be open and match the trusted context. Return its
+    row, with the AI provider that the claim pinned.
 
     The lock serializes the check with ``TicketStore.delete``. It is the
     lock that the task event write takes later in the transaction, so
@@ -641,7 +664,7 @@ async def _check_task(conn: Conn, context: ResolutionContext) -> None:
     """
     task = await _fetch_one(
         conn,
-        'SELECT organization_id, agent_id, status'
+        'SELECT organization_id, agent_id, status, ai_provider_id'
         ' FROM tickets.tickets WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
@@ -657,6 +680,7 @@ async def _check_task(conn: Conn, context: ResolutionContext) -> None:
         )
     if task['status'] == 'closed':
         raise providers.BrokerError('secret_access_denied', 'task_closed')
+    return task
 
 
 async def _task_project_ids(
@@ -699,7 +723,7 @@ def _event(
         project_id=','.join(row.get('project_ids') or ()),
         task_id=text('task_id'),
         runner_id=text('runner_id'),
-        provider_id=text('provider_id'),
+        provider_id=text('provider_id') or text('ai_provider_id'),
         binding_id=text('binding_id'),
         grant_id=text('grant_id'),
         resolution_id=text('id'),
@@ -818,6 +842,7 @@ class Broker:
 
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
+        self._model_keys = model_key.ModelKeyProvider(pool)
 
     async def vendor_token(
         self,
@@ -934,7 +959,7 @@ class Broker:
                 )
             # Lock the resolution before the task, as materialize and
             # _finish do, so the two paths cannot deadlock.
-            await _check_task(conn, context)
+            task = await _check_task(conn, context)
             if existing is not None:
                 repeated = await self._repeat(
                     conn,
@@ -947,32 +972,42 @@ class Broker:
                 return _created(repeated, handle), await _write(
                     conn, 'secret_resolution_allowed', repeated
                 )
-            decision = await evaluate(
-                conn,
-                context.organization_id,
-                context.agent_id,
-                context.project_ids,
-                reference,
-                request.purpose,
-                request.delivery_mode,
-                request.ttl_seconds,
-                target,
-            )
+            if str(reference) == model_key.REFERENCE:
+                _check_request(
+                    request.purpose, request.delivery_mode, request.ttl_seconds
+                )
+                decision = _model_key_decision(
+                    model_key.pinned(task, request.purpose)
+                )
+            else:
+                decision = await evaluate(
+                    conn,
+                    context.organization_id,
+                    context.agent_id,
+                    context.project_ids,
+                    reference,
+                    request.purpose,
+                    request.delivery_mode,
+                    request.ttl_seconds,
+                    target,
+                )
             row = await _fetch_one(
                 conn,
                 'INSERT INTO secrets.resolutions (id, organization_id,'
-                ' binding_id, grant_id, provider_id, reference, field,'
-                ' agent_id, project_ids, task_id, runner_id, purpose,'
-                ' delivery_mode, delivery_target, ttl_seconds, handle_hash,'
-                ' idempotency_key, repository, expires_at) VALUES (%s, %s,'
-                ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                ' %s, %s, NOW() + make_interval(secs => %s)) RETURNING *',
+                ' binding_id, grant_id, provider_id, ai_provider_id,'
+                ' reference, field, agent_id, project_ids, task_id,'
+                ' runner_id, purpose, delivery_mode, delivery_target,'
+                ' ttl_seconds, handle_hash, idempotency_key, repository,'
+                ' expires_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                ' NOW() + make_interval(secs => %s)) RETURNING *',
                 (
                     uuid.uuid4(),
                     context.organization_id,
                     decision.binding['id'],
                     decision.grant['id'],
                     decision.provider['id'],
+                    decision.ai_provider_id,
                     str(reference),
                     reference.field,
                     context.agent_id,
@@ -1122,7 +1157,7 @@ class Broker:
             )
         # The current state of the task and every resource, not the
         # state at create.
-        await _check_task(
+        task = await _check_task(
             conn,
             ResolutionContext(
                 organization_id=row['organization_id'],
@@ -1132,6 +1167,9 @@ class Broker:
                 runner_id=row['runner_id'],
             ),
         )
+        if row['ai_provider_id'] is not None:
+            model_key.recheck(task, row['ai_provider_id'])
+            return _model_key_decision(row['ai_provider_id'])
         reference = parse_reference(row['reference'])
         binding = _check_binding(
             await _fetch_one(
@@ -1189,7 +1227,11 @@ class Broker:
 
         Return the material and its members (:func:`env_members`).
         """
-        plugin = providers.get(decision.provider['type'])
+        plugin = (
+            self._model_keys
+            if decision.ai_provider_id is not None
+            else providers.get(decision.provider['type'])
+        )
         config = decision.provider['config']
         try:
             material = await plugin.resolve(

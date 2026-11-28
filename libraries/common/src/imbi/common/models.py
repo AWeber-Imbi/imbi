@@ -985,6 +985,11 @@ class AIProvider(Node):
     #: Set for the ``workload_identity`` auth kind. Exclusive with a
     #: stored key.
     workload_identity: AIProviderWorkloadIdentity | None = None
+    #: Let the agent runner send the key to an ``http://`` base URL, for
+    #: a protected in-cluster gateway only (``openai_compatible``). It
+    #: controls where the key goes, so only a holder of
+    #: ``ai_model:credentials`` can change it.
+    allow_insecure_http: bool = False
 
     @pydantic.field_validator('workload_identity', mode='before')
     @classmethod
@@ -1020,6 +1025,10 @@ class AIProvider(Node):
             self.base_url = None
         if self.driver == 'openai_compatible' and not self.base_url:
             raise ValueError("driver 'openai_compatible' requires a base_url")
+        if self.allow_insecure_http and self.driver != 'openai_compatible':
+            raise ValueError(
+                "allow_insecure_http needs driver 'openai_compatible'"
+            )
         if self.workload_identity is not None:
             # D8: the token goes only to the default vendor endpoint.
             # The driver check is in imbi-api: it needs the installed
@@ -1613,11 +1622,6 @@ class AgentSettings(pydantic.BaseModel):
     plugins: list[AgentPlugin] = []
     #: The ``secret://`` reference of the agent's GitHub App binding.
     github_app_binding: str | None = None
-    #: The ``secret://`` reference of the agent's model key. It replaces
-    #: the key of the organization's model upstream. ``None`` uses the
-    #: organization's key. A ``model_inference`` grant is still
-    #: necessary.
-    model_key_ref: str | None = None
     #: The ``secret://`` references that the agent may request. A grant
     #: is still necessary.
     secrets: list[str] = []

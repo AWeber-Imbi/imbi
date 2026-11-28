@@ -337,10 +337,6 @@ function ConfigCard({
   const config = form.config
   const setConfig = (patch: Partial<AgentPlatformConfig>) =>
     setForm((f) => ({ ...f, config: { ...f.config, ...patch } }))
-  const upstream = config.model_upstream ?? {
-    allow_insecure_http: false,
-    kind: 'anthropic' as const,
-  }
   const sandbox = {
     allow_unsandboxed_commands:
       config.sandbox?.allow_unsandboxed_commands ?? true,
@@ -412,69 +408,6 @@ function ConfigCard({
         )}
       </div>
       <fieldset className="grid grid-cols-3 gap-4" disabled={!canWrite}>
-        <Field htmlFor="upstream-kind" label="Model upstream">
-          <Select
-            onValueChange={(kind) =>
-              setConfig({
-                model_upstream: {
-                  ...upstream,
-                  kind: kind as 'anthropic' | 'litellm',
-                },
-              })
-            }
-            value={upstream.kind ?? 'anthropic'}
-          >
-            <SelectTrigger id="upstream-kind">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="anthropic">Anthropic API</SelectItem>
-              <SelectItem value="litellm">LiteLLM gateway</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field htmlFor="upstream-url" label="Base URL">
-          <Input
-            id="upstream-url"
-            onChange={(e) =>
-              setConfig({
-                model_upstream: {
-                  ...upstream,
-                  base_url: e.target.value || null,
-                },
-              })
-            }
-            placeholder="The Anthropic API"
-            value={upstream.base_url ?? ''}
-          />
-          <label className="flex items-center gap-2 pt-2 text-sm">
-            <Switch
-              checked={!!upstream.allow_insecure_http}
-              onCheckedChange={(on) =>
-                setConfig({
-                  model_upstream: { ...upstream, allow_insecure_http: on },
-                })
-              }
-            />
-            Allow http:// (protected in-cluster upstream only)
-          </label>
-        </Field>
-        <Field help="A secret:// reference." htmlFor="upstream-key" label="Key">
-          <Input
-            className="font-mono text-xs"
-            id="upstream-key"
-            onChange={(e) =>
-              setConfig({
-                model_upstream: {
-                  ...upstream,
-                  key_ref: e.target.value || null,
-                },
-              })
-            }
-            placeholder="secret://anthropic/api_key"
-            value={upstream.key_ref ?? ''}
-          />
-        </Field>
         <Field
           help="Agents can set a stricter mode only."
           htmlFor="permission-mode"

@@ -27,8 +27,11 @@ import psycopg
 from imbi.common import graph, models
 from imbi.common.prompts import resolve as prompt_resolve
 
-#: ``provider_credentials_unavailable`` is for a consumer that has no
-#: credential for the provider; :func:`resolve_model` does not raise it.
+#: ``unsupported_driver`` is for a consumer that can call only some
+#: drivers, ``provider_credentials_unavailable`` for a consumer that has
+#: no credential for the provider, and ``not_configured`` for a consumer
+#: with no environment level (the agent harness); :func:`resolve_model`
+#: raises none of them.
 Reason = typing.Literal[
     'not_found',
     'disabled',
@@ -37,6 +40,7 @@ Reason = typing.Literal[
     'spend_cap',
     'unsupported_driver',
     'provider_credentials_unavailable',
+    'not_configured',
 ]
 Source = typing.Literal['explicit', 'team', 'org', 'env']
 
@@ -215,6 +219,34 @@ async def over_cap(
         ai_model_id, decimal.Decimal(0)
     )
     return spend if spend >= cap else None
+
+
+PROVIDER_QUERY: typing.LiteralString = """
+MATCH (p:AIProvider {{id: {id}}})
+      -[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
+RETURN p, o
+"""
+
+
+def parse_provider(record: dict[str, typing.Any]) -> models.AIProvider:
+    """Parse a ``p, o`` row into an ``AIProvider``."""
+    return models.AIProvider.model_validate(
+        {
+            **graph.parse_agtype(record['p']),
+            'organization': graph.parse_agtype(record['o']),
+        }
+    )
+
+
+async def find_provider(
+    db: graph.Graph, org_id: str, provider_id: str
+) -> models.AIProvider | None:
+    """Return the AI provider ``provider_id`` of the organization
+    ``org_id``; ``None`` when it has none with that id."""
+    records = await db.execute(
+        PROVIDER_QUERY, {'id': provider_id, 'org_id': org_id}, ['p', 'o']
+    )
+    return parse_provider(records[0]) if records else None
 
 
 async def month_spend(
