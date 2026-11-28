@@ -6,7 +6,6 @@ import {
   getWorkflowRun,
   getWorkflowVersion,
   listAgents,
-  listAIModels,
   listEnvironments,
   listIntegrations,
   listTeams,
@@ -18,6 +17,7 @@ import {
   listWorkflowStepTypes,
 } from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
+import { useAIModels } from '@/hooks/useOrgResources'
 import { queryKeys } from '@/lib/queryKeys'
 
 import { isOpen } from './runs'
@@ -51,10 +51,8 @@ export function useSourceOptions(
   source: FieldSource,
   plugin?: string,
 ) {
-  const models = useQuery({
+  const models = useAIModels(orgSlug, {
     enabled: source === 'model',
-    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
-    queryKey: queryKeys.aiModels(orgSlug),
     // Model decisions take decision models only (ADR 0021).
     select: (rows) =>
       rows

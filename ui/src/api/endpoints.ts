@@ -2066,7 +2066,7 @@ export const deleteAIProviderCredentials = (orgSlug: string, id: string) =>
 export const setAIProviderWorkloadIdentity = (
   orgSlug: string,
   id: string,
-  body: { organization: string; target: Record<string, unknown> },
+  body: { target: Record<string, unknown> },
 ) =>
   apiClient.put<AIProvider>(
     `${aiProviderPath(orgSlug, id)}/workload-identity`,

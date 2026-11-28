@@ -165,6 +165,8 @@ export interface AIProviderCreate {
 }
 
 export interface AIProviderDriver {
+  /** Imbi can call it with the cloud credentials of its process. */
+  ambient_auth: boolean
   default_base_url: null | string
   description: string
   /** lucide-react icon name. */

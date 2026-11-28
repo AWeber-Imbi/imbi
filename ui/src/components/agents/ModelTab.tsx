@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
 
-import { useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 
-import { listAIModels } from '@/api/endpoints'
 import {
   Command,
   CommandEmpty,
@@ -28,7 +26,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { queryKeys } from '@/lib/queryKeys'
+import { useAIModels } from '@/hooks/useOrgResources'
 import { cn } from '@/lib/utils'
 import type { AIModel } from '@/types'
 
@@ -85,11 +83,7 @@ const PARAMS: { control: ParamControl; key: ParamKey; label: string }[] = [
  */
 export function ModelTab({ errors, onChange, value }: ModelTabProps) {
   const orgSlug = useOrganization().selectedOrganization?.slug ?? ''
-  const { data: catalog = [] } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
-    queryKey: queryKeys.aiModels(orgSlug),
-  })
+  const { data: catalog = [] } = useAIModels(orgSlug)
   const models = useMemo(
     () =>
       catalog.filter(

@@ -20,6 +20,7 @@ export const queryKeys = {
   agentVersions: (orgSlug: string, slug: string) =>
     ['agentVersions', orgSlug, slug] as const,
   aiModels: (orgSlug: string) => ['ai-models', orgSlug] as const,
+  aiProviders: (orgSlug: string) => ['ai-providers', orgSlug] as const,
   anchorEdges: (
     kind: string,
     orgSlug: string,

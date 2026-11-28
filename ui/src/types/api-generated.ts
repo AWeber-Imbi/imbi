@@ -2596,17 +2596,16 @@ export interface paths {
          * Set Ai Provider Workload Identity
          * @description Use workload identity for a provider (WIF plan 4.6, O7).
          *
-         *     ``organization`` must be the organization of the provider: each
-         *     organization sets up its own identity. The caller must have
-         *     ``secret_provider:write`` there: the provider then uses the identity
-         *     source of that organization. No token is minted here.
+         *     The provider uses the identity source of its own organization: each
+         *     organization sets up its own identity. The caller must also have
+         *     ``secret_provider:write`` in the organization. No token is minted
+         *     here.
          *
          *     Raises:
-         *         403: Not a member, or no ``secret_provider:write`` there.
-         *         404: No such provider or organization.
+         *         403: No ``secret_provider:write`` in the organization.
+         *         404: No such provider.
          *         409: The provider has a stored key.
-         *         422: ``organization`` is not the organization of the provider,
-         *             the driver cannot use workload identity, the provider has a
+         *         422: The driver cannot use workload identity, the provider has a
          *             ``base_url``, no exchanger is installed for the vendor, or
          *             the target is not valid.
          */
@@ -11525,12 +11524,10 @@ export interface components {
          * AIProviderWorkloadIdentityPut
          * @description Request body for the workload identity of a provider.
          *
-         *     ``organization`` is the slug of the organization whose identity
-         *     source signs the JWT. ``target`` holds the vendor ids.
+         *     ``target`` holds the vendor ids. The identity source of the
+         *     organization of the provider signs the JWT.
          */
         AIProviderWorkloadIdentityPut: {
-            /** Organization */
-            organization: string;
             /** Target */
             target: {
                 [key: string]: unknown;
@@ -15729,6 +15726,11 @@ export interface components {
              * @default false
              */
             supports_iam: boolean;
+            /**
+             * Ambient Auth
+             * @default false
+             */
+            ambient_auth: boolean;
             /**
              * Requires Base Url
              * @default false

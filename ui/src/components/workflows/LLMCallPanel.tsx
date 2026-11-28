@@ -1,9 +1,9 @@
 import { useState } from 'react'
 
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { Play } from 'lucide-react'
 
-import { listAIModels, runPrompt } from '@/api/endpoints'
+import { runPrompt } from '@/api/endpoints'
 import { formatMoney } from '@/components/agents/agentDraft'
 import { usePromptResolution } from '@/components/agents/agentQueries'
 import { AIModelSelect } from '@/components/prompts/AIModelSelect'
@@ -11,9 +11,9 @@ import { Button } from '@/components/ui/button'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useAIModels } from '@/hooks/useOrgResources'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { KEPT_AS_TEXT } from '@/lib/json'
-import { queryKeys } from '@/lib/queryKeys'
 import type { PromptRunRequest } from '@/types'
 
 import { InputsField } from './InputsField'
@@ -63,10 +63,7 @@ export function LLMCallPanel({
 }) {
   const ref = pinnedRef(node)
   const loaded = usePromptResolution(prompt ? null : ref)
-  const models = useQuery({
-    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
-    queryKey: queryKeys.aiModels(orgSlug),
-  })
+  const models = useAIModels(orgSlug)
   if (!prompt && ref && loaded.isLoading) {
     return <p className="text-tertiary text-sm">Loading the prompt…</p>
   }

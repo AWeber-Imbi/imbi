@@ -1,8 +1,13 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 
-import { listEnvironments, listProjectTypes, listTeams } from '@/api/endpoints'
+import {
+  listAIModels,
+  listEnvironments,
+  listProjectTypes,
+  listTeams,
+} from '@/api/endpoints'
 import { queryKeys } from '@/lib/queryKeys'
-import type { Environment, ProjectType, Team } from '@/types'
+import type { AIModel, Environment, ProjectType, Team } from '@/types'
 
 // Org-scoped reference data changes slowly (admin edits). Pick one
 // staleTime so 8+ consumers don't refetch independently when one of
@@ -14,6 +19,25 @@ const ORG_RESOURCE_STALE_TIME = 10 * 60 * 1000
 interface ResourceHookOptions {
   /** Extra gate ANDed with `!!orgSlug`. Use for dialog-open or tab gating. */
   enabled?: boolean
+}
+
+/**
+ * The AI model catalog of the organization. No shared staleTime: the AI
+ * Models page changes it, and its consumers must see the change.
+ */
+export function useAIModels<T = AIModel[]>(
+  orgSlug: string,
+  {
+    enabled = true,
+    select,
+  }: ResourceHookOptions & { select?: (rows: AIModel[]) => T } = {},
+): UseQueryResult<T, Error> {
+  return useQuery({
+    enabled: !!orgSlug && enabled,
+    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
+    queryKey: queryKeys.aiModels(orgSlug),
+    select,
+  })
 }
 
 /** Canonical hook for the org-scoped Environments list. See useTeams. */

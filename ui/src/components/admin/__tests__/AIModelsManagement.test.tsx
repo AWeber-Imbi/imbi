@@ -33,6 +33,7 @@ vi.mock('@/contexts/OrganizationContext', () => ({
 
 const drivers: AIProviderDriver[] = [
   {
+    ambient_auth: false,
     default_base_url: 'https://api.anthropic.com',
     description: 'Claude models from Anthropic.',
     icon: 'Sparkles',
@@ -44,6 +45,7 @@ const drivers: AIProviderDriver[] = [
     supports_iam: false,
   },
   {
+    ambient_auth: false,
     default_base_url: 'https://api.openai.com/v1',
     description: 'GPT models from OpenAI.',
     icon: 'Bot',
@@ -55,6 +57,7 @@ const drivers: AIProviderDriver[] = [
     supports_iam: false,
   },
   {
+    ambient_auth: false,
     default_base_url: 'https://api.typesafe.ai/v1',
     description: 'System One decision models, such as Jev.',
     icon: 'Scale',

@@ -1,6 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
-
-import { listAIModels } from '@/api/endpoints'
 import {
   Select,
   SelectContent,
@@ -9,7 +6,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { queryKeys } from '@/lib/queryKeys'
+import { useAIModels } from '@/hooks/useOrgResources'
 import { cn } from '@/lib/utils'
 
 // Radix Select reserves the empty string, so "no model" needs a sentinel.
@@ -37,11 +34,7 @@ export function AIModelSelect({
   value,
 }: AIModelSelectProps) {
   const orgSlug = useOrganization().selectedOrganization?.slug ?? ''
-  const { data: models = [], isSuccess } = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
-    queryKey: queryKeys.aiModels(orgSlug),
-  })
+  const { data: models = [], isSuccess } = useAIModels(orgSlug)
   // Until the catalog has loaded, a value cannot be judged unknown.
   const known = value == null || models.some((m) => m.slug === value)
   return (

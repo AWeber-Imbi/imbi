@@ -14,10 +14,8 @@ import {
   deleteAIProviderCredentials,
   deleteAIProviderWorkloadIdentity,
   importAIModels,
-  listAIModels,
   listAIProviderDrivers,
   listAIProviders,
-  listTeams,
   setAIProviderCredentials,
   setAIProviderWorkloadIdentity,
   updateAIModel,
@@ -33,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAIModels, useTeams } from '@/hooks/useOrgResources'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { buildDiffPatch } from '@/lib/json-patch'
 import { queryKeys } from '@/lib/queryKeys'
@@ -126,18 +125,10 @@ export function AIModelsManagement() {
   const providersQuery = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listAIProviders(orgSlug, signal),
-    queryKey: ['ai-providers', orgSlug],
+    queryKey: queryKeys.aiProviders(orgSlug),
   })
-  const modelsQuery = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
-    queryKey: queryKeys.aiModels(orgSlug),
-  })
-  const teamsQuery = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listTeams(orgSlug, signal),
-    queryKey: ['teams', orgSlug],
-  })
+  const modelsQuery = useAIModels(orgSlug)
+  const teamsQuery = useTeams(orgSlug)
 
   const drivers = driversQuery.data ?? NO_DRIVERS
   const providers = providersQuery.data ?? NO_PROVIDERS
@@ -145,7 +136,7 @@ export function AIModelsManagement() {
   const teams = teamsQuery.data ?? NO_TEAMS
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['ai-providers', orgSlug] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.aiProviders(orgSlug) })
     queryClient.invalidateQueries({ queryKey: queryKeys.aiModels(orgSlug) })
   }
   const goToList = () => navigate(LIST_PATH)
@@ -200,7 +191,7 @@ export function AIModelsManagement() {
       body,
       id,
     }: {
-      body: { organization: string; target: Record<string, unknown> }
+      body: { target: Record<string, unknown> }
       id: string
     }) => setAIProviderWorkloadIdentity(orgSlug, id, body),
     onError: onMutationError,
