@@ -47,7 +47,6 @@ from imbi.api.secret_broker import identity
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.auth.encryption import (
-    decrypt_config_value,
     encrypt_config_value,
 )
 from imbi.common.llm import discovery, drivers, generate
@@ -164,11 +163,10 @@ class AIProviderCredentials(pydantic.BaseModel):
 class AIProviderWorkloadIdentityPut(pydantic.BaseModel):
     """Request body for the workload identity of a provider.
 
-    ``organization`` is the slug of the organization whose identity
-    source signs the JWT. ``target`` holds the vendor ids.
+    ``target`` holds the vendor ids. The identity source of the
+    organization of the provider signs the JWT.
     """
 
-    organization: str = pydantic.Field(min_length=1)
     target: dict[str, typing.Any]
 
 
@@ -261,11 +259,6 @@ MATCH (p:AIProvider {{slug: {slug}}})
 RETURN p, o
 """
 
-_ORG_QUERY: typing.LiteralString = """
-MATCH (o:Organization {{id: {org_id}}})
-RETURN o
-"""
-
 _SLUG_TAKEN_QUERY: typing.LiteralString = """
 MATCH (p:AIProvider {{slug: {slug}}})
       -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
@@ -338,20 +331,6 @@ async def fetch_service_provider(
             status_code=404, detail=f'AI provider {ref!r} not found'
         )
     return _parse(records[0])
-
-
-async def fetch_organization(
-    db: graph.Graph, org_id: str
-) -> models.Organization:
-    """Fetch the organization of a new catalog node."""
-    records = await db.execute(_ORG_QUERY, {'org_id': org_id}, ['o'])
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'Organization {org_id!r} not found'
-        )
-    return models.Organization.model_validate(
-        graph.parse_agtype(records[0]['o'])
-    )
 
 
 async def _assert_slug_free(
@@ -506,7 +485,10 @@ async def create_ai_provider(
     _ = auth
     payload = data.model_dump(exclude={'api_key', 'slug'})
     payload['slug'] = data.slug or slugify.slugify(data.name)
-    payload['organization'] = await fetch_organization(db, org_id)
+    # The membership check found the organization.
+    (payload['organization'],) = await db.match(
+        models.Organization, {'id': org_id}
+    )
     payload['org_id'] = org_id
     node = _build(payload)
     if data.api_key:
@@ -817,32 +799,41 @@ async def discover_ai_provider_models(
             detail=f'Driver {node.driver!r} does not support discovery',
         )
     base_url = drivers.resolve_base_url(node.driver, node.base_url)
-    try:
-        if node.workload_identity is not None:
-            found = await _discover_with_token(secrets, node, base_url)
-        else:
-            api_key = decrypt_config_value(node.credentials_encrypted) or ''
-            signer = None
-            if not api_key and node.driver == 'bedrock':
-                # No key: sign with the AWS credentials of the process.
-                signer = await llm_generate.sigv4(node.region)
-            elif not api_key:
-                raise fastapi.HTTPException(
-                    status_code=409,
-                    detail=(
-                        f'AI provider {id!r} has no stored credentials to '
-                        f'discover models with'
-                    ),
-                )
-            found = await discovery.list_models(
-                node.driver, api_key, base_url, region=node.region, auth=signer
+
+    async def list_with(
+        credential: llm_generate.Credential,
+    ) -> list[discovery.DiscoveredModel]:
+        if credential == llm_generate.Credential():
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=(
+                    f'AI provider {id!r} has no stored credentials to '
+                    f'discover models with'
+                ),
             )
+        return await discovery.list_models(
+            node.driver,
+            credential.key,
+            base_url,
+            bearer=credential.bearer,
+            region=node.region,
+            auth=credential.auth,
+        )
+
+    try:
+        found = await llm_generate.with_credentials(
+            secrets,
+            node,
+            list_with,
+            lambda exc: (
+                isinstance(exc, discovery.DiscoveryError)
+                and exc.status == http.HTTPStatus.UNAUTHORIZED
+            ),
+        )
+    except discovery.DiscoveryRefused as exc:
+        raise fastapi.HTTPException(status_code=422, detail=str(exc)) from exc
     except discovery.DiscoveryError as exc:
-        # Vertex: an express key can be refused the list call (422).
-        refused = node.driver == 'vertex' and exc.status in (401, 403)
-        raise fastapi.HTTPException(
-            status_code=422 if refused else 502, detail=str(exc)
-        ) from exc
+        raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
     except generate.GenerateError as exc:
         raise fastapi.HTTPException(
             status_code=502,
@@ -871,26 +862,6 @@ async def discover_ai_provider_models(
     )
 
 
-async def _discover_with_token(
-    secrets: secret_broker.store.SecretStore,
-    node: models.AIProvider,
-    base_url: str | None,
-) -> list[discovery.DiscoveredModel]:
-    """List models with a workload identity token (one retry after a
-    ``401``)."""
-    return await tokens.call(
-        secrets,
-        node,
-        lambda token: discovery.list_models(
-            node.driver, token, base_url, bearer=True, region=node.region
-        ),
-        lambda exc: (
-            isinstance(exc, discovery.DiscoveryError)
-            and exc.status == http.HTTPStatus.UNAUTHORIZED
-        ),
-    )
-
-
 @ai_providers_router.put(
     '/{id}/workload-identity', response_model=AIProviderResponse
 )
@@ -908,17 +879,16 @@ async def set_ai_provider_workload_identity(
 ) -> AIProviderResponse:
     """Use workload identity for a provider (WIF plan 4.6, O7).
 
-    ``organization`` must be the organization of the provider: each
-    organization sets up its own identity. The caller must have
-    ``secret_provider:write`` there: the provider then uses the identity
-    source of that organization. No token is minted here.
+    The provider uses the identity source of its own organization: each
+    organization sets up its own identity. The caller must also have
+    ``secret_provider:write`` in the organization. No token is minted
+    here.
 
     Raises:
-        403: Not a member, or no ``secret_provider:write`` there.
-        404: No such provider or organization.
+        403: No ``secret_provider:write`` in the organization.
+        404: No such provider.
         409: The provider has a stored key.
-        422: ``organization`` is not the organization of the provider,
-            the driver cannot use workload identity, the provider has a
+        422: The driver cannot use workload identity, the provider has a
             ``base_url``, no exchanger is installed for the vendor, or
             the target is not valid.
 
@@ -932,25 +902,12 @@ async def set_ai_provider_workload_identity(
                 f'using workload identity'
             ),
         )
-    identity_org_id = await organizations.check_member(
-        data.organization, db, auth
-    )
-    if identity_org_id != org_id:
-        raise fastapi.HTTPException(
-            status_code=422,
-            detail=(
-                'The workload identity must use the organization of the '
-                'AI provider'
-            ),
-        )
-    # As require_permission: an admin passes, but must be a member.
+    # As require_permission; the member check of the route narrowed
+    # the permissions to this organization.
     if not auth.is_admin and 'secret_provider:write' not in auth.permissions:
         raise fastapi.HTTPException(
             status_code=403,
-            detail=(
-                f'Permission secret_provider:write in organization '
-                f'{data.organization!r} is required'
-            ),
+            detail='Permission secret_provider:write is required',
         )
     try:
         vendor = identity.exchanger(node.driver)
@@ -966,16 +923,13 @@ async def set_ai_provider_workload_identity(
     node = _build(
         {
             **node.model_dump(),
-            'workload_identity': {
-                'organization_id': identity_org_id,
-                'target': target,
-            },
+            'workload_identity': {'organization_id': org_id, 'target': target},
         }
     )
     LOGGER.info(
         'Set workload identity for AI provider %s (organization %s)',
         id,
-        identity_org_id,
+        org_id,
     )
     counts = await model_counts(db, org_id)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
@@ -1122,7 +1076,6 @@ __all__ = [
     'ai_provider_drivers_router',
     'ai_provider_tokens_router',
     'ai_providers_router',
-    'fetch_organization',
     'fetch_provider',
     'fetch_service_provider',
     'model_counts',

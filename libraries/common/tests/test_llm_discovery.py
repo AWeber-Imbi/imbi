@@ -372,7 +372,7 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 request.url.path, '/v1beta1/publishers/google/models'
             )
-            token = request.url.params['pageToken']
+            token = request.url.params.get('pageToken', '')
             seen.append(token)
             if not token:
                 return httpx.Response(
@@ -410,7 +410,7 @@ class ListModelsTestCase(unittest.IsolatedAsyncioTestCase):
         calls: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            calls.append(request.url.params['pageToken'])
+            calls.append(request.url.params.get('pageToken', ''))
             return httpx.Response(
                 200, json={'publisherModels': [], 'nextPageToken': 'same'}
             )

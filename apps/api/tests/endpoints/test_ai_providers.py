@@ -15,6 +15,7 @@ from imbi.api.endpoints import ai_providers
 from imbi.api.llm import tokens
 from imbi.api.secret_broker import identity
 from imbi.common import graph
+from imbi.common import models as common_models
 from imbi.common.llm import discovery, generate
 from imbi.common.llm import tokens as common_tokens
 
@@ -22,8 +23,6 @@ ORG = 'acme'
 #: The id that the mocked membership check gives ``ORG``.
 ORG_ID = 'org-1'
 BASE = f'/organizations/{ORG}/ai-providers'
-#: The real lookup, kept before a test patches it.
-CHECK_MEMBER = organizations.check_member
 
 
 class QueryRouter:
@@ -96,7 +95,6 @@ SLUG_TAKEN = ai_providers._SLUG_TAKEN_QUERY
 COUNTS = ai_providers._COUNTS_QUERY
 CONFIGURED = ai_providers._CONFIGURED_QUERY
 MODEL_TYPES = ai_providers._MODEL_TYPES_QUERY
-ORG_QUERY = ai_providers._ORG_QUERY
 SERVICE_PROVIDER = ai_providers._SERVICE_QUERY
 CREATE = 'CREATE (p:AIProvider'
 UPDATE = 'SET p.'
@@ -160,6 +158,10 @@ class AIProviderTestBase(support.SharedAppTestCase):
             lambda: ORG_ID
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        # The organization of a new provider.
+        self.mock_db.match.return_value = [
+            common_models.Organization.model_validate(org_props())
+        ]
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
@@ -178,11 +180,8 @@ class AIProviderTestBase(support.SharedAppTestCase):
         self.addCleanup(cache.stop)
 
     def route(self, *rules: tuple[str, typing.Any]) -> QueryRouter:
-        """Install a :class:`QueryRouter` as the mocked ``execute``.
-
-        The organization lookup of a create is answered last.
-        """
-        router = QueryRouter(*rules, (ORG_QUERY, [{'o': org_props()}]))
+        """Install a :class:`QueryRouter` as the mocked ``execute``."""
+        router = QueryRouter(*rules)
         self.mock_db.execute.side_effect = router
         return router
 
@@ -401,7 +400,7 @@ class CreateProviderTestCase(AIProviderTestBase):
         The pre-check cannot see a concurrent create; the unique graph
         index can, and its violation must map to 409, not 500.
         """
-        router = QueryRouter((ORG_QUERY, [{'o': org_props()}]))
+        router = QueryRouter()
 
         def execute(
             query: str,
@@ -767,7 +766,7 @@ class DiscoveryTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 200)
         sigv4.assert_awaited_once_with('us-east-1')
         list_models.assert_awaited_once_with(
-            'bedrock', '', None, region='us-east-1', auth=signer
+            'bedrock', '', None, bearer=False, region='us-east-1', auth=signer
         )
 
     def test_vertex_refused_key_is_422(self) -> None:
@@ -786,13 +785,13 @@ class DiscoveryTestCase(AIProviderTestBase):
         )
         with (
             mock.patch(
-                'imbi.api.endpoints.ai_providers.decrypt_config_value',
+                'imbi.api.llm.generate.decrypt_config_value',
                 return_value='gk',
             ),
             mock.patch(
                 'imbi.common.llm.discovery.list_models',
                 new_callable=mock.AsyncMock,
-                side_effect=discovery.DiscoveryError('refused', 403),
+                side_effect=discovery.DiscoveryRefused('refused', 403),
             ),
         ):
             response = self.client.post(f'{BASE}/prv-1/discover')
@@ -825,7 +824,7 @@ class DiscoveryTestCase(AIProviderTestBase):
         )
         with (
             mock.patch(
-                'imbi.api.endpoints.ai_providers.decrypt_config_value',
+                'imbi.api.llm.generate.decrypt_config_value',
                 return_value='sk-secret-1234',
             ),
             mock.patch(
@@ -864,7 +863,7 @@ class DiscoveryTestCase(AIProviderTestBase):
         ]
         with (
             mock.patch(
-                'imbi.api.endpoints.ai_providers.decrypt_config_value',
+                'imbi.api.llm.generate.decrypt_config_value',
                 return_value='sk-secret-1234',
             ),
             mock.patch(
@@ -971,18 +970,11 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
-        member = mock.patch(
-            'imbi.api.auth.organizations.check_member',
-            new_callable=mock.AsyncMock,
-            return_value='org-1',
-        )
-        self.check_member = member.start()
-        self.addCleanup(member.stop)
 
     def put(self, **body: typing.Any) -> typing.Any:
         return self.client.put(
             f'{BASE}/prv-1/workload-identity',
-            json={'organization': 'acme', 'target': TARGET, **body},
+            json={'target': TARGET, **body},
         )
 
     def test_put_stores_the_organization_and_target(self) -> None:
@@ -997,41 +989,9 @@ class WorkloadIdentityTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()['auth_kind'], 'workload_identity')
         self.assertEqual(response.json()['workload_identity'], WIF)
+        # The identity is the one of the organization in the path.
         self.assertEqual(router.params_for(UPDATE)['workload_identity'], WIF)
-        self.assertEqual(self.check_member.await_args.args[0], 'acme')
-
-    def test_put_checks_the_permission_in_the_bound_organization(
-        self,
-    ) -> None:
-        # secret_provider:write in another organization.
-        self.user.is_admin = False
-        self.auth_context.permissions = {
-            'ai_model:credentials',
-            'secret_provider:write',
-        }
-        self.check_member.side_effect = CHECK_MEMBER
-        self.route(
-            (GET_PROVIDER, [{'p': provider_props()}]),
-            (
-                organizations._ORG_MEMBER_QUERY,
-                [{'id': 'org-1', 'member': True}],
-            ),
-        )
-        # The role of the caller in acme does not grant it.
-        with mock.patch.object(
-            organizations,
-            'org_permissions',
-            new_callable=mock.AsyncMock,
-            return_value={'ai_model:credentials'},
-        ):
-            self.assertEqual(self.put().status_code, 403)
-
-    def test_put_refuses_the_identity_of_another_org(self) -> None:
-        self.check_member.return_value = 'org-2'
-        router = self.route((GET_PROVIDER, [{'p': provider_props()}]))
-        response = self.put(organization='other')
-        self.assertEqual(response.status_code, 422, response.text)
-        self.assertFalse(any(UPDATE in q for q, _ in router.calls))
+        self.assertEqual(WIF['organization_id'], ORG_ID)
 
     def test_put_refuses_a_provider_with_a_key(self) -> None:
         self.route(

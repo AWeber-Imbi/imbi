@@ -111,11 +111,12 @@ workload identity target only when the plugin of the vendor (`anthropic` or
 `openai`) is installed and enabled. The
 [Workload Identity Runbook](workload-identity.md) gives the vendor setup.
 
-1. Select the organization whose identity source signs the tokens. The
-   organization needs an identity source; see
-   [Workload identity](secrets.md#workload-identity).
-2. Click the key icon on the provider row.
-3. In **Workload identity target**, enter the vendor ids of the provider:
+The identity source of the organization of the provider signs the tokens,
+so each organization sets up its own. The organization needs an identity
+source; see [Workload identity](secrets.md#workload-identity).
+
+1. Click the key icon on the provider row.
+2. In **Workload identity target**, enter the vendor ids of the provider:
    - Anthropic, from the Anthropic Console: `{"organization_id": "...",
      "federation_rule_id": "...", "service_account_id": "...",
      "workspace_id": "..."}`. `workspace_id` is necessary only when the
@@ -124,7 +125,7 @@ workload identity target only when the plugin of the vendor (`anthropic` or
      "service_account_id": "..."}`. The OpenAI identity provider must use
      the audience `https://api.openai.com/v1`. See the
      [plugin README](https://github.com/AWeber-Imbi/imbi/tree/main/plugins/openai).
-4. Click **Use workload identity**. The provider row shows
+3. Click **Use workload identity**. The provider row shows
    **Workload identity**.
 
 Imbi mints a new token for each identity JWT and renews it before it
@@ -133,9 +134,7 @@ the vendor can track cost for each provider. Model discovery uses the
 token. To stop, click **Stop using workload identity**.
 
 You need `ai_model:credentials`, membership of the organization, and
-`secret_provider:write` in that organization. The identity must be the
-identity of the organization of the provider. Another organization gives
-`422`: each organization sets up its own.
+`secret_provider:write` in that organization.
 
 ### Imbi services
 

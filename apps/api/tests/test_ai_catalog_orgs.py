@@ -4,11 +4,33 @@ live graph."""
 import typing
 import unittest
 import uuid
+from unittest import mock
 
 from imbi.api import ai_catalog_orgs
 from imbi.api.endpoints import prompts
 from imbi.common import graph
 from imbi.common.prompts import resolve
+
+
+class MaintenanceOperationTestCase(unittest.IsolatedAsyncioTestCase):
+    """The copy runs one time, as a maintenance operation."""
+
+    async def test_the_operation_calls_migrate(self) -> None:
+        from imbi.api.maintenance import registry
+
+        definition = registry.OPERATIONS['ai-catalog-org-copy']
+        self.assertFalse(definition.items_are_projects)
+        db, ctx = mock.AsyncMock(), mock.Mock()
+        with mock.patch.object(
+            ai_catalog_orgs, 'migrate', mock.AsyncMock(return_value=3)
+        ) as migrate:
+            items = await definition.enumerate(db)
+            outcome = await definition.execute(
+                db, mock.AsyncMock(), items[0], ctx=ctx
+            )
+        self.assertEqual(outcome, 'succeeded')
+        migrate.assert_awaited_once_with(db)
+        self.assertEqual(ctx.log.record.call_args.kwargs['copied'], 3)
 
 
 class MigrateTestCase(unittest.IsolatedAsyncioTestCase):

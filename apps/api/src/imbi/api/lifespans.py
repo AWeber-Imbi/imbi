@@ -11,7 +11,6 @@ import logging
 from collections import abc
 
 from imbi.api import (
-    ai_catalog_orgs,
     iggy_metrics,
     openapi,
     secret_broker,
@@ -41,8 +40,7 @@ _graph: graph.Graph | None = None
 
 
 async def _on_graph_startup(db: graph.Graph) -> None:
-    """Refresh blueprint models, load plugins, and move a global AI
-    catalog into the organizations after the graph pool opens."""
+    """Refresh blueprint models and load plugins after the graph pool opens."""
     global _graph
     _graph = db
     try:
@@ -53,10 +51,6 @@ async def _on_graph_startup(db: graph.Graph) -> None:
         await plugin_lifecycle.startup_load_plugins(db)
     except Exception:
         LOGGER.exception('Failed to load plugins')
-    try:
-        await ai_catalog_orgs.migrate(db)
-    except Exception:
-        LOGGER.exception('Failed to move the AI catalog into organizations')
 
 
 graph.set_on_startup(_on_graph_startup)

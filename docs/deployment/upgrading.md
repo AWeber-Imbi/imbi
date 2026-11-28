@@ -112,19 +112,20 @@ These releases need only the new image: 2.39.1, 2.37.0, 2.35.1, 2.34.0,
    `IMBI_AI_PROVIDER_ASSISTANT`, and `IMBI_AI_PROVIDER_SLACKBOT` (if you
    set them) from a provider id to `<org-slug>/<provider-slug>`, for
    example `acme/anthropic`. The AI model catalog is now per organization
-   (ADR 0018). When imbi-api starts, it copies each provider and model to
-   every organization, with new ids, and deletes the global ones. The old
-   ids then do not exist. The slugs do not change. A copy of a restricted
+   (ADR 0018). **Right after you deploy**, run the maintenance operation
+   **Copy the AI Model Catalog to Each Organization**
+   (`ai-catalog-org-copy`). Until it runs, the AI features see an empty
+   catalog. It copies each provider and model to every organization, with
+   new ids, and deletes the global ones. The old ids then do not exist. The slugs do not change. A copy of a restricted
    model keeps only the teams of its organization: in an organization
    where no team was allowed, nobody can use the copy until you allow a
    team or delete it. A provider with workload identity keeps it only in
    the organization of the identity. In each other organization, the
    copy has no credentials (unless the original had a stored key): set
    up workload identity or a key there. If the organization of the
-   identity no longer exists, no copy keeps the identity. The AI Models page is now at
-   **Admin > &lt;Org&gt; Admin > AI Models**. If the startup log shows
-   `Failed to move the AI catalog into organizations`, start imbi-api
-   again: the copy is one transaction.
+   identity no longer exists, no copy keeps the identity. The AI Models
+   page is now at **Admin > &lt;Org&gt; Admin > AI Models**. If the
+   operation fails, run it again: the copy is one transaction.
 4. Run `imbi-api setup-permissions`. It adds
    `admin:maintenance:deployment-sweep` and gives it to the
    `imbi-scheduler` role. imbi-scheduler now creates the

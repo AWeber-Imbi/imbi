@@ -7,6 +7,7 @@ from unittest import mock
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
+from imbi.api import teams as org_teams
 from imbi.api.endpoints import ai_models, ai_providers
 from imbi.common.llm import discovery
 
@@ -19,7 +20,7 @@ GET_MODEL = ai_models._GET_QUERY
 LIST_MODELS = ai_models._LIST_QUERY
 SLUG_TAKEN = ai_models._SLUG_TAKEN_QUERY
 MODEL_ID_TAKEN = ai_models._MODEL_ID_TAKEN_QUERY
-TEAM = ai_models._TEAM_QUERY
+TEAM = org_teams._BY_ID_QUERY
 EXISTING_IDS = ai_models._EXISTING_IDS_QUERY
 TAKEN_SLUGS = ai_models._TAKEN_SLUGS_QUERY
 GET_PROVIDER = ai_providers._GET_QUERY
@@ -262,7 +263,7 @@ class CreateModelTestCase(AIModelTestBase):
         """Restricted access writes one ALLOWED_FOR edge per team."""
         router = self.route(
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
+            (TEAM, [team_props()]),
             (
                 CREATE,
                 [{'m': model_props(access_scope='restricted')}],
@@ -306,7 +307,7 @@ class CreateModelTestCase(AIModelTestBase):
         """Team ids sent with org-wide access are validated, then dropped."""
         router = self.route(
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
+            (TEAM, [team_props()]),
             (CREATE, [{'m': model_props()}]),
         )
         response = self.client.post(
@@ -564,7 +565,7 @@ class PatchModelTestCase(AIModelTestBase):
                 ],
             ),
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props('tm-2', 'Apps', 'apps')}]),
+            (TEAM, [team_props('tm-2', 'Apps', 'apps')]),
             (UPDATE, [{'m': model_props(access_scope='restricted')}]),
         )
         router = typing.cast('typing.Any', self.mock_db.execute.side_effect)
@@ -600,7 +601,7 @@ class PatchModelTestCase(AIModelTestBase):
                 ],
             ),
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
+            (TEAM, [team_props()]),
             (UPDATE, [{'m': model_props()}]),
         )
         router = typing.cast('typing.Any', self.mock_db.execute.side_effect)
@@ -994,7 +995,7 @@ class OrgScopeTestCase(AIModelTestBase):
     def test_create_is_in_the_org(self) -> None:
         router = self.route(
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
+            (TEAM, [team_props()]),
             (CREATE, [{'m': model_props(access_scope='restricted')}]),
         )
         response = self.client.post(
@@ -1016,7 +1017,7 @@ class OrgScopeTestCase(AIModelTestBase):
             {'slug': 'default-chat', 'org_id': self.ORG_ID},
         )
         self.assertEqual(
-            router.params_for(TEAM), {'team_id': 'tm-1', 'org_id': self.ORG_ID}
+            router.params_for(TEAM), {'ids': ['tm-1'], 'org_id': self.ORG_ID}
         )
         self.assertEqual(router.params_for(CREATE)['org_id'], self.ORG_ID)
         create = next(q for q, _ in router.calls if CREATE in q)

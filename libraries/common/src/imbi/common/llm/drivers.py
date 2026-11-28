@@ -38,6 +38,9 @@ class DriverInfo(pydantic.BaseModel):
     #: The driver can authenticate from ambient cloud credentials, so a
     #: provider with no API key is still usable.
     supports_iam: bool = False
+    #: Imbi can call the driver with the cloud credentials of its own
+    #: process (Bedrock: SigV4 with the runtime IAM role).
+    ambient_auth: bool = False
     #: ``base_url`` must be supplied when configuring this driver.
     requires_base_url: bool = False
     #: A model list can be pulled from the provider (see the
@@ -87,6 +90,7 @@ DRIVERS: tuple[DriverInfo, ...] = (
             'API key or the runtime IAM role.'
         ),
         supports_iam=True,
+        ambient_auth=True,
         supports_discovery=True,
         icon='Cloud',
     ),

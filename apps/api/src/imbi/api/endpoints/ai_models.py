@@ -22,6 +22,7 @@ import fastapi
 import pydantic
 import slugify
 
+from imbi.api import teams as org_teams
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import ai_providers
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
@@ -228,12 +229,6 @@ MATCH (m:AIModel {{model_id: {model_id}}})
 RETURN m.id AS id
 """
 
-_TEAM_QUERY: typing.LiteralString = """
-MATCH (t:Team {{id: {team_id}}})
-      -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
-RETURN t
-"""
-
 _CLEAR_TEAMS_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{id: {id}}})-[r:ALLOWED_FOR]->(:Team)
 DELETE r
@@ -363,10 +358,11 @@ def _rows_to_responses(
     for record in records:
         props = _props(record.get('m'))
         provider_props = _props(record.get('p'))
-        org_props = _props(record.get('o'))
-        if props is None or provider_props is None or org_props is None:
+        if props is None or provider_props is None:
             continue
-        node = parse_model(props, provider_props, org_props)
+        node = parse_model(
+            props, provider_props, graph.parse_agtype(record['o'])
+        )
         if node.id not in nodes:
             order.append(node.id)
             nodes[node.id] = node
@@ -399,19 +395,15 @@ async def _resolve_teams(
         fastapi.HTTPException: 422 when a team is unknown.
 
     """
-    refs: list[TeamRef] = []
-    for team_id in dict.fromkeys(team_ids):
-        records = await db.execute(
-            _TEAM_QUERY, {'team_id': team_id, 'org_id': org_id}, ['t']
-        )
-        team = _team_ref(records[0]['t']) if records else None
-        if team is None:
+    ids = list(dict.fromkeys(team_ids))
+    found = await org_teams.by_id(db, org_id, ids)
+    for team_id in ids:
+        if team_id not in found:
             raise fastapi.HTTPException(
                 status_code=422,
                 detail=f'Team {team_id!r} does not exist',
             )
-        refs.append(team)
-    return refs
+    return [TeamRef(**found[team_id]) for team_id in ids]
 
 
 def _validate_access(access_scope: str, teams: list[TeamRef]) -> None:
@@ -1067,14 +1059,15 @@ async def _price_rows(
     for record in await db.execute(
         _PRICE_SYNC_QUERY, {'org_id': org_id}, ['m', 'p', 'o']
     ):
-        props, provider_props, org_props = (
+        props, provider_props = (
             _props(record.get('m')),
             _props(record.get('p')),
-            _props(record.get('o')),
         )
-        if props is None or provider_props is None or org_props is None:
+        if props is None or provider_props is None:
             continue
-        node = parse_model(props, provider_props, org_props)
+        node = parse_model(
+            props, provider_props, graph.parse_agtype(record['o'])
+        )
         rows.append(
             (node, prices.lookup(table, node.model_id, node.provider.driver))
         )

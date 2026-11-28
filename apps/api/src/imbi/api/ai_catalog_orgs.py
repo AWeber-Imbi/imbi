@@ -9,9 +9,10 @@ edges to the teams of its organization. Only the copy in the
 organization of a workload identity keeps it: each other organization
 sets up its own. Slugs do not change.
 
-It runs at API start in one transaction, under an advisory lock, so
-replicas that start together do not copy twice. When no global node is
-left, it does nothing. With no organization, it keeps the global nodes.
+The ``ai-catalog-org-copy`` maintenance operation runs it, in one
+transaction under an advisory lock, so two runs do not copy twice.
+When no global node is left, it does nothing. With no organization, it
+keeps the global nodes.
 """
 
 import json

@@ -10,6 +10,7 @@ status that failed. Provider response bodies and the API key never
 appear in it, because the caller surfaces the message verbatim.
 """
 
+import collections.abc
 import dataclasses
 import datetime
 import logging
@@ -23,7 +24,12 @@ from imbi.common.llm import drivers
 
 LOGGER = logging.getLogger(__name__)
 
-__all__ = ['DiscoveredModel', 'DiscoveryError', 'list_models']
+__all__ = [
+    'DiscoveredModel',
+    'DiscoveryError',
+    'DiscoveryRefused',
+    'list_models',
+]
 
 #: Outbound calls target an endpoint an admin supplied for
 #: ``openai_compatible`` providers, so they get a short leash.
@@ -48,6 +54,10 @@ class DiscoveryError(Exception):
     def __init__(self, message: str, status: int | None = None) -> None:
         super().__init__(message)
         self.status = status
+
+
+class DiscoveryRefused(DiscoveryError):
+    """The provider does not let the credential list models."""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -247,15 +257,14 @@ async def _list_bedrock(
                 )
             )
     known = {model.model_id for model in found}
-    token = ''
-    seen: set[str] = set()
-    for _page in range(MAX_MODELS // 100 + 1):
-        query = '?type=SYSTEM_DEFINED&maxResults=1000'
-        if token:
-            query += f'&nextToken={token}'
-        payload = await _get_json(
-            f'{base}/inference-profiles{query}', headers, 'bedrock', auth
-        )
+    async for payload in _paged(
+        f'{base}/inference-profiles?type=SYSTEM_DEFINED&maxResults=1000',
+        'nextToken',
+        'nextToken',
+        headers,
+        'bedrock',
+        auth,
+    ):
         for item in _entries(payload, 'inferenceProfileSummaries'):
             profile_id = item.get('inferenceProfileId')
             models = [
@@ -280,13 +289,8 @@ async def _list_bedrock(
                     ),
                 )
             )
-        page = typing.cast(
-            'dict[str, object]', payload if isinstance(payload, dict) else {}
-        )
-        token = urllib.parse.quote(str(page.get('nextToken') or ''), safe='')
-        if not token or token in seen or len(found) >= MAX_MODELS:
+        if len(found) >= MAX_MODELS:
             break
-        seen.add(token)
     return found[:MAX_MODELS]
 
 
@@ -309,36 +313,58 @@ async def _list_vertex(
         else {'x-goog-api-key': api_key}
     )
     found: list[DiscoveredModel] = []
+    try:
+        async for payload in _paged(
+            f'{url}?pageSize=100',
+            'pageToken',
+            'nextPageToken',
+            headers,
+            'vertex',
+        ):
+            for item in _entries(payload, 'publisherModels'):
+                model_id = str(item.get('name') or '').rpartition('/')[2]
+                # Generation calls Gemini only (generateContent).
+                if model_id.startswith('gemini'):
+                    found.append(DiscoveredModel(model_id, model_id))
+            if len(found) >= MAX_MODELS:
+                break
+    except DiscoveryError as exc:
+        if exc.status in (401, 403):
+            raise DiscoveryRefused(
+                f'The vertex endpoint returned HTTP {exc.status}. An '
+                'express mode API key may not be allowed to list '
+                'models: add the models by id',
+                exc.status,
+            ) from exc
+        raise
+    return found[:MAX_MODELS]
+
+
+async def _paged(
+    url: str,
+    token_param: str,
+    token_key: str,
+    headers: dict[str, str],
+    driver: str,
+    auth: httpx.Auth | None = None,
+) -> collections.abc.AsyncIterator[object]:
+    """Yield each page of a paged list, at most
+    ``MAX_MODELS // 100 + 1`` pages. It stops when the page has no next
+    token, or the token repeats. ``url`` already has a query string.
+    """
     token = ''
     seen: set[str] = set()
-    # Count pages, not kept models: most models are not Gemini.
     for _page in range(MAX_MODELS // 100 + 1):
-        try:
-            payload = await _get_json(
-                f'{url}?pageSize=100&pageToken={token}', headers, 'vertex'
-            )
-        except DiscoveryError as exc:
-            if exc.status in (401, 403):
-                raise DiscoveryError(
-                    f'The vertex endpoint returned HTTP {exc.status}. An '
-                    'express mode API key may not be allowed to list '
-                    'models: add the models by id',
-                    exc.status,
-                ) from exc
-            raise
-        for item in _entries(payload, 'publisherModels'):
-            model_id = str(item.get('name') or '').rpartition('/')[2]
-            # Generation calls Gemini only (generateContent).
-            if model_id.startswith('gemini'):
-                found.append(DiscoveredModel(model_id, model_id))
+        page_url = f'{url}&{token_param}={token}' if token else url
+        payload = await _get_json(page_url, headers, driver, auth)
+        yield payload
         page = typing.cast(
             'dict[str, object]', payload if isinstance(payload, dict) else {}
         )
-        token = urllib.parse.quote(str(page.get('nextPageToken') or ''))
-        if not token or token in seen or len(found) >= MAX_MODELS:
-            break
+        token = urllib.parse.quote(str(page.get(token_key) or ''), safe='')
+        if not token or token in seen:
+            return
         seen.add(token)
-    return found[:MAX_MODELS]
 
 
 def _entries(payload: object, key: str) -> list[dict[str, typing.Any]]:
