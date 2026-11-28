@@ -22,7 +22,7 @@ import orjson
 import psycopg
 from psycopg import rows
 
-from imbi.api import model_calls, models, tickets, workflows
+from imbi.api import harness, model_calls, models, tickets, workflows
 from imbi.api.auth import permissions
 from imbi.api.endpoints import workflow_runs
 from imbi.api.workflows import sweeper
@@ -2730,6 +2730,7 @@ class AgentStepTestCase(EngineTestCase):
         await super().asyncSetUp()
         self.config.agent_poll_seconds = 1
         await tickets.initialize()
+        await harness.initialize()
         self.task_pool = tickets.create_pool()
         await self.task_pool.open()
         self.tasks = tickets.TicketStore(self.task_pool)

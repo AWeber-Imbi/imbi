@@ -18,7 +18,7 @@ import httpx
 from slack_sdk import errors as slack_errors
 
 from apps.api.tests import support
-from imbi.api import email, models, tickets, workflows
+from imbi.api import email, harness, models, tickets, workflows
 from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import project_deployments, workflow_runs
 from imbi.api.workflows import tickets as workflow_tickets
@@ -970,6 +970,7 @@ class EngineSlackTestCase(WorkflowRunTestCase):
         self.post_url = f'{self.url}/runs/{self.run_id}/steps/post/slack'
         self.headers = {'Idempotency-Key': f'{self.run_id}:post'}
         await tickets.initialize()
+        await harness.initialize()
         self.task_pool = tickets.create_pool()
         await self.task_pool.open()
         self.tasks = tickets.TicketStore(self.task_pool)
@@ -1382,6 +1383,7 @@ class EngineAgentTaskTestCase(WorkflowRunTestCase):
             ['id'],
         )
         await tickets.initialize()
+        await harness.initialize()
         self.task_pool = tickets.create_pool()
         await self.task_pool.open()
         self.tasks = tickets.TicketStore(self.task_pool)
@@ -2674,6 +2676,7 @@ class EngineAssignTicketTestCase(WorkflowRunTestCase):
         overrides[permissions.get_current_user] = lambda: engine
         overrides[organizations.member_org_id] = lambda: self.org
         await tickets.initialize()
+        await harness.initialize()
         self.task_pool = tickets.create_pool()
         await self.task_pool.open()
         self.tasks = tickets.TicketStore(self.task_pool)
