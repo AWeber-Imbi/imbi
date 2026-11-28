@@ -166,8 +166,9 @@ the credential of the provider of that model, in this order:
    token of that provider, for the user of the call. This needs
    `IMBI_ASSISTANT_API_TOKEN` or `IMBI_SLACKBOT_API_TOKEN`. imbi-api gives
    the token only when the provider is an Anthropic provider in an
-   organization of that user (else `403`). For the Slack bot, that
-   organization must also be the organization of a Slack workspace.
+   organization of that user (else `403`). The Slack bot also names the
+   organization of its Slack workspace: the provider must be in that
+   organization, and the organization must have a Slack workspace.
 2. Else `ANTHROPIC_API_KEY` of the service, sent to the base URL of the
    provider.
 3. Else the call fails (`provider_credentials_unavailable`): the assistant
@@ -384,13 +385,13 @@ their organization.
 Global prompts (such as the prompts of the assistant and the Slack bot) name a
 model by slug. When you save a version of a global prompt, the slug must be a
 model of some organization. A prompt run uses the model with that slug in the
-organization of the run. The assistant and the Slack bot have no organization,
-so they read the catalogs of the organizations of the user.
+organization of the run. The assistant reads the catalog of the organization
+of the conversation, and the Slack bot the catalog of the organization of its
+Slack workspace.
 
 The assistant and the Slack bot use the model of their system prompt when the
 prompt version names one. When the version names no model, they use the
-default model of the organization when the user is a member of one
-organization, else the configured model (`IMBI_ASSISTANT_MODEL` or
+default model of that organization, else the configured model (`IMBI_ASSISTANT_MODEL` or
 `IMBI_SLACKBOT_MODEL`). When the selected model cannot be used, Imbi does not
 use another model: the assistant returns `403` (`model_not_allowed`) or `422`,
 and the Slack bot replies with an error. Only an Anthropic model can be the model of
@@ -432,8 +433,9 @@ default must be a model that the team may use (see
 
 A generative prompt run uses the defaults. A prompt run of a workflow step
 uses the default of the owner team of the workflow, then the organization
-default. The assistant and the Slack bot use the organization default when
-the user is a member of one organization; they have no team. A decision
+default. The assistant (the organization of the conversation) and the Slack
+bot (the organization of its Slack workspace) use the organization default;
+they have no team. A decision
 prompt and a Model decision step must name their model.
 
 The assistant and the Slack bot call a catalog model with the credential of

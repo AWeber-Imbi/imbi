@@ -92,15 +92,12 @@ def _require_assistant() -> None:
 
 
 async def _check_model(
-    db: graph.Graph,
-    auth_ctx: AuthDep,
-    org_id: str,
-    model: str,
-    default: str,
+    db: graph.Graph, auth_ctx: AuthDep, org_id: str, model: str, default: str
 ) -> None:
     """Raise 403 when a non-admin user may not use ``model`` (#788).
 
-    The catalog of the organization of the conversation applies.
+    The catalog of the organization ``org_id`` of the conversation
+    applies.
     """
     user = auth_ctx.require_user
     if user.is_admin:
@@ -142,13 +139,13 @@ async def create_conversation(
     requested = body.model if body and body.model else None
     provider: str | None = None
     # The model in the request, else the model of the prompt version,
-    # else the default model of the user's organization, else the
+    # else the default model of the organization, else the
     # configured model (ADR 0018). A catalog model keeps its provider,
     # whose credential each turn uses.
     try:
         if requested is not None:
             chosen = await prompt_system.request_model(
-                db, user.email, requested, admin=user.is_admin
+                db, user.email, requested, admin=user.is_admin, org_id=org_id
             )
             if chosen is None and requested != assistant_settings.model:
                 raise resolve.ModelNotAllowed(
@@ -156,8 +153,10 @@ async def create_conversation(
                 )
         else:
             chosen = await prompt_system.load_model(
-                db, assistant_settings.prompt_ref, user.email
-            ) or await prompt_system.default_model(db, user.email)
+                db, assistant_settings.prompt_ref, user.email, org_id=org_id
+            ) or await prompt_system.default_model(
+                db, user.email, org_id=org_id
+            )
         if chosen is not None:
             client.client_for(chosen.provider, user.email)
             provider = llm_clients.provider_ref(chosen.provider)
@@ -508,6 +507,7 @@ async def _build_tools_and_system(
     system = await system_prompt.build_system_prompt(
         db,
         auth_ctx,
+        org_id=org_id,
         tool_names=[
             *mcp_manager.get_tool_names(),
             mcp.REFRESH_TOOL_NAME,
@@ -985,7 +985,9 @@ async def send_message(
             ),
         )
     # The allowed teams can change after the conversation starts.
-    await _check_model(db, auth_ctx, org_id, conv.model, assistant_settings.model)
+    await _check_model(
+        db, auth_ctx, org_id, conv.model, assistant_settings.model
+    )
     # Each turn reads the provider again, so a disabled provider or a
     # removed credential stops the conversation (ADR 0018).
     try:

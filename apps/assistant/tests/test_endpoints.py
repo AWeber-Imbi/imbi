@@ -503,6 +503,7 @@ class CreateConversationEndpointTestCase(
             (default, [], [], False, False),
         ):
             db = mock.AsyncMock()
+            # The catalog of the organization of the conversation.
             db.execute.side_effect = [scopes, allowed_rows]
             # The catalog lookup of the request model (see the tests of
             # request_model); this test checks the team rule after it.
@@ -568,11 +569,12 @@ class CreateConversationEndpointTestCase(
                 auth_ctx=_make_auth_context(is_admin=True),
                 body=None,
             )
+        # Only the AI models of the organization of the conversation.
         load.assert_awaited_once_with(
             mock.ANY,
             'imbi-assistant/system@stable',
             'test@example.com',
-            org_ids=['org-1'],
+            org_id='org-1',
         )
         mock_create.assert_called_once_with(
             mock.ANY,
@@ -694,7 +696,11 @@ class CreateConversationEndpointTestCase(
                 body=body,
             )
         request_model.assert_awaited_once_with(
-            mock.ANY, 'test@example.com', 'claude-opus-4-20250514', admin=True
+            mock.ANY,
+            'test@example.com',
+            'claude-opus-4-20250514',
+            admin=True,
+            org_id='org-1',
         )
         client_for.assert_called_once()
         mock_create.assert_called_once_with(

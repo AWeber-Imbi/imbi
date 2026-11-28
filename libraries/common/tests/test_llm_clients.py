@@ -52,6 +52,7 @@ class ProviderClientsTestCase(unittest.IsolatedAsyncioTestCase):
             'ik_1_s',
             provider='acme/claude',
             user='ada@x',
+            org=None,
         )
         self.assertEqual(client.auth_token, 'imbi-ai-provider')
 

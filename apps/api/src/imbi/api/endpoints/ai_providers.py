@@ -978,6 +978,9 @@ class ServiceTokenRequest(pydantic.BaseModel):
     failed: str | None = None
     provider: str | None = None
     user: str | None = None
+    #: The slug of the organization of the call. The slackbot must set
+    #: it to the organization of its Slack workspace.
+    org: str | None = None
 
 
 class ServiceToken(pydantic.BaseModel):
@@ -1008,8 +1011,8 @@ async def service_token(
 
     Raises:
         403: The provider is not in an organization of ``user``, is not
-            an ``anthropic`` provider, or for the slackbot, is not in the
-            organization of a Slack workspace.
+            an ``anthropic`` provider, or for the slackbot, is not in
+            ``org``, the organization of its Slack workspace.
         404: The caller is not a service with an AI Provider, or the
             provider does not exist.
         422: ``provider`` without ``user``.
@@ -1020,7 +1023,7 @@ async def service_token(
     """
     if data.provider is not None:
         ref = data.provider
-        node = await _user_provider(db, auth, ref, data.user)
+        node = await _user_provider(db, auth, ref, data.user, data.org)
     else:
         ref = (
             settings.get_ai_providers().for_service(auth.service_account.slug)
@@ -1072,6 +1075,7 @@ async def _user_provider(
     auth: permissions.AuthContext,
     ref: str,
     user: str | None,
+    org: str | None,
 ) -> models.AIProvider:
     """The catalog provider ``ref`` that a service calls for ``user``."""
     if (
@@ -1099,19 +1103,17 @@ async def _user_provider(
             status_code=403,
             detail=f'AI provider {ref!r} is not an anthropic provider',
         )
-    if (
-        auth.service_account.slug == common_permissions.SLACKBOT_ACCOUNT
-        and not (
-            await db.execute(
-                _SLACK_ORG_QUERY, {'org_id': node.organization.id}, ['id']
-            )
+    if auth.service_account.slug == common_permissions.SLACKBOT_ACCOUNT and (
+        org != node.organization.slug
+        or not await db.execute(
+            _SLACK_ORG_QUERY, {'org_id': node.organization.id}, ['id']
         )
     ):
         # The slackbot works in the organization of its Slack workspace
         # only, as its user tokens do (#1027).
         raise fastapi.HTTPException(
             status_code=403,
-            detail=f'AI provider {ref!r} is not in the organization of a '
+            detail=f'AI provider {ref!r} is not in the organization of the '
             'Slack workspace',
         )
     return node

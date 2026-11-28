@@ -201,6 +201,21 @@ class ServiceTokenTestCase(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_named_provider_sends_the_org(self) -> None:
+        source = tokens.ServiceToken(
+            'http://x', 'k', provider='acme/claude', user='a', org='acme'
+        )
+        await source.get()
+        self.assertEqual(
+            json.loads(self.requests[0].content),
+            {
+                'failed': None,
+                'provider': 'acme/claude',
+                'user': 'a',
+                'org': 'acme',
+            },
+        )
+
     async def test_errors(self) -> None:
         for reply, reason, retryable in (
             (httpx.ConnectError('down'), 'unreachable', True),

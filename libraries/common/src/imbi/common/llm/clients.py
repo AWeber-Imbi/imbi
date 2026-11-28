@@ -95,14 +95,16 @@ class ProviderClients:
         #: By provider id and user, oldest use first: the client and the
         #: settings it was made with.
         self._clients: collections.OrderedDict[
-            tuple[str, str],
+            tuple[str, str, str | None],
             tuple[anthropic.AsyncAnthropic, tuple[str, bool, str | None]],
         ] = collections.OrderedDict()
 
     def get(
-        self, provider: models.AIProvider, user: str
+        self, provider: models.AIProvider, user: str, org: str | None = None
     ) -> anthropic.AsyncAnthropic:
         """Return the client of ``provider`` for a call for ``user``.
+        ``org`` is the slug of the organization of the call, which a
+        workload identity token request names (the slackbot sets it).
 
         Raises:
             resolve.ModelUnusable: ``provider_credentials_unavailable``.
@@ -111,7 +113,7 @@ class ProviderClients:
         ref = provider_ref(provider)
         wif = provider.workload_identity is not None
         settings = (ref, wif, provider.base_url)
-        key = (provider.id, user)
+        key = (provider.id, user, org)
         found = self._clients.get(key)
         if found is not None and found[1] == settings:
             self._clients.move_to_end(key)
@@ -119,7 +121,11 @@ class ProviderClients:
         if wif and self._api_token:
             client = tokens.bearer_client(
                 tokens.ServiceToken(
-                    self._api_url, self._api_token, provider=ref, user=user
+                    self._api_url,
+                    self._api_token,
+                    provider=ref,
+                    user=user,
+                    org=org,
                 ),
                 client_class=self._client_class,
                 base_url=provider.base_url,

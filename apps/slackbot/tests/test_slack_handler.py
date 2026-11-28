@@ -499,11 +499,6 @@ class HandleEventTests(helpers.TestCase):
                 new=mock.AsyncMock(**kwargs),
             ) as default_model,
             mock.patch.object(
-                slack_handler.system_prompt,
-                'workspace_org',
-                return_value='acme',
-            ),
-            mock.patch.object(
                 slack_handler.identity,
                 'get_graph',
                 return_value=mock.AsyncMock(),
@@ -514,7 +509,7 @@ class HandleEventTests(helpers.TestCase):
         if prompt_model is None:
             # Only the organization of the Slack workspace (#1027).
             default_model.assert_awaited_once_with(
-                mock.ANY, 'ada@example.com', org_slug='acme'
+                mock.ANY, 'ada@example.com', org_id='org-1'
             )
         return run_turn, client
 
@@ -547,8 +542,9 @@ class HandleEventTests(helpers.TestCase):
                 # A catalog model uses the client of its provider.
                 self.assertIs(kwargs['api_client'], api_client)
                 if api_client is sentinel:
+                    # The token request names the workspace org.
                     client_for.assert_called_once_with(
-                        provider, 'ada@example.com'
+                        provider, 'ada@example.com', 'acme'
                     )
 
     async def test_unusable_default_is_an_error(self) -> None:

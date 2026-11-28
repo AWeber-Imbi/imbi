@@ -282,16 +282,14 @@ async def _process(
         model, provider = prompt.model_id, prompt.provider
         if model is None and db is not None:
             default = await system.default_model(
-                db,
-                user.email,
-                org_slug=system_prompt.workspace_org(user),
+                db, user.email, org_id=user.org_id
             )
             if default is not None:
                 model, provider = default
         api_client = (
             None
             if provider is None
-            else client.client_for(provider, user.email)
+            else client.client_for(provider, user.email, user.org_slug)
         )
         answer = await agent.run_turn(
             messages=convo,

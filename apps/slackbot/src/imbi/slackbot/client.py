@@ -114,10 +114,10 @@ def is_available() -> bool:
 
 
 def client_for(
-    provider: models.AIProvider, user: str
+    provider: models.AIProvider, user: str, org: str
 ) -> anthropic.AsyncAnthropic:
     """Return the client of a catalog ``provider``, for a call for
-    ``user``.
+    ``user`` in the organization ``org`` of the Slack workspace.
 
     Raises:
         imbi.common.llm.resolve.ModelUnusable: No credential for the
@@ -127,4 +127,4 @@ def client_for(
     """
     if _providers is None:
         return get_client()
-    return _providers.get(provider, user)
+    return _providers.get(provider, user, org)

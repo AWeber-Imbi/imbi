@@ -1202,10 +1202,12 @@ class ServiceTokenTestCase(AIProviderTestBase):
         self.mock_store.identity_source.return_value = None
         self.assertEqual(self.post().status_code, 502)
 
-    def post_for(self, user: str | None = 'ada@example.com') -> typing.Any:
+    def post_for(
+        self, user: str | None = 'ada@example.com', org: str | None = None
+    ) -> typing.Any:
         return self.client.post(
             '/ai-providers/token',
-            json={'provider': 'acme/claude', 'user': user},
+            json={'provider': 'acme/claude', 'user': user, 'org': org},
         )
 
     def route_for(self, member_of: list[str], **provider: typing.Any) -> None:
@@ -1235,27 +1237,35 @@ class ServiceTokenTestCase(AIProviderTestBase):
             {'email': 'ada@example.com'},
         )
 
-    def test_the_slackbot_needs_the_organization_of_a_workspace(
+    def test_the_slackbot_needs_the_organization_of_its_workspace(
         self,
     ) -> None:
         # The slackbot works in its Slack workspace's organization only
-        # (#1027), so a provider of another organization of the user is
-        # refused.
+        # (#1027). It names that organization, and the provider must be
+        # in it and the organization must have a Slack workspace.
         self.auth_context.service_account = models.ServiceAccount(
             slug='imbi-slackbot', display_name='Imbi Slackbot'
         )
         self.route_for([ORG_ID])
-        self.assertEqual(self.post_for().status_code, 403)
-        self.mock_db.execute.side_effect.rules.insert(
+        router = self.mock_db.execute.side_effect
+        router.rules.insert(
             0, (ai_providers._SLACK_ORG_QUERY, [{'id': ORG_ID}])
         )
-        self.assertEqual(self.post_for().status_code, 200)
+        for org, status in (
+            (None, 403),
+            # Another workspace's organization of the same user.
+            ('other-org', 403),
+            ('acme', 200),
+        ):
+            with self.subTest(org=org):
+                self.assertEqual(self.post_for(org=org).status_code, status)
         self.assertEqual(
-            self.mock_db.execute.side_effect.params_for(
-                ai_providers._SLACK_ORG_QUERY
-            ),
+            router.params_for(ai_providers._SLACK_ORG_QUERY),
             {'org_id': ORG_ID},
         )
+        # The organization has no Slack workspace.
+        router.rules.pop(0)
+        self.assertEqual(self.post_for(org='acme').status_code, 403)
 
     def test_a_provider_of_another_organization_is_403(self) -> None:
         self.route_for(['org-other'])

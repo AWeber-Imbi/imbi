@@ -312,26 +312,20 @@ class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(found.provider, resolved.model.provider)
 
     async def test_one_named_organization(self) -> None:
-        # The Slack bot names the organization of its workspace, so only
-        # that catalog is read.
-        db = mock.AsyncMock()
-        db.execute.return_value = [{'id': 'org-2'}]
+        # The organization of the call (an assistant conversation, a
+        # Slack workspace): only that catalog is read.
         with (
-            mock.patch.object(
-                resolve.graph, 'parse_agtype', side_effect=lambda v: v
-            ),
+            mock.patch.object(resolve, 'member_org_ids') as member_orgs,
             mock.patch.object(
                 llm_resolve,
                 'resolve_model',
                 mock.AsyncMock(return_value=llm_resolve.ResolvedModel('env')),
             ) as resolver,
         ):
-            await system.default_model(db, 'dev@example.com', org_slug='acme')
-        db.execute.assert_awaited_once_with(
-            system.MEMBER_ORG_QUERY,
-            {'email': 'dev@example.com', 'org': 'acme'},
-            ['id'],
-        )
+            await system.default_model(
+                mock.AsyncMock(), 'dev@example.com', org_id='org-2'
+            )
+        member_orgs.assert_not_called()
         resolver.assert_awaited_once_with(
             mock.ANY, ['org-2'], email='dev@example.com'
         )

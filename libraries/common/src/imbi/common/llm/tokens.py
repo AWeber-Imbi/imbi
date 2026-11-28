@@ -191,7 +191,8 @@ class ServiceToken:
     With ``provider`` (``<org-slug>/<provider-slug>``), imbi-api gives
     the token of that provider when it is in an organization of
     ``user``, the user the service calls the model for. A source with a
-    provider serves that one user only.
+    provider serves that one user only. ``org`` names the organization
+    of the call; imbi-api requires it from the slackbot.
     """
 
     def __init__(
@@ -200,11 +201,13 @@ class ServiceToken:
         api_token: str,
         provider: str | None = None,
         user: str | None = None,
+        org: str | None = None,
     ) -> None:
         self._url = f'{api_url.rstrip("/")}/ai-providers/token'
         self._api_token = api_token
         self._provider = provider
         self._user = user
+        self._org = org
         self._cache = TokenCache()
         self._failed: str | None = None
 
@@ -222,6 +225,8 @@ class ServiceToken:
                 payload: dict[str, str | None] = {'failed': self._failed}
                 if self._provider is not None:
                     payload |= {'provider': self._provider, 'user': self._user}
+                    if self._org is not None:
+                        payload['org'] = self._org
                 response = await client.post(
                     self._url,
                     json=payload,

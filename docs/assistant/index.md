@@ -57,12 +57,11 @@ is set:
 
 1. The model in the request.
 2. The model of the prompt version (see [AI Models](../admin/ai-models.md)).
-3. The default model of the organization, when the user is a member of one
-   organization.
+3. The default model of the organization of the conversation.
 4. `IMBI_ASSISTANT_MODEL`.
 
 The model in the request is a vendor model id. It must be the model id of an
-AI model in an organization of the user, with the same checks as the other
+AI model of the organization of the conversation, with the same checks as the other
 levels, or `IMBI_ASSISTANT_MODEL`. Another id gets `403`
 (`model_not_allowed`).
 
