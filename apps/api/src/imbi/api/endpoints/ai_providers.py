@@ -715,6 +715,7 @@ async def set_ai_provider_credentials(
 
     Raises:
         404: No such provider.
+        409: ``allow_insecure_http`` changed after the read.
 
     """
     _ = auth
@@ -732,7 +733,10 @@ async def set_ai_provider_credentials(
     node.credential_updated_at = datetime.datetime.now(datetime.UTC)
     LOGGER.info('Replaced credentials for AI provider %s', id)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 @ai_providers_router.delete(
@@ -759,6 +763,7 @@ async def delete_ai_provider_credentials(
 
     Raises:
         404: No such provider.
+        409: ``allow_insecure_http`` changed after the read.
 
     """
     _ = auth
@@ -768,7 +773,10 @@ async def delete_ai_provider_credentials(
     node.credential_updated_at = None
     LOGGER.info('Removed credentials for AI provider %s', id)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 @ai_providers_router.post('/{id}/discover', response_model=DiscoveryResponse)
@@ -905,7 +913,8 @@ async def set_ai_provider_workload_identity(
     Raises:
         403: No ``secret_provider:write`` in the organization.
         404: No such provider.
-        409: The provider has a stored key.
+        409: The provider has a stored key, or
+            ``allow_insecure_http`` changed after the read.
         422: The driver cannot use workload identity, the provider has a
             ``base_url``, no exchanger is installed for the vendor, or
             the target is not valid.
@@ -950,7 +959,10 @@ async def set_ai_provider_workload_identity(
         org_id,
     )
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 @ai_providers_router.delete(
@@ -971,6 +983,7 @@ async def delete_ai_provider_workload_identity(
 
     Raises:
         404: No such provider.
+        409: ``allow_insecure_http`` changed after the read.
 
     """
     _ = auth
@@ -979,7 +992,10 @@ async def delete_ai_provider_workload_identity(
     tokens.CACHE.forget(id)
     LOGGER.info('Removed workload identity for AI provider %s', id)
     counts = await model_counts(db, org_id)
-    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
+    return to_response(
+        await persist(db, node, insecure_http_was=node.allow_insecure_http),
+        *counts.get(id, (0, 0)),
+    )
 
 
 class ServiceTokenRequest(pydantic.BaseModel):

@@ -1053,6 +1053,19 @@ class InsecureHttpTestCase(AIProviderTestBase):
             'WHERE coalesce(p.allow_insecure_http, false) = true', update
         )
 
+    def test_credential_writes_only_while_the_flag_is_unchanged(
+        self,
+    ) -> None:
+        self.auth_context.permissions = {'ai_model:credentials'}
+        stored = provider_props(**self.GATEWAY, allow_insecure_http=True)
+        router = self.route((GET_PROVIDER, [{'p': stored}]))
+        response = self.client.delete(f'{BASE}/prv-1/credentials')
+        self.assertEqual(response.status_code, 409, response.text)
+        update = next(q for q, _ in router.calls if UPDATE in q)
+        self.assertIn(
+            'WHERE coalesce(p.allow_insecure_http, false) = true', update
+        )
+
 
 class WorkloadIdentityTestCase(AIProviderTestBase):
     """``PUT`` / ``DELETE`` ``/{id}/workload-identity`` and its effects."""
