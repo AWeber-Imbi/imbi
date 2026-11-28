@@ -648,9 +648,9 @@ def _edge_row(
 ) -> dict[str, object]:
     """A graph row as ``execute_opslog_backfill`` reads it.
 
-    ``parse_agtype`` passes plain strings through and JSON-decodes the
-    ``deployments`` payload, so encoding it as JSON mirrors the AGE
-    edge-property shape.
+    ``deployments`` is the collected list of ``Deployment`` property
+    maps.  ``parse_agtype`` JSON-decodes it, so encoding it as JSON
+    mirrors what AGE returns.
     """
     return {
         'env_slug': env_slug,
@@ -695,7 +695,7 @@ def _event(
         'performed_by': performed_by,
         'external_run_id': external_run_id,
         'external_run_url': external_run_url,
-        'timestamp': timestamp,
+        'updated_at': timestamp,
     }
 
 

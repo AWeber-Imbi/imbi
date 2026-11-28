@@ -894,10 +894,6 @@ class Executors:
         ``last_healthy``: the newest release that succeeded, other than
         the release of the newest attempt. ``previous``: the release
         that succeeded before the one that serves now.
-
-        ponytail: reads ``Deployment`` nodes only, not the legacy
-        ``DEPLOYED_TO`` arrays; history from before that migration is
-        not seen.
         """
         found = await _values(
             self.db,

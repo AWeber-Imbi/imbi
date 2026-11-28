@@ -2093,10 +2093,10 @@ class DocumentTemplate(Node):
 
 
 class DeploymentEvent(pydantic.BaseModel):
-    """A single status transition for a release deployment.
+    """The current state of one release deployment.
 
-    A release accumulates a list of these on the ``DEPLOYED_TO``
-    edge to a given ``Environment`` — one per status transition.
+    Each ``Deployment`` node renders as one of these, with the status
+    and time of its last transition.
 
     """
 
@@ -2110,8 +2110,8 @@ class DeploymentEvent(pydantic.BaseModel):
         'failed',
         'rolled_back',
     ]
-    #: The id of the ``Deployment`` node. ``None`` for a legacy entry
-    #: of a ``DEPLOYED_TO`` array, which has no node.
+    #: The id of the ``Deployment`` node. ``None`` for an event that a
+    #: write returns before it reads the node back.
     id: str | None = None
     note: str | None = None
     external_run_id: str | None = None
@@ -2130,50 +2130,6 @@ class DeploymentEvent(pydantic.BaseModel):
     #: mirror image. ``None`` whenever the principal's own token was
     #: used, which the principal already describes.
     credential: str | None = None
-
-
-def parse_deployment_events(
-    raw: object,
-    *,
-    on_error: typing.Literal['raise', 'skip'] = 'raise',
-) -> list[DeploymentEvent]:
-    """Parse the JSON-encoded ``deployments`` edge property.
-
-    A release's ``DEPLOYED_TO`` edge stores its event history as a
-    JSON-encoded string (or, once decoded by the graph layer, a list).
-    Falsy input and anything that isn't a list yield ``[]``; every list
-    entry is validated into a :class:`DeploymentEvent`.
-
-    ``on_error`` controls how malformed data is handled. ``'raise'``
-    (the default) lets a JSON decode error or an invalid entry
-    propagate, so a bad edge fails loudly. ``'skip'`` is tolerant:
-    undecodable JSON yields ``[]`` and each entry that fails validation
-    is dropped, keeping the good ones — for callers (e.g. score
-    computation) that must not fail the whole operation over one bad
-    row.
-    """
-    if not raw:
-        return []
-    if isinstance(raw, str):
-        try:
-            data: object = json.loads(raw)
-        except json.JSONDecodeError:
-            if on_error == 'raise':
-                raise
-            return []
-    else:
-        data = raw
-    if not isinstance(data, list):
-        return []
-    events: list[DeploymentEvent] = []
-    for entry in typing.cast('list[object]', data):
-        try:
-            events.append(DeploymentEvent.model_validate(entry))
-        except pydantic.ValidationError:
-            if on_error == 'raise':
-                raise
-            continue
-    return events
 
 
 class ReleaseLink(pydantic.BaseModel):

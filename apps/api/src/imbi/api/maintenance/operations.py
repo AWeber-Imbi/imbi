@@ -583,11 +583,11 @@ async def execute_rescore(
 
 _DEPLOYMENT_EDGES_QUERY: typing.LiteralString = """
 MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
-      -[d:DEPLOYED_TO]->(e:Environment)
+      -[:HAS_DEPLOYMENT]->(d:Deployment)-[:TARGETS]->(e:Environment)
 RETURN e.slug AS env_slug,
        r.tag AS tag,
        r.committish AS committish,
-       d.deployments AS deployments
+       collect(properties(d)) AS deployments
 """
 
 
@@ -599,7 +599,7 @@ def _commit_sha_repairs(
     existing_rows: dict[tuple[str, str], list[dict[str, typing.Any]]],
     repaired_ids: set[str],
 ) -> list[dict[str, typing.Any]]:
-    """Rows to re-insert so one deployment edge's env carries its sha.
+    """Rows to re-insert so one release's environment carries its sha.
 
     Probes both version candidates because an untagged deploy stored the
     committish where a tagged one stored the tag.  ``repaired_ids`` is
@@ -701,13 +701,13 @@ async def execute_opslog_backfill(
     *,
     ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
-    """Backfill ``operations_log`` 'Deployed' rows from the graph edges.
+    """Backfill ``operations_log`` 'Deployed' rows from the graph.
 
     Deployments recorded outside Imbi carry their deployer only on
-    ``DeploymentEvent.performed_by`` on the ``DEPLOYED_TO`` edge; the
+    ``performed_by`` on the ``Deployment`` node; the
     ops-log 'Deployed' rows that ``lookup_ops_log_performed_by`` reads to
     resolve "Deployed by" are written solely by the in-product
-    deploy/promote flows.  This walks every deployment edge, and for each
+    deploy/promote flows.  This walks every deployment, and for each
     ``success`` event that carries a ``performed_by`` writes a matching
     ops-log row when one does not already exist, closing the attribution
     gap for those releases.
@@ -715,16 +715,17 @@ async def execute_opslog_backfill(
     Events with an empty ``performed_by`` are skipped entirely -- never
     insert one, because ``argMax(performed_by, occurred_at)`` would let a
     newer empty row mask a real deployer.  Events are processed
-    newest-first per edge so the most recent attributed deployer is the
-    one that survives dedupe for a given ``(environment, version)``.
+    newest-first per release and environment so the most recent
+    attributed deployer is the one that survives dedupe for a given
+    ``(environment, version)``.
 
     It also repairs the rows that already exist: any 'Deployed' row whose
     audit payload predates ``commit_sha`` is re-inserted with the
-    committish from its deployment edge, so the operations-log UI can
+    committish from its release, so the operations-log UI can
     join every environment of one release train (see
     :func:`_commit_sha_repairs`).
 
-    Skipped when the project has no deployment edges, or every attributed
+    Skipped when the project has no deployments, or every attributed
     event already has a matching ops-log row and no row needs a
     committish filled in.
     """
@@ -767,7 +768,7 @@ async def execute_opslog_backfill(
         candidates = ops_log_version_candidates(tag, committish)
         # Rows written before the audit payload carried `commit_sha` can
         # only be joined to the rest of their release train by tag, which
-        # leaves an untagged environment stranded. The edge knows the
+        # leaves an untagged environment stranded. The release knows the
         # committish, so fill it in on the rows that already exist.
         repairs.extend(
             _commit_sha_repairs(
@@ -778,9 +779,7 @@ async def execute_opslog_backfill(
                 repaired_ids=repaired_ids,
             )
         )
-        events = common_models.parse_deployment_events(
-            graph.parse_agtype(row.get('deployments')), on_error='skip'
-        )
+        events = deployments.node_events(row.get('deployments'))
         for event in sorted(events, key=lambda e: e.timestamp, reverse=True):
             if event.status != 'success' or not event.performed_by:
                 continue

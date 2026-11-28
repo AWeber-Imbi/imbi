@@ -882,10 +882,6 @@ async def _fetch_current_releases(
     current release, and the newest attempt of any status is returned
     as the latest when it is a different attempt.
 
-    The legacy ``DEPLOYED_TO`` deployment arrays are not read.  In
-    production they decided no current release (issue #998), and reading
-    them cost about 500 ms on every list.
-
     ``performed_by`` is null for in-product deploy/promote actions
     (which capture the operator on the ``operations_log`` audit row
     instead).  For those rows we look up the deployer in

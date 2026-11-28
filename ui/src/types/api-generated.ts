@@ -8336,8 +8336,8 @@ export interface paths {
          *
          *     For ``deploy`` / ``redeploy``, dispatches the workflow with the
          *     chosen committish; if the committish (or its ``ref_label``) matches
-         *     an existing ``Release`` version on the project, also appends a
-         *     ``DeploymentEvent`` to the ``DEPLOYED_TO`` edge.
+         *     an existing ``Release`` version on the project, also records a
+         *     ``Deployment`` node for it.
          *
          *     For ``promote``: cuts a tag at ``from_committish``, creates a
          *     release with the supplied notes on the remote, dispatches the
@@ -8461,7 +8461,7 @@ export interface paths {
         put?: never;
         /**
          * Resync Project Deployments
-         * @description Enqueue a backfill of Release nodes + DEPLOYED_TO edges.
+         * @description Enqueue a backfill of Release and Deployment nodes.
          *
          *     The worker asks the project's deployment plugin for the most recent
          *     ``limit`` deployments per environment, upserts any missing
@@ -8470,8 +8470,8 @@ export interface paths {
          *     deep backfill makes hundreds of remote API calls, so the work runs
          *     as a Valkey-stream job; poll ``GET /deployments/sync-status`` for
          *     the outcome.  No ``operations_log`` audit row is written -- the
-         *     ``DEPLOYED_TO`` edge already carries the original creator via
-         *     ``DeploymentEvent.performed_by``.
+         *     ``Deployment`` node already carries the original creator via
+         *     ``performed_by``.
          *
          *     ``limit`` defaults to 1 (cheap webhook-lapse catch-up).  Raise it
          *     (up to 100, the GitHub per-page ceiling) for a deeper backfill that
@@ -15049,10 +15049,10 @@ export interface components {
         };
         /**
          * DeploymentEvent
-         * @description A single status transition for a release deployment.
+         * @description The current state of one release deployment.
          *
-         *     A release accumulates a list of these on the ``DEPLOYED_TO``
-         *     edge to a given ``Environment`` — one per status transition.
+         *     Each ``Deployment`` node renders as one of these, with the status
+         *     and time of its last transition.
          */
         DeploymentEvent: {
             /**

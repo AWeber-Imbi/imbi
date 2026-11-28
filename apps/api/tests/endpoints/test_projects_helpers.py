@@ -183,7 +183,7 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             result = await projects._fetch_current_releases(db, ['p1'])
-        # The legacy DEPLOYED_TO arrays are not read (issue #998).
+        # Only the Deployment node reader is read (issue #998).
         db.execute.assert_not_called()
         return result
 

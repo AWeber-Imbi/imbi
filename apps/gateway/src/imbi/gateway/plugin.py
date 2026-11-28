@@ -74,8 +74,8 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                 name='add_deployment_event',
                 label='Add Deployment Event from Webhook',
                 description=(
-                    "Appends a deployment event to the release's "
-                    'DEPLOYED_TO edge for the matching environment.'
+                    'Records a deployment of the release to the '
+                    'matching environment.'
                 ),
                 callable_path='imbi.gateway.actions:add_deployment_event',
                 model_path='imbi.gateway.actions:AddDeploymentEventConfig',

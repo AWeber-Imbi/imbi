@@ -8,10 +8,9 @@ business identity such as ``1.0.0``) and a required 7-char
 ``Deployment`` node recorded against it via ``HAS_DEPLOYMENT``.
 
 Deployments used to be JSON entries in a ``deployments`` array on a
-``(:Release)-[:DEPLOYED_TO]->(:Environment)`` edge.  Writes now go to
-``Deployment`` nodes (see :mod:`imbi.common.deployments`); reads union
-the nodes with the array entries that predate them, until the phase-3
-migration converts the history and retires ``DEPLOYED_TO``.
+``(:Release)-[:DEPLOYED_TO]->(:Environment)`` edge.  They are now
+``Deployment`` nodes (see :mod:`imbi.common.deployments`), and nothing
+reads or writes the array.
 
 """
 
@@ -502,47 +501,6 @@ async def _gather_release_hydration(
     return list(run_results), ci_results
 
 
-def _keep_latest(
-    by_env: dict[
-        str,
-        tuple[
-            dict[str, typing.Any],
-            dict[str, typing.Any] | None,
-            models.DeploymentEvent | None,
-        ],
-    ],
-    slug: str,
-    env: dict[str, typing.Any],
-    release: dict[str, typing.Any],
-    event: models.DeploymentEvent,
-) -> None:
-    """Keep the newest ``(release, event)`` pair seen for *slug*."""
-    existing = by_env.get(slug)
-    if (
-        existing is None
-        or existing[2] is None
-        or deployment_nodes.as_utc(event.timestamp)
-        > deployment_nodes.as_utc(existing[2].timestamp)
-    ):
-        by_env[slug] = (env, release, event)
-
-
-def _predates_serving_legacy(
-    attempt: deployment_nodes.ProjectDeployment,
-    legacy_event: models.DeploymentEvent | None,
-    serving_event: models.DeploymentEvent | None,
-) -> bool:
-    """When a legacy array entry still wins, an attempt that started at
-    or before it is not newer than what the environment serves.  When a
-    node won, the reader has already compared start times."""
-    return (
-        legacy_event is not None
-        and serving_event is legacy_event
-        and deployment_nodes.started_at(attempt)
-        <= deployment_nodes.as_utc(legacy_event.timestamp)
-    )
-
-
 async def _reconcile_in_flight_run(
     db: graph.Graph,
     *,
@@ -624,67 +582,36 @@ async def _hydrate_release_train(
             models.DeploymentEvent | None,
         ],
     ],
-    also_in_flight: list[
-        tuple[str, dict[str, typing.Any], models.DeploymentEvent]
-    ]
-    | None = None,
-    latest_by_slug: dict[str, LatestDeployment] | None = None,
+    attempts: list[tuple[str, dict[str, typing.Any], models.DeploymentEvent]],
+    latest_by_slug: dict[str, LatestDeployment],
 ) -> dict[str, CheckStatus | None]:
     """Hydrate live deploy run + CI check-runs status per env.
 
-    Mutates ``by_env`` in place: whatever
-    :func:`_reconcile_in_flight_run` learns about an in-flight run --
-    a newly terminal status, or the run URL that only exists once the
-    deploy workflow has posted a status -- replaces the in-memory event
-    so the response reflects the live state.  Returns a slug →
-    ``CheckStatus`` map that the caller folds into the response.
-
-    ``also_in_flight`` carries ``(slug, release, event)`` for attempts
-    that are *not* what the environment is showing as current.  Since
-    the current-release read became success-only, an in-flight attempt
-    no longer appears in ``by_env`` at all, and this pass -- the only
-    thing that backfills a run URL the first webhook could not carry, or
-    closes out a run that went terminal unheard -- would never see one
-    again.  Those entries are polled and persisted like any other, and
-    folded into the response by :func:`_fold_attempt`.
+    ``by_env`` holds what each environment serves, which is always a
+    ``success``, so only its CI status is read.  ``attempts`` carries
+    ``(slug, release, event)`` for the in-flight attempts newer than
+    that.  This pass is the only thing that backfills a run URL the
+    first webhook could not carry, or closes out a run that went
+    terminal unheard.  Each attempt is polled, persisted, and folded
+    into ``by_env`` and ``latest_by_slug`` in place by
+    :func:`_fold_attempt`, so the response shows the live state.
+    Returns a slug → ``CheckStatus`` map that the caller folds into the
+    response.
 
     Failures are tolerated silently — the release train must keep
     rendering even if the plugin can't be resolved or its calls hiccup.
     """
-    in_flight: list[tuple[str, str, str, models.DeploymentEvent]] = []
     deployed: list[tuple[str, str]] = []
-    for slug, (_env, release_raw, event) in by_env.items():
+    for slug, (_env, release_raw, _event) in by_env.items():
         if release_raw is None:
             continue
-        release_id = str(release_raw.get('id') or '')
         committish = str(release_raw.get('committish') or '')
-        if not release_id or not committish:
-            continue
-        deployed.append((slug, committish))
-        # ``pending`` counts as in flight: the gateway maps GitHub's
-        # ``queued``/``pending`` deployment_status states to it, and
-        # that first delivery is exactly the one that arrives before
-        # the workflow knows its own run URL.  Polling only
-        # ``in_progress`` would strand those events with a null
-        # ``external_run_url`` forever -- the bug this pass exists to
-        # fix -- unless a later ``in_progress`` webhook happened to
-        # land.
-        if (
-            event is not None
-            and event.status in deployment_nodes.IN_FLIGHT_STATUSES
-            and event.external_run_id
-        ):
-            in_flight.append((slug, release_id, committish, event))
-
-    # Appended after the ``by_env`` walk so the display entries keep the
-    # leading indices: everything from ``display_in_flight`` on is an
-    # attempt that ``_fold_attempt`` handles instead.
-    display_in_flight = len(in_flight)
-    attempts = also_in_flight or []
-    in_flight.extend(
+        if release_raw.get('id') and committish:
+            deployed.append((slug, committish))
+    in_flight = [
         (slug, str(release['id']), str(release['committish']), event)
         for slug, release, event in attempts
-    )
+    ]
     if not in_flight and not deployed:
         return {}
 
@@ -714,8 +641,8 @@ async def _hydrate_release_train(
     )
 
     promoted: set[str] = set()
-    for index, ((slug, release_id, _committish, event), result) in enumerate(
-        zip(in_flight, run_results, strict=True)
+    for (slug, release, event), result in zip(
+        attempts, run_results, strict=True
     ):
         if isinstance(result, BaseException):
             continue
@@ -723,20 +650,15 @@ async def _hydrate_release_train(
             db,
             org_slug=org_slug,
             project_id=project_id,
-            release_id=release_id,
+            release_id=str(release['id']),
             env_slug=slug,
             event=event,
             result=result,
         )
-        if new_event is None:
-            continue
-        if index >= display_in_flight:
-            release = attempts[index - display_in_flight][1]
-            if _fold_attempt(by_env, latest_by_slug, slug, release, new_event):
-                promoted.add(slug)
-            continue
-        env, release_raw, _ = by_env[slug]
-        by_env[slug] = (env, release_raw, new_event)
+        if new_event is not None and _fold_attempt(
+            by_env, latest_by_slug, slug, release, new_event
+        ):
+            promoted.add(slug)
 
     return _ci_status_by_slug(deployed, ci_results, promoted)
 
@@ -775,7 +697,7 @@ def _fold_attempt(
             models.DeploymentEvent | None,
         ],
     ],
-    latest_by_slug: dict[str, LatestDeployment] | None,
+    latest_by_slug: dict[str, LatestDeployment],
     slug: str,
     release: dict[str, typing.Any],
     event: models.DeploymentEvent,
@@ -788,10 +710,9 @@ def _fold_attempt(
     """
     if event.status == 'success':
         by_env[slug] = (by_env[slug][0], release, event)
-        if latest_by_slug is not None:
-            latest_by_slug.pop(slug, None)
+        latest_by_slug.pop(slug, None)
         return True
-    if latest_by_slug is not None and slug in latest_by_slug:
+    if slug in latest_by_slug:
         latest_by_slug[slug] = latest_by_slug[slug].model_copy(
             update={
                 'status': event.status,
@@ -1185,21 +1106,16 @@ async def list_current_releases(
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     MATCH (p)-[:DEPLOYED_IN]->(e:Environment)
-    OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release)
-                   -[d:DEPLOYED_TO]->(e)
-    RETURN e{{.slug, .name, .sort_order}} AS env,
-           CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
-           CASE WHEN d IS NULL THEN null ELSE d.deployments END
-               AS deployments
+    RETURN e{{.slug, .name, .sort_order}} AS env
     """
     rows = await db.execute(
         query,
         {'project_id': project_id, 'org_slug': org_slug},
-        ['env', 'release', 'deployments'],
+        ['env'],
     )
 
-    # Group by env.slug; keep the (release, event) pair with the latest
-    # event timestamp. Envs with no deployments are seeded with None.
+    # Every environment the project deploys in, seeded with nothing
+    # deployed; the ``Deployment`` nodes below fill in what each serves.
     by_env: dict[
         str,
         tuple[
@@ -1208,35 +1124,19 @@ async def list_current_releases(
             models.DeploymentEvent | None,
         ],
     ] = {}
-
     for row in rows:
         env = graph.parse_agtype(row['env'])
-        if not env:
-            continue
-        slug = env['slug']
-        release_raw = graph.parse_agtype(row['release'])
-        events = models.parse_deployment_events(
-            graph.parse_agtype(row['deployments'])
-        )
+        if env:
+            by_env[env['slug']] = (env, None, None)
 
-        if release_raw is None or not events:
-            by_env.setdefault(slug, (env, None, None))
-            continue
-
-        latest = max(events, key=lambda ev: ev.timestamp)
-        _keep_latest(by_env, slug, env, release_raw, latest)
-
-    # Union the ``Deployment`` nodes over the legacy array entries the
-    # loop above read, through the reader the projects list uses so the
-    # two views agree on which attempt is current.  Environments the
-    # project no longer deploys in are skipped: the response has always
-    # enumerated ``DEPLOYED_IN``.
+    # Read through the reader the projects list uses so the two views
+    # agree on which attempt is current.  Environments the project no
+    # longer deploys in are skipped: the response has always enumerated
+    # ``DEPLOYED_IN``.
     latest_by_slug: dict[str, LatestDeployment] = {}
-    # In-flight attempts worth polling even though they are not what the
-    # environment serves -- see ``also_in_flight`` in
-    # :func:`_hydrate_release_train`.  Without this an in-flight node
-    # never reaches the self-heal at all, now that the current-release
-    # read is success-only.
+    # In-flight attempts that :func:`_hydrate_release_train` polls.  The
+    # current release is success-only, so these are the only attempts
+    # that can still change.
     in_flight_nodes: list[
         tuple[str, dict[str, typing.Any], models.DeploymentEvent]
     ] = []
@@ -1246,26 +1146,20 @@ async def list_current_releases(
         slug = str(state.environment.get('slug') or '')
         if slug not in by_env:
             continue
-        legacy_event = by_env[slug][2]
         current = state.current
         if current is not None and current.release is not None:
-            _keep_latest(
-                by_env, slug, by_env[slug][0], current.release, current.event
-            )
+            by_env[slug] = (by_env[slug][0], current.release, current.event)
         # The reader hands back the same node as both attempts when the
         # newest one is the one serving traffic; only a different
         # attempt is worth reporting.
         newest = state.latest
-        if (
-            newest.release is not None
-            and newest != current
-            and not _predates_serving_legacy(
-                newest, legacy_event, by_env[slug][2]
-            )
-        ):
+        if newest.release is not None and newest != current:
             latest_by_slug[slug] = LatestDeployment.from_node(newest)
-            # An in-flight rollout with no Release has no release ``id``,
-            # so it is never polled; the deployment sweeper chases it.
+            # ``pending`` counts as in flight: the first webhook of a
+            # queued run arrives before the run knows its own URL, and
+            # only this poll can add the URL later.  An in-flight
+            # rollout with no Release has no release ``id``, so it is
+            # never polled; the deployment sweeper chases it.
             if (
                 newest.event.status in deployment_nodes.IN_FLIGHT_STATUSES
                 and newest.event.external_run_id
@@ -1516,23 +1410,14 @@ async def _fetch_deployment_edge(
     release_id: str,
     env_slug: str,
 ) -> tuple[dict[str, typing.Any] | None, list[models.DeploymentEvent]]:
-    """Fetch the environment and the release's deployments for it.
-
-    One query returns both representations: the ``Deployment`` nodes
-    every writer now creates, and the legacy ``deployments`` array on
-    the ``DEPLOYED_TO`` edge that predates them, so a release deployed
-    before the node model keeps its history.
-    """
+    """Fetch the environment and the release's deployments for it."""
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     MATCH (e:Environment {{slug: {env_slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (r)-[d:DEPLOYED_TO]->(e)
     OPTIONAL MATCH (r)-[:HAS_DEPLOYMENT]->(dep:Deployment)-[:TARGETS]->(e)
     RETURN e{{.slug, .name}} AS env,
-           CASE WHEN d IS NULL THEN null ELSE d.deployments END
-               AS deployments,
            collect(properties(dep)) AS nodes
     """
     rows = await db.execute(
@@ -1543,30 +1428,14 @@ async def _fetch_deployment_edge(
             'env_slug': env_slug,
             'org_slug': org_slug,
         },
-        ['env', 'deployments', 'nodes'],
+        ['env', 'nodes'],
     )
     if not rows:
         return None, []
     env = graph.parse_agtype(rows[0]['env'])
-    legacy = models.parse_deployment_events(
-        graph.parse_agtype(rows[0]['deployments'])
-    )
     return env, deployment_nodes.merge_events(
-        legacy, _node_events(rows[0].get('nodes'))
+        deployment_nodes.node_events(rows[0].get('nodes'))
     )
-
-
-def _node_events(raw: typing.Any) -> list[models.DeploymentEvent]:
-    """Parse a collected list of ``Deployment`` property maps."""
-    nodes = graph.parse_agtype(raw)
-    if not isinstance(nodes, list):
-        return []
-    events: list[models.DeploymentEvent] = []
-    for props in typing.cast('list[dict[str, typing.Any]]', nodes):
-        event = deployment_nodes.node_to_event(props)
-        if event is not None:
-            events.append(event)
-    return events
 
 
 def _edge_to_response(
@@ -2116,9 +1985,8 @@ async def list_deployment_edges(
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
-    MATCH (r)-[d:DEPLOYED_TO]->(e:Environment)
-    RETURN e{{.slug, .name}} AS env, d.deployments AS deployments
-    ORDER BY e.slug
+          -[:HAS_DEPLOYMENT]->(dep:Deployment)-[:TARGETS]->(e:Environment)
+    RETURN e{{.slug, .name}} AS env, collect(properties(dep)) AS nodes
     """
     rows = await db.execute(
         query,
@@ -2127,40 +1995,21 @@ async def list_deployment_edges(
             'org_slug': org_slug,
             'release_id': release_id,
         },
-        ['env', 'deployments'],
+        ['env', 'nodes'],
     )
-    by_slug: dict[
-        str, tuple[dict[str, typing.Any], list[models.DeploymentEvent]]
-    ] = {}
+    results: list[ReleaseEnvironmentEdgeResponse] = []
     for row in rows:
         env = graph.parse_agtype(row['env'])
-        if not env:
-            continue
-        by_slug[env['slug']] = (
-            env,
-            models.parse_deployment_events(
-                graph.parse_agtype(row['deployments'])
-            ),
-        )
-    # An environment reached only by ``Deployment`` nodes has no
-    # ``DEPLOYED_TO`` edge to have been listed above, so it is added
-    # here rather than merged into one.
-    for entry in await deployment_nodes.deployments_by_project(
-        db, [project_id]
-    ):
-        if (entry.release or {}).get('id') != release_id:
-            continue
-        slug = str(entry.environment.get('slug') or '')
-        existing = by_slug.get(slug)
-        env = entry.environment if existing is None else existing[0]
-        events = [] if existing is None else existing[1]
-        by_slug[slug] = (env, [*events, entry.event])
-    results: list[ReleaseEnvironmentEdgeResponse] = []
-    for slug in sorted(by_slug):
-        env, events = by_slug[slug]
-        results.append(
-            _edge_to_response(env, deployment_nodes.merge_events(events))
-        )
+        if env:
+            results.append(
+                _edge_to_response(
+                    env,
+                    deployment_nodes.merge_events(
+                        deployment_nodes.node_events(row['nodes'])
+                    ),
+                )
+            )
+    results.sort(key=lambda edge: edge.environment.slug)
     return results
 
 

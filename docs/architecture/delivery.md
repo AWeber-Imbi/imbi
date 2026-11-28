@@ -54,9 +54,9 @@ deployment for a project and an environment when no release matches yet.
 The `deployment-sweep` maintenance operation attaches it to the release
 later.
 
-Older deployments are entries in a `deployments` array on a
-`(Release)-[:DEPLOYED_TO]->(Environment)` edge. Nothing writes that array
-now. The read paths combine the old entries with the `Deployment` nodes.
+Older deployments were entries in a `deployments` array on a
+`(Release)-[:DEPLOYED_TO]->(Environment)` edge. Nothing reads or writes
+that array now. All read paths use the `Deployment` nodes.
 
 ### In ClickHouse
 

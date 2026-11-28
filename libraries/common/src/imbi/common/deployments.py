@@ -18,10 +18,8 @@ This module lives in ``imbi.common`` because both the API (writes and
 the release-train reads) and the scoring engine (which derives a
 project's per-environment status) need it.
 
-``DEPLOYED_TO`` is still read: nothing back-fills the ~60k historical
-array entries until the phase-3 migration, so every read path unions
-node-based deployments with the legacy array entries.  Nothing writes
-the array any more.
+Nothing reads or writes the legacy array any more.  The property stays
+on the stored edges until a later change removes it.
 
 """
 
@@ -331,6 +329,19 @@ def node_to_event(
             'Skipping malformed Deployment node %r', props.get('id')
         )
         return None
+
+
+def node_events(raw: typing.Any) -> list[models.DeploymentEvent]:
+    """Parse a collected list of ``Deployment`` property maps."""
+    nodes = graph.parse_agtype(raw)
+    if not isinstance(nodes, list):
+        return []
+    events: list[models.DeploymentEvent] = []
+    for props in typing.cast('list[dict[str, typing.Any]]', nodes):
+        event = node_to_event(props)
+        if event is not None:
+            events.append(event)
+    return events
 
 
 class ProjectDeployment(typing.NamedTuple):
@@ -975,10 +986,7 @@ async def deployments_by_project(
 ) -> list[ProjectDeployment]:
     """Return the newest ``Deployment`` nodes for *project_ids*.
 
-    Newest first, capped at *limit* rows across the whole set.  Callers
-    union these with the legacy ``DEPLOYED_TO`` array entries; ordering
-    beyond that is the caller's business because every one of them
-    ranks by ``timestamp``.
+    Newest first, capped at *limit* rows across the whole set.
 
     For the newest deployment *per environment* use
     :func:`latest_deployments_by_project`: the cap here is set-wide, so
@@ -1041,10 +1049,10 @@ def _to_project_deployments(
 def as_utc(value: datetime.datetime) -> datetime.datetime:
     """Return *value* as an aware UTC datetime.
 
-    A ``Deployment`` node always stores an aware UTC timestamp, but a
-    legacy array entry written without an offset parses naive, and
-    comparing the two raises ``TypeError``.  Naive values are read as
-    UTC, which is what every writer meant by them.
+    A ``Deployment`` node stores an aware UTC timestamp, but a value
+    written without an offset parses naive, and comparing the two
+    raises ``TypeError``.  Naive values are read as UTC, which is what
+    every writer meant by them.
     """
     if value.tzinfo is None:
         return value.replace(tzinfo=datetime.UTC)
@@ -1057,11 +1065,10 @@ def merge_events(
     """Union event lists into one chronological history.
 
     The read paths all rank by ``timestamp``, so sorting is enough to
-    interleave the node and array representations.  One rollout can
-    appear in both: it started as an array entry before the cutover and
-    a later webhook wrote it as a node.  Entries sharing an
-    ``external_run_id`` collapse to the newest, which is the one that
-    knows how the rollout ended.
+    interleave the sources.  One rollout can appear in more than one:
+    the stored node and the event a write just made of it.  Entries
+    sharing an ``external_run_id`` collapse to the newest, which is the
+    one that knows how the rollout ended.
     """
     merged = [event for source in sources for event in source]
     merged.sort(key=lambda event: as_utc(event.timestamp))
