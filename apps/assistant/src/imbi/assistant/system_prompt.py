@@ -93,4 +93,8 @@ async def build_system_prompt(
         override=assistant_settings.system_prompt,
         email=auth_context.require_user.email,
         org_id=org_id,
+        admin=auth_context.require_user.is_admin,
+        # A turn uses the model of the conversation, which the turn
+        # checks. The model of the version must not stop the turn.
+        check_model=False,
     )

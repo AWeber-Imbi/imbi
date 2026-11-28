@@ -90,6 +90,10 @@ SELECT ai_model_id, SUM(cost) FROM (
     SELECT ai_model_id, cost FROM tickets.budget_ledger
      WHERE ai_model_id = ANY(%(ids)s)
        AND recorded_at >= (SELECT start FROM month)
+    UNION ALL
+    SELECT ai_model_id, cost FROM tickets.deleted_model_spend
+     WHERE ai_model_id = ANY(%(ids)s)
+       AND recorded_at >= (SELECT start FROM month)
 ) AS spend
 GROUP BY ai_model_id
 """

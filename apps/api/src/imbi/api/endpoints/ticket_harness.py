@@ -492,7 +492,7 @@ def _parse_settings(raw: typing.Any) -> models.AgentSettings:
 
 
 type _Priced = tuple[
-    str, decimal.Decimal | None, dict[str, decimal.Decimal | None]
+    str | None, decimal.Decimal | None, dict[str, decimal.Decimal | None]
 ]
 
 
@@ -508,7 +508,10 @@ async def _model_prices(
     unknown.
 
     A slug match wins. When only provider model ids match, the model
-    with the first slug is used.
+    with the first slug gives the prices. When more than one model has
+    the provider model id, the report does not tell which model made the
+    call, so no AIModel id and no spend cap are returned: the spend is
+    not charged to a model that possibly did not make it.
     """
     records = await db.execute(
         _MODEL_PRICES_QUERY,
@@ -521,10 +524,19 @@ async def _model_prices(
     ]
     if not rows:
         return None
-    row = next(
-        (r for r in rows if r['slug'] == model),
-        min(rows, key=lambda r: str(r['slug'])),
-    )
+    slug_match = next((r for r in rows if r['slug'] == model), None)
+    row = slug_match or min(rows, key=lambda r: str(r['slug']))
+    if slug_match is None and len(rows) > 1:
+        LOGGER.warning(
+            'Usage for %r matches %d AI models; not charged to a model',
+            model,
+            len(rows),
+        )
+        return (
+            None,
+            None,
+            {column: _decimal(row[column]) for column in _PRICE_COLUMNS},
+        )
     return (
         row['id'],
         _decimal(row['monthly_spend_cap']),

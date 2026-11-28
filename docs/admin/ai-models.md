@@ -154,13 +154,15 @@ service account (`imbi-assistant`, `imbi-slackbot`). Set
 `IMBI_ASSISTANT_API_TOKEN` or `IMBI_SLACKBOT_API_TOKEN` on the service to
 the API key of that account; see
 [Imbi service accounts](service-accounts.md#imbi-service-accounts). With
-the API key set, the service ignores `ANTHROPIC_API_KEY`. Without it, the
-service uses `ANTHROPIC_API_KEY` as before.
+the API key set, the configured model does not use `ANTHROPIC_API_KEY`.
+Without it, the configured model uses `ANTHROPIC_API_KEY` as before. A
+catalog provider can still use `ANTHROPIC_API_KEY` (item 2 below).
 
 These variables set the credential of the configured model of the service
-(`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`). When the model comes from
-the catalog (a prompt version model or a default model), the service uses
-the credential of the provider of that model, in this order:
+(`IMBI_ASSISTANT_MODEL`, `IMBI_SLACKBOT_MODEL`) when its model id is not in
+the catalog. When the model comes from the catalog (a prompt version model,
+a default model, or a configured model whose id is in the catalog), the
+service uses the credential of the provider of that model, in this order:
 
 1. The provider has a workload identity: the service asks imbi-api for a
    token of that provider, for the user of the call. This needs
@@ -397,9 +399,11 @@ use another model: the assistant returns `403` (`model_not_allowed`) or `422`,
 and the Slack bot replies with an error. Only an Anthropic model can be the model of
 these system prompts. The assistant selects the
 model when a conversation starts, and checks the selected model, also when it
-is `IMBI_ASSISTANT_MODEL`. A non-admin gets `403` (`model_not_allowed`) when no
-enabled catalog model allows the model id. `IMBI_ASSISTANT_MODEL` is allowed
-only when no enabled catalog model has its model id. The assistant checks the
+is `IMBI_ASSISTANT_MODEL`. Another model id that is not in the catalog gets
+`403` (`model_not_allowed`). `IMBI_ASSISTANT_MODEL` is allowed without the
+catalog only when no catalog model has its model id. When a catalog model has
+its model id and that model cannot be used (for example, it is disabled), the
+request is refused. The assistant checks the
 model of the conversation again on each message, because the allowed teams can
 change. Admins can use every model.
 

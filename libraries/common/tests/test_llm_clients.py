@@ -126,5 +126,19 @@ class ProviderClientsTestCase(unittest.IsolatedAsyncioTestCase):
             found.get(provider, 'u1')
             found.get(provider, 'u2')
             self.assertIsNot(found.get(provider, 'u0'), first)
+            # A turn can still hold the dropped client.
+            close.assert_not_awaited()
             await found.aclose()
         close.assert_awaited_once()
+
+    def test_no_base_url_uses_the_driver_default(self) -> None:
+        # Not ANTHROPIC_BASE_URL from the environment of the service.
+        with mock.patch.dict(
+            'os.environ', {'ANTHROPIC_BASE_URL': 'https://evil.example.com'}
+        ):
+            client = _clients('ik_1_s', 'sk-env').get(
+                _provider(workload_identity=WIF), 'ada@x'
+            )
+        self.assertEqual(
+            str(client.base_url).rstrip('/'), 'https://api.anthropic.com'
+        )

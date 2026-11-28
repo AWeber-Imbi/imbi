@@ -466,10 +466,14 @@ class HandleEventTests(helpers.TestCase):
         self.assertEqual(kwargs['temperature'], 0.3)
 
     async def _model_for(
-        self, prompt_model: str | None, default: object
+        self,
+        prompt_model: str | None,
+        default: object,
+        configured: prompt_system.ConsumerModel | None = None,
     ) -> tuple[mock.AsyncMock, FakeSlackClient]:
-        """Run a turn with ``prompt_model`` from the prompt version and
-        ``default`` from :func:`prompt_system.default_model`."""
+        """Run a turn with ``prompt_model`` from the prompt version,
+        ``default`` from :func:`prompt_system.default_model`, and
+        ``configured`` from :func:`prompt_system.request_model`."""
         user = identity.ImbiUser('ada@example.com', 'Ada', 'acme', 'org-1')
         event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
         prompt = prompt_system.SystemPrompt(
@@ -499,6 +503,11 @@ class HandleEventTests(helpers.TestCase):
                 new=mock.AsyncMock(**kwargs),
             ) as default_model,
             mock.patch.object(
+                slack_handler.system,
+                'request_model',
+                new=mock.AsyncMock(return_value=configured),
+            ) as request_model,
+            mock.patch.object(
                 slack_handler.identity,
                 'get_graph',
                 return_value=mock.AsyncMock(),
@@ -509,7 +518,16 @@ class HandleEventTests(helpers.TestCase):
         if prompt_model is None:
             # Only the organization of the Slack workspace (#1027).
             default_model.assert_awaited_once_with(
-                mock.ANY, 'ada@example.com', org_id='org-1'
+                mock.ANY, 'ada@example.com', admin=False, org_id='org-1'
+            )
+        if prompt_model is None and default is None:
+            # The configured model gets the checks of the catalog.
+            request_model.assert_awaited_once_with(
+                mock.ANY,
+                'ada@example.com',
+                settings.get_slackbot_settings().model,
+                admin=False,
+                org_id='org-1',
             )
         return run_turn, client
 
@@ -523,10 +541,14 @@ class HandleEventTests(helpers.TestCase):
         )
         default = prompt_system.ConsumerModel('claude-org', provider)
         sentinel = mock.Mock()
-        for prompt_model, found, expected, api_client in (
-            ('claude-opus-5-5', default, 'claude-opus-5-5', None),
-            (None, default, 'claude-org', sentinel),
-            (None, None, configured, None),
+        cataloged = prompt_system.ConsumerModel(configured, provider)
+        for prompt_model, found, in_catalog, expected, api_client in (
+            ('claude-opus-5-5', default, None, 'claude-opus-5-5', None),
+            (None, default, None, 'claude-org', sentinel),
+            # The configured model is absent from the catalog.
+            (None, None, None, configured, None),
+            # The configured model is in the catalog.
+            (None, None, cataloged, configured, sentinel),
         ):
             with (
                 self.subTest(expected=expected),
@@ -536,7 +558,9 @@ class HandleEventTests(helpers.TestCase):
                     mock.Mock(return_value=sentinel),
                 ) as client_for,
             ):
-                run_turn, _ = await self._model_for(prompt_model, found)
+                run_turn, _ = await self._model_for(
+                    prompt_model, found, in_catalog
+                )
                 kwargs = run_turn.await_args.kwargs
                 self.assertEqual(kwargs['model'], expected)
                 # A catalog model uses the client of its provider.

@@ -1400,6 +1400,30 @@ class UsageTests(HarnessTestCase):
             [row['ai_model_id'] for row in await self.ledger()],
             [f'{self.org}-{under}', ai_model_id],
         )
+        # A delete of the ticket does not lower the spend of the model.
+        async with self.store._pool.connection() as conn:
+            await conn.execute(
+                'UPDATE tickets.tickets SET log_archived_at = NOW()'
+                ' WHERE organization_id = %s',
+                (self.org,),
+            )
+        await self.store.delete(self.org, 'T-1', ticket_harness._SYSTEM)
+        self.assertEqual(
+            await self.month_spend(ai_model_id), decimal.Decimal('0.031')
+        )
+
+    async def test_a_shared_model_id_is_not_charged_to_a_model(self) -> None:
+        # Two providers serve the same vendor id: the report does not
+        # tell which model made the call.
+        shared = f'shared-{uuid.uuid4().hex[:8]}'
+        await self.make_model(f'{shared}-a', shared, monthly_spend_cap='0')
+        await self.make_model(f'{shared}-b', shared, monthly_spend_cap='0')
+        response = await self.report('u-1', model_id=shared)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertNotEqual(response.json()['task']['status'], 'closed')
+        (row,) = await self.ledger()
+        self.assertIsNone(row['ai_model_id'])
+        self.assertEqual(row['input_cost_per_million'], 3)
 
     async def test_a_model_of_another_org_has_no_price(self) -> None:
         await self.make_model('other-only', 'other-only-id', self.other_org)

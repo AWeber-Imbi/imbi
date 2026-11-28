@@ -224,6 +224,22 @@ describe('AIModelsManagement', () => {
     await waitFor(() => expect(select).toHaveTextContent('claude-fable-5-1'))
   })
 
+  it('shows a read error of the default model, not "No model"', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.getDefaultAIModel).mockRejectedValueOnce(
+      new Error('down'),
+    )
+    await mountAt('/admin/ai-models')
+
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(screen.getByText(/Could not load the default model/)).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: 'Default model' })).toBeNull()
+    fireEvent.click(retry)
+    expect(
+      await screen.findByRole('combobox', { name: 'Default model' }),
+    ).toBeTruthy()
+  })
+
   it('renders configured providers and unconfigured drivers as ghost rows', async () => {
     await mountAt('/admin/ai-models')
 

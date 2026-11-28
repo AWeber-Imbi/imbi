@@ -88,6 +88,7 @@ async def build_system_prompt(
         email=user.email,
         # The organization of the Slack workspace (#1027).
         org_id=user.org_id,
+        admin=user.is_admin,
     )
     return dataclasses.replace(
         prompt, text=prompt.text + skills.catalog(skill_list)

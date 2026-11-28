@@ -18,7 +18,7 @@ import collections
 import anthropic
 
 from imbi.common import models
-from imbi.common.llm import resolve, tokens
+from imbi.common.llm import drivers, resolve, tokens
 
 
 def provider_ref(provider: models.AIProvider) -> str:
@@ -28,6 +28,10 @@ def provider_ref(provider: models.AIProvider) -> str:
 
 #: The most clients that :class:`ProviderClients` keeps.
 MAX_CLIENTS = 256
+
+#: Seconds before a dropped client is closed. A turn can still hold the
+#: client, so the close waits for longer than a turn runs.
+CLOSE_DELAY = 3600.0
 
 
 class ProviderClients:
@@ -57,8 +61,8 @@ class ProviderClients:
             tuple[str, str | None, str | None],
             tuple[anthropic.AsyncAnthropic, tuple[str, bool, str | None]],
         ] = collections.OrderedDict()
-        #: Closes of dropped clients that are still running.
-        self._closing: set[asyncio.Task[None]] = set()
+        #: The dropped clients, by the task that closes each one.
+        self._dropped: dict[asyncio.Task[None], anthropic.AsyncAnthropic] = {}
 
     def get(
         self, provider: models.AIProvider, user: str, org: str | None = None
@@ -75,7 +79,10 @@ class ProviderClients:
         token = provider.workload_identity is not None and bool(
             self._api_token
         )
-        settings = (ref, token, provider.base_url)
+        # A provider without a base URL uses the default of its driver,
+        # never ANTHROPIC_BASE_URL from the environment of the service.
+        base_url = drivers.resolve_base_url(provider.driver, provider.base_url)
+        settings = (ref, token, base_url)
         key = (provider.id, user, org) if token else (provider.id, None, None)
         found = self._clients.get(key)
         if found is not None:
@@ -93,11 +100,11 @@ class ProviderClients:
                     org=org,
                 ),
                 client_class=self._client_class,
-                base_url=provider.base_url,
+                base_url=base_url,
             )
         elif self._api_key:
             client = self._client_class(
-                api_key=self._api_key, base_url=provider.base_url
+                api_key=self._api_key, base_url=base_url
             )
         else:
             raise resolve.ModelUnusable(
@@ -113,17 +120,28 @@ class ProviderClients:
         return client
 
     def _close(self, client: anthropic.AsyncAnthropic) -> None:
-        """Close a dropped client in the background.
+        """Close a dropped client after :data:`CLOSE_DELAY`, so that a
+        turn that still holds the client can complete.
 
-        ponytail: a turn that still holds the client gets a closed
-        connection pool; count the users of a client if that happens.
+        ponytail: a fixed delay; count the users of a client if a turn
+        can run for longer than the delay.
         """
-        task = asyncio.get_running_loop().create_task(client.close())
-        self._closing.add(task)
-        task.add_done_callback(self._closing.discard)
+        task = asyncio.get_running_loop().create_task(
+            self._close_later(client)
+        )
+        self._dropped[task] = client
+        task.add_done_callback(lambda done: self._dropped.pop(done, None))
+
+    @staticmethod
+    async def _close_later(client: anthropic.AsyncAnthropic) -> None:
+        await asyncio.sleep(CLOSE_DELAY)
+        await client.close()
 
     async def aclose(self) -> None:
         for client, _settings in self._clients.values():
             await client.close()
         self._clients.clear()
-        await asyncio.gather(*self._closing)
+        for task, client in list(self._dropped.items()):
+            task.cancel()
+            await client.close()
+        self._dropped.clear()

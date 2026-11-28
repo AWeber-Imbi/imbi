@@ -65,10 +65,12 @@ AI model of the organization of the conversation, with the same checks as the ot
 levels, or `IMBI_ASSISTANT_MODEL`. Another id gets `403`
 (`model_not_allowed`).
 
-A catalog model (1, 2, or 3) uses the credential of its provider: a workload
-identity token from imbi-api, else `ANTHROPIC_API_KEY` (see
-[Imbi services](../admin/ai-models.md#imbi-services)).
-`IMBI_ASSISTANT_MODEL` uses the credential of the assistant.
+A catalog model uses the credential of its provider: a workload identity
+token from imbi-api, else `ANTHROPIC_API_KEY` (see
+[Imbi services](../admin/ai-models.md#imbi-services)). This includes
+`IMBI_ASSISTANT_MODEL` when a catalog model has its model id.
+`IMBI_ASSISTANT_MODEL` uses the credential of the assistant only when no
+catalog model has its model id.
 
 The first of these that names a model wins. When the model of the prompt
 version or the default model cannot be used (it is disabled, its provider is

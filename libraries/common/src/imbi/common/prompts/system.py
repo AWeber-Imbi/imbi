@@ -209,7 +209,11 @@ async def _org_ids(
 
 
 async def default_model(
-    db: graph.Graph, email: str, *, org_id: str | None = None
+    db: graph.Graph,
+    email: str,
+    *,
+    admin: bool = False,
+    org_id: str | None = None,
 ) -> ConsumerModel | None:
     """Return the default model for the user ``email``,
     for a consumer whose prompt version names no model.
@@ -218,6 +222,7 @@ async def default_model(
     the only organization of the user. The team default needs a team and
     these consumers have none, so the organization default is used.
     ``None``: no default, and the consumer uses its configured model.
+    An ``admin`` may use a ``restricted`` model.
 
     Raises:
         llm_resolve.ModelUnusable: The default model cannot be used, or
@@ -225,7 +230,11 @@ async def default_model(
 
     """
     resolved = await llm_resolve.resolve_model(
-        db, await _org_ids(db, email, org_id), email=email, drivers=_DRIVERS
+        db,
+        await _org_ids(db, email, org_id),
+        email=email,
+        admin=admin,
+        drivers=_DRIVERS,
     )
     if resolved.model is None:
         return None
@@ -272,9 +281,11 @@ async def _model(
     version: models.PromptVersion,
     email: str | None,
     org_id: str | None = None,
+    admin: bool = False,
 ) -> ConsumerModel | None:
     """Return the version's model, or ``None`` when the version names no
     model (the consumer then uses the default or its configured model).
+    An ``admin`` may use a ``restricted`` model.
 
     Raises:
         llm_resolve.ModelUnusable: The model is missing, disabled, served
@@ -295,20 +306,24 @@ async def _model(
         await _org_ids(db, email, org_id),
         model=version.model,
         email=email,
+        admin=admin,
         drivers=_DRIVERS,
     )
     model = typing.cast('models.AIModel', resolved.model)
     model_id = version.model_id or model.model_id
     # The stored id can differ from the catalog row of the slug after a
-    # catalog edit, so the id that is sent gets the same checks.
+    # catalog edit, so the id that is sent gets the same checks. The row
+    # of the stored id gives the provider, which can differ.
     if model_id != model.model_id:
-        await llm_resolve.resolve_model(
+        stored = await llm_resolve.resolve_model(
             db,
             [model.organization.id],
             model_id=model_id,
             email=email,
+            admin=admin,
             drivers=_DRIVERS,
         )
+        model = typing.cast('models.AIModel', stored.model)
     return ConsumerModel(model_id, model.provider)
 
 
@@ -317,10 +332,11 @@ async def load_model(
     ref: str,
     email: str | None = None,
     *,
+    admin: bool = False,
     org_id: str | None = None,
 ) -> ConsumerModel | None:
     """Return the model of ``ref``'s version, when a consumer can call it
-    for the user ``email``.
+    for the user ``email``. An ``admin`` may use a ``restricted`` model.
 
     ``None`` when the prompt is missing or names no model. Errors other
     than :class:`~imbi.common.llm.resolve.ModelUnusable` are logged,
@@ -333,7 +349,7 @@ async def load_model(
     """
     try:
         _prompt, version, _label = await resolve.resolve(db, ref)
-        return await _model(db, version, email, org_id)
+        return await _model(db, version, email, org_id, admin)
     except resolve.PromptError:
         return None
     except llm_resolve.ModelUnusable:
@@ -352,6 +368,8 @@ async def load_system_prompt(
     override: str | None = None,
     email: str | None = None,
     org_id: str | None = None,
+    admin: bool = False,
+    check_model: bool = True,
 ) -> SystemPrompt:
     """Return the consumer's system prompt.
 
@@ -367,10 +385,15 @@ async def load_system_prompt(
         email: The user of the turn, for a ``restricted`` model.
         org_id: The organization of the turn, whose membership the
             consumer checked. ``None``: each organization of the user.
+        admin: The user is an admin, who may use a ``restricted`` model.
+        check_model: ``False`` for a consumer whose turn does not use the
+            model of the version. A model that cannot be used is then
+            logged, and the prompt is returned without the model
+            settings of the version.
 
     Raises:
         llm_resolve.ModelUnusable: The CMS version names a model that the
-            consumer cannot use.
+            consumer cannot use, and ``check_model`` is set.
 
     """
     if override:
@@ -397,7 +420,21 @@ async def load_system_prompt(
             if name in version.variable_schema
         }
         rendered = await rendering.render(version, declared, {})
-        model = await _model(db, version, email, org_id)
+        try:
+            model = await _model(db, version, email, org_id, admin)
+        except llm_resolve.ModelUnusable:
+            if check_model:
+                raise
+            LOGGER.warning(
+                'The model of %s cannot be used; its settings do not apply',
+                ref,
+                exc_info=True,
+            )
+            return SystemPrompt(
+                text=rendered.system,
+                source='cms',
+                ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
+            )
     except llm_resolve.ModelUnusable:
         # A configuration error, not a CMS failure: no other model is
         # used in its place (ADR 0018).

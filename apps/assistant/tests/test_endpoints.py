@@ -508,6 +508,7 @@ class CreateConversationEndpointTestCase(
             mock.ANY,
             'imbi-assistant/system@stable',
             'test@example.com',
+            admin=True,
             org_id='org-1',
         )
         mock_create.assert_called_once_with(

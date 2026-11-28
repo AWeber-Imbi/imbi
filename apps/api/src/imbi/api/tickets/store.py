@@ -1925,7 +1925,9 @@ class TicketStore:
         """Delete a closed task and return its row.
 
         Its events, sessions, requests, budget ledger, and harness rows
-        go by cascade; its dependency and project rows go here. A
+        go by cascade; its dependency and project rows go here. The AI
+        model spend of its ledger in this month goes to
+        ``deleted_model_spend``, for the monthly spend cap of a model. A
         ``held`` dependent that no other gate holds is released. The
         secret resolutions and the ClickHouse rows (archived events,
         usage) stay, for the security and cost history.
@@ -2007,6 +2009,19 @@ class TicketStore:
                 'DELETE FROM tickets.ticket_projects'
                 ' WHERE organization_id = %s AND ticket_id = %s',
                 (organization_id, task['id']),
+            )
+            # The ledger rows go by cascade. Keep the AI model spend of
+            # this month, which the monthly spend cap of a model counts.
+            await conn.execute(
+                'INSERT INTO tickets.deleted_model_spend'
+                ' (id, ai_model_id, cost, recorded_at)'
+                ' SELECT id, ai_model_id, cost, recorded_at'
+                ' FROM tickets.budget_ledger'
+                ' WHERE ticket_id = %s AND ai_model_id IS NOT NULL'
+                ' AND cost IS NOT NULL'
+                " AND recorded_at >= date_trunc('month', NOW()"
+                " AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'",
+                (task['id'],),
             )
             await conn.execute(
                 'DELETE FROM tickets.tickets WHERE id = %s', (task['id'],)

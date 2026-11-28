@@ -279,14 +279,22 @@ async def _process(
             skill_list,
         )
         # The prompt version model, else the default model of the user's
-        # organization, else the configured model (ADR 0018).
+        # organization, else the configured model (ADR 0018). A configured
+        # model in the catalog gets the checks and provider of the catalog;
+        # one absent from the catalog uses the service client.
         model, provider = prompt.model_id, prompt.provider
         if model is None and db is not None:
-            default = await system.default_model(
-                db, user.email, org_id=user.org_id
+            chosen = await system.default_model(
+                db, user.email, admin=user.is_admin, org_id=user.org_id
+            ) or await system.request_model(
+                db,
+                user.email,
+                slackbot_settings.model,
+                admin=user.is_admin,
+                org_id=user.org_id,
             )
-            if default is not None:
-                model, provider = default
+            if chosen is not None:
+                model, provider = chosen
         api_client = (
             None
             if provider is None

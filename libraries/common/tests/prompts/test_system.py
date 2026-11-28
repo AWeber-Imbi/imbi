@@ -189,8 +189,24 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
             ['org-1'],
             model='default-chat',
             email='dev@example.com',
+            admin=False,
             drivers=('anthropic',),
         )
+
+    async def test_admin_is_passed_to_the_resolver(self) -> None:
+        # An admin may use a restricted model (ADR 0018).
+        found = _version(model='default-chat', model_id='claude-opus-5-5')
+        resolved = _model('default-chat', 'claude-opus-5-5')
+        with (
+            self.patch_resolve(found),
+            self.patch_model(resolved) as resolver,
+        ):
+            await self.load(admin=True)
+            await system.load_model(
+                mock.AsyncMock(), REF, 'dev@example.com', admin=True
+            )
+        for call in resolver.await_args_list:
+            self.assertIs(call.kwargs['admin'], True)
 
     async def test_no_user_has_no_catalog_model(self) -> None:
         found = _version(model='default-chat', model_id='claude-opus-5-5')
@@ -221,23 +237,45 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
                     mock.AsyncMock(), REF, 'dev@example.com'
                 )
 
+    async def test_unusable_model_without_check_model(self) -> None:
+        # A consumer whose turn uses another model gets the prompt,
+        # without the settings of the version's model.
+        found = _version(
+            model='old', model_id='claude-old', params={'max_tokens': 99}
+        )
+        error = llm_resolve.ModelUnusable('model_disabled', 'old', 'no')
+        with (
+            self.patch_resolve(found),
+            self.patch_model(error),
+            self.assertLogs(system.LOGGER, 'WARNING'),
+        ):
+            result = await self.load(check_model=False)
+        self.assertEqual(result.source, 'cms')
+        self.assertEqual(result.text, 'Hi <display_name>')
+        self.assertIsNone(result.model_id)
+        self.assertIsNone(result.max_tokens)
+
     async def test_stale_model_id_is_checked(self) -> None:
         # A catalog edit moved the slug to a new id; the version keeps
         # the old one, and the old one is what is sent, with the same
         # checks of the resolver.
         found = _version(model='opus', model_id='claude-opus-old')
         resolved = _model('opus', 'claude-opus-5-5')
+        # The row of the old id has its own provider.
+        old = _model('opus-old', 'claude-opus-old')
         error = llm_resolve.ModelUnusable('not_allowed', 'opus', 'no')
-        for stale in (resolved, error):
+        for stale in (old, error):
             with (
                 self.subTest(stale=stale),
                 self.patch_resolve(found),
                 self.patch_model(None) as resolver,
             ):
                 resolver.side_effect = [resolved, stale]
-                if stale is resolved:
+                if stale is old:
                     result = await self.load(email='dev@example.com')
                     self.assertEqual(result.model_id, 'claude-opus-old')
+                    assert old.model is not None
+                    self.assertIs(result.provider, old.model.provider)
                 else:
                     with self.assertRaises(llm_resolve.ModelUnusable):
                         await self.load(email='dev@example.com')
@@ -246,6 +284,7 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
                     ['org-1'],
                     model_id='claude-opus-old',
                     email='dev@example.com',
+                    admin=False,
                     drivers=('anthropic',),
                 )
 
@@ -297,6 +336,7 @@ class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
             mock.ANY,
             ['org-1'],
             email='dev@example.com',
+            admin=False,
             drivers=('anthropic',),
         )
         return found
@@ -327,6 +367,7 @@ class DefaultModelIdTestCase(unittest.IsolatedAsyncioTestCase):
             mock.ANY,
             ['org-2'],
             email='dev@example.com',
+            admin=False,
             drivers=('anthropic',),
         )
 

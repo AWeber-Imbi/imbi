@@ -142,9 +142,13 @@ async def create_conversation(
             chosen = await _catalog_model(db, user, org_id, requested)
         else:
             chosen = await prompt_system.load_model(
-                db, assistant_settings.prompt_ref, user.email, org_id=org_id
+                db,
+                assistant_settings.prompt_ref,
+                user.email,
+                admin=user.is_admin,
+                org_id=org_id,
             ) or await prompt_system.default_model(
-                db, user.email, org_id=org_id
+                db, user.email, admin=user.is_admin, org_id=org_id
             )
             if chosen is None:
                 chosen = await _catalog_model(

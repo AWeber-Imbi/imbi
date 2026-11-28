@@ -237,7 +237,9 @@ label at that version.
   The bot reads only the AI models of the workspace's organization. When that model cannot be used, the bot replies
   with an error and does not use another model. A catalog model uses the
   credential of its provider (see
-  [Imbi services](../admin/ai-models.md#imbi-services)).
+  [Imbi services](../admin/ai-models.md#imbi-services)). When a catalog
+  model has the model id of `IMBI_SLACKBOT_MODEL`, that catalog model and
+  its checks apply.
   When it sets no max tokens, `IMBI_SLACKBOT_MAX_TOKENS` applies.
 
 The prompt tells the model the name of the person, the tools, and the URL
