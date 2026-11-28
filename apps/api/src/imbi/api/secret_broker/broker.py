@@ -405,6 +405,9 @@ class Decision:
     binding: Row
     provider: Row
     grant: Row
+    #: Set only for :data:`model_key.REFERENCE`: the AI provider of the
+    #: task, with no binding, provider, or grant row.
+    ai_provider_id: str | None = None
 
 
 # --- Policy ---------------------------------------------------------------
@@ -551,43 +554,35 @@ def _check_provider(provider: Row | None, binding: Row) -> Row:
     return provider
 
 
-async def _pinned_provider(conn: Conn, task_id: uuid.UUID) -> str | None:
-    """Return the AI provider id that the last claim pinned on a task."""
-    row = await _fetch_one(
-        conn,
-        'SELECT ai_provider_id FROM tickets.tickets WHERE id = %s',
-        (task_id,),
-    )
-    return None if row is None else row['ai_provider_id']
-
-
-async def _model_key_decision(
-    conn: Conn, task_id: uuid.UUID, request: ResolutionRequest
-) -> Decision:
-    """The decision for :data:`model_key.REFERENCE`: the AI provider that
-    the claim pinned on the task. No binding and no grant apply; the
-    claim authorized the model (ADR 0022 amendment).
+def _check_request(purpose: str, delivery_mode: str, ttl_seconds: int) -> None:
+    """The checks of every request that need no stored row.
 
     Raises:
-        BrokerError: Another purpose or delivery mode, or a task with no
-            pinned provider.
+        BrokerError: The purpose, the delivery mode, or the lifetime is
+            not allowed.
 
     """
-    if request.purpose != model_key.PURPOSE:
-        raise providers.BrokerError(
-            'secret_access_denied', 'model_key_purpose'
-        )
-    if request.delivery_mode != 'file_descriptor':
+    if not PURPOSE.fullmatch(purpose):
+        raise providers.BrokerError('secret_access_denied', 'invalid_purpose')
+    _refuse_retired(purpose)
+    if delivery_mode not in DELIVERY_MODES:
+        raise providers.BrokerError('delivery_mode_not_allowed')
+    if purpose in SETUP_PURPOSES and delivery_mode != 'file_descriptor':
+        # A backstop to the grants: a setup secret never goes into the
+        # environment of a command that the model chose.
         raise providers.BrokerError(
             'delivery_mode_not_allowed', 'setup_purpose_file_descriptor_only'
         )
-    if request.ttl_seconds < 1 or request.ttl_seconds > MAX_TTL_SECONDS:
+    if ttl_seconds < 1 or ttl_seconds > MAX_TTL_SECONDS:
         raise providers.BrokerError('requested_ttl_too_large')
-    ai_provider_id = await _pinned_provider(conn, task_id)
-    if ai_provider_id is None:
-        raise providers.BrokerError('secret_access_denied', 'model_not_pinned')
+
+
+def _model_key_decision(ai_provider_id: str) -> Decision:
+    """The decision for :data:`model_key.REFERENCE`: the AI provider that
+    the claim pinned on the task. No binding and no grant apply; the
+    claim authorized the model (ADR 0022 amendment)."""
     binding, provider = model_key.decision_rows(ai_provider_id)
-    return Decision(binding, provider, {'id': None})
+    return Decision(binding, provider, {'id': None}, ai_provider_id)
 
 
 async def evaluate(
@@ -610,19 +605,7 @@ async def evaluate(
         BrokerError: The request is denied.
 
     """
-    if not PURPOSE.fullmatch(purpose):
-        raise providers.BrokerError('secret_access_denied', 'invalid_purpose')
-    _refuse_retired(purpose)
-    if delivery_mode not in DELIVERY_MODES:
-        raise providers.BrokerError('delivery_mode_not_allowed')
-    if purpose in SETUP_PURPOSES and delivery_mode != 'file_descriptor':
-        # A backstop to the grants: a setup secret never goes into the
-        # environment of a command that the model chose.
-        raise providers.BrokerError(
-            'delivery_mode_not_allowed', 'setup_purpose_file_descriptor_only'
-        )
-    if ttl_seconds < 1 or ttl_seconds > MAX_TTL_SECONDS:
-        raise providers.BrokerError('requested_ttl_too_large')
+    _check_request(purpose, delivery_mode, ttl_seconds)
     binding = _check_binding(
         await _fetch_one(
             conn,
@@ -671,8 +654,9 @@ async def evaluate(
     return Decision(binding, provider, grants[0])
 
 
-async def _check_task(conn: Conn, context: ResolutionContext) -> None:
-    """The task must be open and match the trusted context.
+async def _check_task(conn: Conn, context: ResolutionContext) -> Row:
+    """The task must be open and match the trusted context. Return its
+    row, with the AI provider that the claim pinned.
 
     The lock serializes the check with ``TicketStore.delete``. It is the
     lock that the task event write takes later in the transaction, so
@@ -680,7 +664,7 @@ async def _check_task(conn: Conn, context: ResolutionContext) -> None:
     """
     task = await _fetch_one(
         conn,
-        'SELECT organization_id, agent_id, status'
+        'SELECT organization_id, agent_id, status, ai_provider_id'
         ' FROM tickets.tickets WHERE id = %s FOR UPDATE',
         (context.task_id,),
     )
@@ -696,6 +680,7 @@ async def _check_task(conn: Conn, context: ResolutionContext) -> None:
         )
     if task['status'] == 'closed':
         raise providers.BrokerError('secret_access_denied', 'task_closed')
+    return task
 
 
 async def _task_project_ids(
@@ -857,6 +842,7 @@ class Broker:
 
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
+        self._model_keys = model_key.ModelKeyProvider(pool)
 
     async def vendor_token(
         self,
@@ -973,7 +959,7 @@ class Broker:
                 )
             # Lock the resolution before the task, as materialize and
             # _finish do, so the two paths cannot deadlock.
-            await _check_task(conn, context)
+            task = await _check_task(conn, context)
             if existing is not None:
                 repeated = await self._repeat(
                     conn,
@@ -987,8 +973,11 @@ class Broker:
                     conn, 'secret_resolution_allowed', repeated
                 )
             if str(reference) == model_key.REFERENCE:
-                decision = await _model_key_decision(
-                    conn, context.task_id, request
+                _check_request(
+                    request.purpose, request.delivery_mode, request.ttl_seconds
+                )
+                decision = _model_key_decision(
+                    model_key.pinned(task, request.purpose)
                 )
             else:
                 decision = await evaluate(
@@ -1018,7 +1007,7 @@ class Broker:
                     decision.binding['id'],
                     decision.grant['id'],
                     decision.provider['id'],
-                    decision.binding['locator'].get('ai_provider_id'),
+                    decision.ai_provider_id,
                     str(reference),
                     reference.field,
                     context.agent_id,
@@ -1168,7 +1157,7 @@ class Broker:
             )
         # The current state of the task and every resource, not the
         # state at create.
-        await _check_task(
+        task = await _check_task(
             conn,
             ResolutionContext(
                 organization_id=row['organization_id'],
@@ -1179,17 +1168,8 @@ class Broker:
             ),
         )
         if row['ai_provider_id'] is not None:
-            # The task must still have the provider: a later claim can
-            # pin another one.
-            if (
-                await _pinned_provider(conn, row['task_id'])
-                != (row['ai_provider_id'])
-            ):
-                raise providers.BrokerError(
-                    'secret_access_denied', 'ai_provider_changed'
-                )
-            binding, provider = model_key.decision_rows(row['ai_provider_id'])
-            return Decision(binding, provider, {'id': None})
+            model_key.recheck(task, row['ai_provider_id'])
+            return _model_key_decision(row['ai_provider_id'])
         reference = parse_reference(row['reference'])
         binding = _check_binding(
             await _fetch_one(
@@ -1247,14 +1227,11 @@ class Broker:
 
         Return the material and its members (:func:`env_members`).
         """
-        if decision.provider['type'] == model_key.TYPE:
-            from imbi.api.secret_broker import store
-
-            plugin: providers.Provider = model_key.ModelKeyProvider(
-                store.SecretStore(self._pool)
-            )
-        else:
-            plugin = providers.get(decision.provider['type'])
+        plugin = (
+            self._model_keys
+            if decision.ai_provider_id is not None
+            else providers.get(decision.provider['type'])
+        )
         config = decision.provider['config']
         try:
             material = await plugin.resolve(
