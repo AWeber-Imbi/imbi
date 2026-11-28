@@ -116,6 +116,7 @@ async def set_status(
     error: str = '',
     retry: bool = True,
     only_if_before: str | None = None,
+    only_if_pending: bool = False,
 ) -> None:
     """Persist last-resync state on the ``Project`` node (best-effort).
 
@@ -132,14 +133,21 @@ async def set_status(
     concurrent transactions, so without this guard an optimistic
     ``queued`` write that merely executes *after* the worker finished
     would silently clobber the newer terminal status.
+
+    *only_if_pending* skips the write unless the stored status is still
+    ``queued`` or ``running``.  The dead-letter path uses it: a stale
+    job that reaches its delivery limit after a newer run finished must
+    not replace that run's terminal status.  *only_if_before* takes
+    precedence when both are given.
     """
-    guard: typing.LiteralString = (
-        ''
-        if only_if_before is None
-        else """
+    guard: typing.LiteralString = ''
+    if only_if_before is not None:
+        guard = """
     WHERE p.deployment_sync_at IS NULL
        OR p.deployment_sync_at < {only_if_before}"""
-    )
+    elif only_if_pending:
+        guard = """
+    WHERE p.deployment_sync_status IN ['queued', 'running']"""
     query: typing.LiteralString = (
         """
     MATCH (p:Project {{id: {project_id}}})"""
