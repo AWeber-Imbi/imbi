@@ -3757,6 +3757,35 @@ class PluginStepTestCase(EngineTestCase):
         self.assertEqual(run['steps']['gate']['attempt'], 1)
         self.assertEqual(len(self.calls), 1)
 
+    async def test_slow_marker_write_fails_before_the_call(self) -> None:
+        # #990: the write of call_started_at can use the rest of the
+        # step timeout. Then the step fails and does not make the call.
+        now = engine._now
+        late = mock.patch.object(
+            engine, '_now', lambda: now() + datetime.timedelta(seconds=400)
+        )
+        self.addCleanup(late.stop)
+        update = store.update
+
+        async def slow_update(*args: typing.Any, **kwargs: typing.Any) -> None:
+            await update(*args, **kwargs)
+            if kwargs.get('call_started_at') is not None:
+                late.start()
+
+        run_id = await self._gate(timeout_seconds=300, retries=3)
+        with (
+            mock.patch.object(store, 'update', slow_update),
+            mock.patch.object(engine, 'RETRY_BACKOFF', 3600),
+        ):
+            run = await self._drive(
+                run_id,
+                lambda r: r['steps'].get('gate', {}).get('status') == 'failed',
+            )
+        late.stop()
+        self.assertEqual(run['steps']['gate']['error'], 'timeout', run)
+        self.assertEqual(run['steps']['gate']['attempt'], 1)
+        self.assertEqual(self.calls, [])
+
     async def test_client_error_fails(self) -> None:
         self.answers = [httpx.Response(404, json={'detail': 'not found'})]
         run = await self._drive(await self._gate())
