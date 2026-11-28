@@ -17,6 +17,7 @@ from imbi.api.secret_broker import identity
 from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common.llm import discovery, generate
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.llm import tokens as common_tokens
 from imbi.common.prompts import resolve as prompt_resolve
 
@@ -90,7 +91,7 @@ def _with_org(result: typing.Any) -> typing.Any:
 # The read queries are matched by their exact template, because the
 # update and delete queries embed the same ``MATCH`` and a substring
 # rule would shadow them.
-GET_PROVIDER = ai_providers._GET_QUERY
+GET_PROVIDER = llm_resolve.PROVIDER_QUERY
 LIST_PROVIDERS = ai_providers._LIST_QUERY
 SLUG_TAKEN = ai_providers._SLUG_TAKEN_QUERY
 COUNTS = ai_providers._COUNTS_QUERY

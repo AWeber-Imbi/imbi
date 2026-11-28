@@ -221,6 +221,34 @@ async def over_cap(
     return spend if spend >= cap else None
 
 
+PROVIDER_QUERY: typing.LiteralString = """
+MATCH (p:AIProvider {{id: {id}}})
+      -[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
+RETURN p, o
+"""
+
+
+def parse_provider(record: dict[str, typing.Any]) -> models.AIProvider:
+    """Parse a ``p, o`` row into an ``AIProvider``."""
+    return models.AIProvider.model_validate(
+        {
+            **graph.parse_agtype(record['p']),
+            'organization': graph.parse_agtype(record['o']),
+        }
+    )
+
+
+async def find_provider(
+    db: graph.Graph, org_id: str, provider_id: str
+) -> models.AIProvider | None:
+    """Return the AI provider ``provider_id`` of the organization
+    ``org_id``; ``None`` when it has none with that id."""
+    records = await db.execute(
+        PROVIDER_QUERY, {'id': provider_id, 'org_id': org_id}, ['p', 'o']
+    )
+    return parse_provider(records[0]) if records else None
+
+
 async def month_spend(
     conn: psycopg.AsyncConnection[typing.Any], ids: list[str]
 ) -> dict[str, decimal.Decimal]:

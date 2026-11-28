@@ -52,6 +52,7 @@ from imbi.common.auth.encryption import (
     encrypt_config_value,
 )
 from imbi.common.llm import discovery, drivers, generate
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.plugins import identity as plugin_identity
 from imbi.common.prompts import resolve as prompt_resolve
 
@@ -255,12 +256,6 @@ MATCH (p:AIProvider)-[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
 RETURN p, o
 """
 
-_GET_QUERY: typing.LiteralString = """
-MATCH (p:AIProvider {{id: {id}}})
-      -[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
-RETURN p, o
-"""
-
 _SERVICE_QUERY: typing.LiteralString = """
 MATCH (p:AIProvider {{slug: {slug}}})
       -[:BELONGS_TO]->(o:Organization {{slug: {org}}})
@@ -303,27 +298,17 @@ async def model_counts(
     return counts
 
 
-def _parse(record: dict[str, typing.Any]) -> models.AIProvider:
-    """Parse a ``p, o`` row into an ``AIProvider``."""
-    props: typing.Any = graph.parse_agtype(record['p'])
-    return models.AIProvider.model_validate(
-        {**props, 'organization': graph.parse_agtype(record['o'])}
-    )
-
-
 async def fetch_provider(
     db: graph.Graph, org_id: str, id: str
 ) -> models.AIProvider:
     """Fetch a provider of the organization or raise 404."""
-    records = await db.execute(
-        _GET_QUERY, {'id': id, 'org_id': org_id}, ['p', 'o']
-    )
-    if not records:
+    provider = await llm_resolve.find_provider(db, org_id, id)
+    if provider is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {id!r} not found',
         )
-    return _parse(records[0])
+    return provider
 
 
 async def fetch_service_provider(
@@ -338,7 +323,7 @@ async def fetch_service_provider(
         raise fastapi.HTTPException(
             status_code=404, detail=f'AI provider {ref!r} not found'
         )
-    return _parse(records[0])
+    return llm_resolve.parse_provider(records[0])
 
 
 async def _assert_slug_free(
@@ -473,7 +458,7 @@ async def list_ai_providers(
     counts = await model_counts(db, org_id)
     responses = [
         to_response(node, *counts.get(node.id, (0, 0)))
-        for node in (_parse(record) for record in records)
+        for node in (llm_resolve.parse_provider(record) for record in records)
     ]
     return sorted(responses, key=lambda r: r.name.lower())
 
@@ -541,7 +526,7 @@ async def create_ai_provider(
         raise fastapi.HTTPException(
             status_code=500, detail='AI provider create returned no row'
         )
-    return to_response(_parse(records[0]))
+    return to_response(llm_resolve.parse_provider(records[0]))
 
 
 @ai_providers_router.get('/{id}', response_model=AIProviderResponse)
@@ -1186,7 +1171,7 @@ async def persist(
             status_code=404,
             detail=f'AI provider with id {node.id!r} not found',
         )
-    return _parse(records[0])
+    return llm_resolve.parse_provider(records[0])
 
 
 __all__ = [

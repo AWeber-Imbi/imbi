@@ -15,8 +15,8 @@ secret provider of its type.
 import typing
 
 from imbi.api.secret_broker import providers
-from imbi.common import graph, models
 from imbi.common.auth.encryption import decrypt_config_value
+from imbi.common.llm import resolve as llm_resolve
 from imbi.common.plugins import secrets
 from imbi.common.plugins.identity import IdentityError
 
@@ -29,12 +29,6 @@ REFERENCE = f'secret://{SCOPE}/model'
 PURPOSE = 'model_inference'
 #: The ``type`` of the provider row of a model key decision.
 TYPE = 'ai_provider'
-
-_QUERY: typing.LiteralString = """
-MATCH (p:AIProvider {{id: {id}}})
-      -[:BELONGS_TO]->(o:Organization {{id: {org_id}}})
-RETURN p, o
-"""
 
 
 def pinned(task: dict[str, typing.Any], purpose: str) -> str:
@@ -106,27 +100,20 @@ class ModelKeyProvider(secrets.SecretProvider):
         context: secrets.ResolveContext,
     ) -> secrets.Material:
         # Not at the top: store imports the broker, which imports this.
+        # The shared generate.with_credentials is not used: the runner
+        # needs the expiry of a workload identity token to renew it.
         from imbi.api.llm import tokens
         from imbi.api.secret_broker import store
 
-        records = await self.host.graph().execute(
-            _QUERY,
-            {
-                'id': locator['ai_provider_id'],
-                'org_id': context.organization_id,
-            },
-            ['p', 'o'],
+        provider = await llm_resolve.find_provider(
+            self.host.graph(),
+            context.organization_id,
+            locator['ai_provider_id'],
         )
-        if not records:
+        if provider is None:
             raise secrets.BrokerError(
                 'secret_materialization_failed', 'ai_provider_not_found'
             )
-        provider = models.AIProvider.model_validate(
-            {
-                **graph.parse_agtype(records[0]['p']),
-                'organization': graph.parse_agtype(records[0]['o']),
-            }
-        )
         if not provider.enabled:
             raise secrets.BrokerError(
                 'secret_access_denied', 'ai_provider_disabled'

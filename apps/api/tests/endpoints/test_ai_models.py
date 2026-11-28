@@ -8,7 +8,7 @@ import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api import teams as org_teams
-from imbi.api.endpoints import ai_models, ai_providers
+from imbi.api.endpoints import ai_models
 from imbi.common.llm import discovery
 from imbi.common.llm import resolve as llm_resolve
 
@@ -24,7 +24,7 @@ MODEL_ID_TAKEN = ai_models._MODEL_ID_TAKEN_QUERY
 TEAM = org_teams._BY_ID_QUERY
 EXISTING_IDS = ai_models._EXISTING_IDS_QUERY
 TAKEN_SLUGS = ai_models._TAKEN_SLUGS_QUERY
-GET_PROVIDER = ai_providers._GET_QUERY
+GET_PROVIDER = llm_resolve.PROVIDER_QUERY
 CREATE = 'CREATE (m:AIModel'
 UPDATE = 'SET m.'
 DELETE = 'DETACH DELETE m'
