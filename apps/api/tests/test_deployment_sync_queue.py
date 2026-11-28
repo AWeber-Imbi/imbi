@@ -245,6 +245,31 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
         client.xadd.assert_awaited_once()
         client.xack.assert_awaited_once()
 
+    async def test_dead_letter_marks_the_project_failed(self) -> None:
+        client = mock.AsyncMock()
+        client.xpending_range = mock.AsyncMock(
+            return_value=[{'times_delivered': queue.MAX_DELIVERIES}]
+        )
+        db = mock.AsyncMock()
+        with (
+            mock.patch.object(queue, '_process_message') as process,
+            mock.patch.object(
+                queue, 'set_status', mock.AsyncMock()
+            ) as set_status,
+        ):
+            await queue._handle_entries(
+                client,
+                [(b'1-0', {b'project_id': b'p1', b'requested_by': b'u1'})],
+                db,
+                'c1',
+                check_dlq=True,
+            )
+        process.assert_not_called()
+        set_status.assert_awaited_once()
+        self.assertEqual((db, 'p1'), set_status.await_args.args)
+        self.assertEqual('failed', set_status.await_args.kwargs['status'])
+        self.assertEqual('u1', set_status.await_args.kwargs['requested_by'])
+
     async def test_rate_limited_pauses_without_ack_or_dlq(self) -> None:
         client = mock.AsyncMock()
         retry_at = time.time() + 1800
