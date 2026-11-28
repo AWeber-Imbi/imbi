@@ -792,7 +792,14 @@ async def _identity(
             )
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
-    source, model, upstream = await _task_model(db, task, prompt)
+    try:
+        source, model, upstream = await _task_model(db, task, prompt)
+    except llm_resolve.ModelUnusable:
+        if prompt_error is None:
+            raise
+        # The render error is the cause: without the prompt there is
+        # no prompt model to resolve.
+        raise _PromptNotRendered(prompt_error) from None
     await store.pin_model(task['id'], attempt, model.id, model.provider.id)
     if prompt is not None:
         prompt = prompt.model_copy(update={'model_id': model.model_id})
@@ -832,6 +839,11 @@ async def _identity(
 
 class _NoServiceAccount(LookupError):
     """The service account of a claimed task is gone."""
+
+
+class _PromptNotRendered(ValueError):
+    """The pinned prompt did not render, and no model resolves without
+    it."""
 
 
 async def _task_model(
@@ -898,7 +910,8 @@ async def _deliver(
     claims again. So does a task whose proxy token is too large
     (``exceeded_ceiling``, ``egress_token_too_large``), and a task whose
     model cannot be used (``failed_external``, ``model_<reason>``, see
-    :func:`_task_model`). Any other error
+    :func:`_task_model`), or ``prompt_render_failed`` when the prompt
+    did not render and no model resolves without it. Any other error
     undoes the claim and is raised again, so the runner is not left
     busy with a chain that it does not know.
     """
@@ -916,6 +929,9 @@ async def _deliver(
         outcome, reason = 'exceeded_ceiling', 'egress_token_too_large'
     except llm_resolve.ModelUnusable as err:
         outcome, reason = 'failed_external', f'model_{err.reason}'
+    except _PromptNotRendered as err:
+        LOGGER.warning('Prompt of %s did not render: %s', task['id'], err)
+        outcome, reason = 'failed_external', 'prompt_render_failed'
     except BaseException:
         await store.release_claim(runner['id'], task, chain, pinned=pinned)
         raise

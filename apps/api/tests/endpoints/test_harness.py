@@ -683,6 +683,19 @@ class FailedClaimTests(RunnerTestCase):
         self.assertIsNone(await self.claim(runner))
         await self.assert_closed(runner, 'model_not_configured')
 
+    async def test_render_failure_with_no_model_keeps_its_reason(
+        self,
+    ) -> None:
+        await self.set_org_default(None)
+        runner = await self.register()
+        with mock.patch.object(
+            harness_api,
+            '_rendered_prompt',
+            mock.AsyncMock(return_value=(None, 'undeclared variable')),
+        ):
+            self.assertIsNone(await self.claim(runner))
+        await self.assert_closed(runner, 'prompt_render_failed')
+
     async def test_unsupported_driver_is_closed(self) -> None:
         bedrock = await self.make_provider('bedrock', 'bedrock')
         model = await self.make_model(
