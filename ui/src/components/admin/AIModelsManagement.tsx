@@ -162,12 +162,23 @@ export function AIModelsManagement() {
     onSuccess: closeAndRefresh,
   })
   const updateProviderMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: ProviderFormValues }) =>
+    mutationFn: ({
+      id,
+      opened,
+      values,
+    }: {
+      id: string
+      opened?: AIProvider | null
+      values: ProviderFormValues
+    }) =>
       updateAIProvider(
         orgSlug,
         id,
+        // Diff against the provider as the dialog opened it: a list
+        // refresh while it is open must not put back a value that another
+        // user changed (for example `allow_insecure_http`).
         buildDiffPatch(
-          currentProviderState(providers.find((p) => p.id === id)),
+          currentProviderState(opened ?? undefined),
           values as unknown as Record<string, unknown>,
           { fields: PROVIDER_PATCH_FIELDS },
         ),
@@ -485,8 +496,12 @@ export function AIModelsManagement() {
           key={editingProvider.id}
           onClose={goToList}
           onDelete={() => deleteProviderMutation.mutate(editingProvider.id)}
-          onSubmit={(values) =>
-            updateProviderMutation.mutate({ id: editingProvider.id, values })
+          onSubmit={(values, opened) =>
+            updateProviderMutation.mutate({
+              id: editingProvider.id,
+              opened,
+              values,
+            })
           }
           open
           provider={editingProvider}

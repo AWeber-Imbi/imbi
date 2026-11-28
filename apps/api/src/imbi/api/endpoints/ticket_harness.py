@@ -389,6 +389,7 @@ RETURN a.settings AS settings
 #: The AIModel id, slug, spend cap, and prices of a price match.
 _PRICE_RETURN: typing.LiteralString = """
 RETURN m.id AS id, m.slug AS slug,
+       (m.slug = {model} OR m.model_id = {model}) AS named,
        m.monthly_spend_cap AS monthly_spend_cap,
        m.input_cost_per_million AS input_cost_per_million,
        m.output_cost_per_million AS output_cost_per_million,
@@ -405,12 +406,14 @@ WHERE m.slug = {model} OR m.model_id = {model}"""
     + _PRICE_RETURN
 )
 
-#: The models of the AI provider that the claim pinned on the task.
+#: The models of the AI provider that the claim pinned on the task, and
+#: the pinned model by its id: an operator can change its provider model
+#: id while the task runs.
 _PROVIDER_PRICES_QUERY: typing.LiteralString = (
     """
 MATCH (m:AIModel)-[:SERVED_BY]->(:AIProvider {{id: {provider_id}}})
       -[:BELONGS_TO]->(:Organization {{id: {org_id}}})
-WHERE m.slug = {model} OR m.model_id = {model}"""
+WHERE m.id = {ai_model_id} OR m.slug = {model} OR m.model_id = {model}"""
     + _PRICE_RETURN
 )
 
@@ -524,26 +527,39 @@ async def _model_prices(
     A task that a claim pinned (ADR 0022 amendment) reads only the
     models of its AI provider, and its pinned model wins. A task with no
     pin reads the catalog of the organization. Then a slug match wins.
-    When only provider model ids match, the model with the first slug
+    When no model of the provider has the reported name, the pinned
+    model gives the prices: an operator changed its provider model id
+    after the claim. When only provider model ids match, the model with
+    the first slug
     gives the prices. When more than one model has the provider model
     id, the report does not tell which model made the call, so no
     AIModel id and no spend cap are returned: the spend is not charged
     to a model that possibly did not make it.
     """
     provider_id = task.get('ai_provider_id')
+    pinned_id = task.get('ai_model_id')
     records = await db.execute(
         _MODEL_PRICES_QUERY if provider_id is None else _PROVIDER_PRICES_QUERY,
-        {'model': model, 'org_id': org_id, 'provider_id': provider_id},
-        ['id', 'slug', 'monthly_spend_cap', *_PRICE_COLUMNS],
+        {
+            'model': model,
+            'org_id': org_id,
+            'provider_id': provider_id,
+            'ai_model_id': pinned_id,
+        },
+        ['id', 'slug', 'named', 'monthly_spend_cap', *_PRICE_COLUMNS],
     )
     rows = [
         {key: graph.parse_agtype(value) for key, value in record.items()}
         for record in records
     ]
+    pinned = next((r for r in rows if r['id'] == pinned_id), None)
+    rows = [r for r in rows if r['named']]
+    if pinned is not None and (pinned['named'] or not rows):
+        rows = [pinned]
     if not rows:
         return None
     match = next(
-        (r for r in rows if r['id'] == task.get('ai_model_id')),
+        (r for r in rows if r['id'] == pinned_id),
         next((r for r in rows if r['slug'] == model), None),
     )
     row = match or min(rows, key=lambda r: str(r['slug']))

@@ -785,6 +785,37 @@ class FailedClaimTests(RunnerTestCase):
         self.assertEqual(task['status'], 'closed')
         self.assertEqual(task['outcome_reason'], 'model_not_found')
 
+    async def test_outcome_waits_for_a_concurrent_attempt_increment(
+        self,
+    ) -> None:
+        task_id = uuid.UUID(self.task['id'])
+        self.assertIsNotNone(await self.claim(await self.register()))
+        chain = await self.harness.chain(task_id)
+        assert chain is not None
+        async with self.pool.connection() as conn:
+            # The lease sweep increments the attempt and has not
+            # committed yet when the outcome of the old attempt comes.
+            await conn.execute(
+                'UPDATE harness.chains SET attempt = attempt + 1'
+                ' WHERE root_ticket_id = %s',
+                (task_id,),
+            )
+            outcome = asyncio.create_task(
+                self.store.set_outcome(
+                    self.org,
+                    'T-1',
+                    'failed_external',
+                    'model_not_found',
+                    harness_api._SYSTEM,
+                    attempt=chain['attempt'],
+                )
+            )
+            await asyncio.sleep(0.5)
+            self.assertFalse(outcome.done())
+        with self.assertRaises(task_store.AttemptStale):
+            await outcome
+        self.assertNotEqual((await self.task_row())['status'], 'closed')
+
     async def test_failed_response_releases_the_claim(self) -> None:
         runner = await self.register()
         with (

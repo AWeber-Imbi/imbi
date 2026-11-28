@@ -3445,7 +3445,9 @@ class TicketStore:
         Keep the ``structured_output`` that the agent returned, if any.
         With ``attempt``, the write applies only while the claim of
         ``attempt`` is the claim of the current attempt of the chain, as
-        in :meth:`~imbi.api.harness.store.HarnessStore.pin_model`.
+        in :meth:`~imbi.api.harness.store.HarnessStore.pin_model`. The
+        check locks the chain row, so an attempt increment waits until
+        the close commits.
 
         Raises:
             TaskNotFound: No such task.
@@ -3459,7 +3461,8 @@ class TicketStore:
                     'SELECT 1 FROM harness.claims k JOIN harness.chains c'
                     ' ON c.root_ticket_id = k.chain_id'
                     ' AND c.attempt = k.attempt'
-                    ' WHERE k.ticket_id = %s AND k.attempt = %s',
+                    ' WHERE k.ticket_id = %s AND k.attempt = %s'
+                    ' FOR SHARE OF c',
                     (write.task['id'], attempt),
                 )
                 if await cursor.fetchone() is None:

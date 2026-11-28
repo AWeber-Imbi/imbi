@@ -1546,6 +1546,36 @@ class UsageTests(HarnessTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertIsNone(response.json()['cost'])
 
+    async def test_a_pinned_model_keeps_its_price_after_a_model_id_edit(
+        self,
+    ) -> None:
+        pinned = await self.make_provider('pinned')
+        ai_model_id = await self.make_model(
+            'renamed', 'claude-before', provider=pinned
+        )
+        # A model of the provider with another name is not used.
+        await self.make_model('other', 'claude-other', provider=pinned)
+        await self.pin(ai_model_id, pinned)
+        # An operator changes the provider model id while the task runs.
+        await self.graph.execute(
+            'MATCH (m:AIModel {{id: {id}}}) SET m.model_id = {model_id}'
+            ' RETURN m.id AS id',
+            {'id': ai_model_id, 'model_id': 'claude-after'},
+            ['id'],
+        )
+        response = await self.report('u-1', model_id='claude-before')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNotNone(response.json()['cost'])
+        (row,) = await self.ledger()
+        self.assertEqual(row['ai_model_id'], ai_model_id)
+        # Another model of the provider keeps its own price.
+        response = await self.report('u-2', model_id='claude-other')
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [row['ai_model_id'] for row in await self.ledger()],
+            [ai_model_id, f'{self.org}-other'],
+        )
+
     async def test_message_id_goes_on_the_event_only(self) -> None:
         response = await self.report('u-1', message_id='msg_01abc')
         self.assertEqual(response.status_code, 201, response.text)

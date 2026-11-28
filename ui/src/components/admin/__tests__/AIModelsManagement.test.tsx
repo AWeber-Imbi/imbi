@@ -1,8 +1,10 @@
 import { Route, Routes } from 'react-router-dom'
 
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fireEvent, render, screen, waitFor, within } from '@/test/utils'
+import { queryKeys } from '@/lib/queryKeys'
+import { act, fireEvent, render, screen, waitFor, within } from '@/test/utils'
 import type { AIModel, AIProvider, AIProviderDriver, Team } from '@/types'
 
 // fallow-ignore-next-line unresolved-import
@@ -611,6 +613,59 @@ describe('AIModelsManagement', () => {
         'acme',
         'prov-1',
         [{ op: 'replace', path: '/allow_insecure_http', value: true }],
+      ),
+    )
+    canSetCredentials.value = false
+  })
+
+  it('does not send an http:// flag that a list refresh changed', async () => {
+    const endpoints = await import('@/api/endpoints')
+    const gateway: AIProvider = {
+      ...provider,
+      allow_insecure_http: true,
+      base_url: 'http://litellm.imbi:4000',
+      driver: 'openai_compatible',
+    }
+    vi.mocked(endpoints.listAIProviders).mockResolvedValue([gateway])
+    canSetCredentials.value = true
+    let client: QueryClient | undefined
+    const GrabClient = () => {
+      client = useQueryClient()
+      return null
+    }
+    window.history.pushState({}, '', '/admin/ai-models/prov-1/edit-provider')
+    const { AIModelsManagement } = await import('../AIModelsManagement')
+    render(
+      <>
+        <GrabClient />
+        <Routes>
+          <Route
+            element={<AIModelsManagement />}
+            path="/admin/:section?/:slug?/:action?"
+          />
+        </Routes>
+      </>,
+    )
+    await screen.findByText('Edit Anthropic')
+    // Another user clears the flag while this dialog is open, and a list
+    // refresh reads it.
+    vi.mocked(endpoints.listAIProviders).mockResolvedValue([
+      { ...gateway, allow_insecure_http: false },
+    ])
+    await act(async () => {
+      await client?.refetchQueries({ queryKey: queryKeys.aiProviders('acme') })
+      // Let the query notify the section before the save.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    fireEvent.change(screen.getByLabelText(/^name/i), {
+      target: { value: 'Gateway' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() =>
+      expect(endpoints.updateAIProvider).toHaveBeenCalledWith(
+        'acme',
+        'prov-1',
+        [{ op: 'replace', path: '/name', value: 'Gateway' }],
       ),
     )
     canSetCredentials.value = false

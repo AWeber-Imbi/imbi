@@ -62,7 +62,8 @@ interface ProviderDialogProps {
   isPending: boolean
   onClose: () => void
   onDelete?: () => void
-  onSubmit: (values: ProviderFormValues) => void
+  /** `opened` is the provider as the dialog read it on mount. */
+  onSubmit: (values: ProviderFormValues, opened?: AIProvider | null) => void
   open: boolean
   /** Present in edit mode; null or omitted creates a new provider. */
   provider?: AIProvider | null
@@ -106,6 +107,9 @@ export function ProviderDialog({
     provider?.allow_insecure_http ?? false,
   )
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // The fields start from this value; a save sends only the fields that
+  // the user changed from it, not values from a later list refresh.
+  const [opened] = useState(provider)
 
   const driver = drivers.find((d) => d.slug === driverSlug)
   const needsRegion = driverSlug === 'bedrock' || driverSlug === 'vertex'
@@ -127,17 +131,20 @@ export function ProviderDialog({
   }
 
   const handleSubmit = () =>
-    onSubmit({
-      allow_insecure_http: driverSlug === 'openai_compatible' && insecureHttp,
-      api_key: editing ? null : apiKey.trim() || null,
-      base_url: baseUrl.trim() || null,
-      description: description.trim() || null,
-      driver: driverSlug as AIProviderDriverSlug,
-      enabled,
-      name: name.trim(),
-      project_id: needsProject ? projectId.trim() || null : null,
-      region: needsRegion ? region.trim() || null : null,
-    })
+    onSubmit(
+      {
+        allow_insecure_http: driverSlug === 'openai_compatible' && insecureHttp,
+        api_key: editing ? null : apiKey.trim() || null,
+        base_url: baseUrl.trim() || null,
+        description: description.trim() || null,
+        driver: driverSlug as AIProviderDriverSlug,
+        enabled,
+        name: name.trim(),
+        project_id: needsProject ? projectId.trim() || null : null,
+        region: needsRegion ? region.trim() || null : null,
+      },
+      opened,
+    )
 
   return (
     <Dialog
