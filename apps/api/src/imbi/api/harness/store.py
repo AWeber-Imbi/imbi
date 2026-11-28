@@ -564,14 +564,26 @@ class HarnessStore:
             )
 
     async def pin_model(
-        self, task_id: uuid.UUID, ai_model_id: str, ai_provider_id: str
+        self,
+        task_id: uuid.UUID,
+        attempt: int,
+        ai_model_id: str,
+        ai_provider_id: str,
     ) -> None:
         """Record the AI model and provider that a claim resolved for a
-        task. Usage prices and the model key use them."""
+        task. Usage prices and the model key use them.
+
+        The write applies only while the claim of ``attempt`` is the
+        claim of the current attempt of the chain. A claim whose lease
+        expired cannot then replace the pin of a newer claim.
+        """
         await self._execute(
-            'UPDATE tickets.tickets SET ai_model_id = %s,'
-            ' ai_provider_id = %s WHERE id = %s',
-            (ai_model_id, ai_provider_id, task_id),
+            'UPDATE tickets.tickets t SET ai_model_id = %s,'
+            ' ai_provider_id = %s WHERE t.id = %s AND EXISTS ('
+            'SELECT 1 FROM harness.claims k JOIN harness.chains c'
+            ' ON c.root_ticket_id = k.chain_id AND c.attempt = k.attempt'
+            ' WHERE k.ticket_id = t.id AND k.attempt = %s)',
+            (ai_model_id, ai_provider_id, task_id, attempt),
         )
 
     async def finish(self, runner: Row) -> Row | None:

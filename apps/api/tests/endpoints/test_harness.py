@@ -406,6 +406,25 @@ class ClaimTests(RunnerTestCase):
         self.assertEqual(task['ai_model_id'], self.default_model)
         self.assertEqual(task['ai_provider_id'], self.provider_id)
 
+    async def test_a_stale_claim_does_not_change_the_pin(self) -> None:
+        other = await self.make_model(
+            'other', 'claude-other', provider=self.provider_id
+        )
+        claim = await self.claim(await self.register())
+        assert claim is not None
+        task_id = uuid.UUID(self.task['id'])
+        # An earlier attempt is not the current claim.
+        await self.harness.pin_model(
+            task_id, claim['attempt'] - 1, other, self.provider_id
+        )
+        self.assertEqual(
+            (await self.task_row())['ai_model_id'], self.default_model
+        )
+        await self.harness.pin_model(
+            task_id, claim['attempt'], other, self.provider_id
+        )
+        self.assertEqual((await self.task_row())['ai_model_id'], other)
+
     async def test_prompt_model_wins_and_sets_the_prompt_model_id(
         self,
     ) -> None:

@@ -638,7 +638,7 @@ class BundleTests(PlatformTestCase):
         self.assertEqual(response.json()['platform_config_version'], 1)
         task = await self.task_row(response.json()['short_id'])
         before = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(before.platform_config_version, 1)
         assert before.config is not None
@@ -658,7 +658,7 @@ class BundleTests(PlatformTestCase):
 
         await self.put_config(system_prompt_prefix='two')
         after = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(after, before)
         # A new task pins the new version.
@@ -679,7 +679,7 @@ class BundleTests(PlatformTestCase):
         response = await self.create_task(project_ids=[self.project_id])
         task = await self.task_row(response.json()['short_id'])
         bundle = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(
             [(r.host, r.name) for r in bundle.repositories],
@@ -690,7 +690,7 @@ class BundleTests(PlatformTestCase):
             {'github-repository': 'https://github.com/ops/billing'}
         )
         bundle = await harness_api._identity(
-            self.graph, self.harness, self.secret_store, task, self.org
+            self.graph, self.harness, self.secret_store, task, self.org, 0
         )
         self.assertEqual(bundle.repositories, [])
 
@@ -705,4 +705,5 @@ class BundleTests(PlatformTestCase):
                 self.secret_store,
                 {**task, 'platform_config_version': 9},
                 self.org,
+                0,
             )

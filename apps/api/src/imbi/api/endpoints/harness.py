@@ -767,12 +767,15 @@ async def _identity(
     secrets: secret_store.SecretStore,
     task: dict[str, typing.Any],
     org_slug: str,
+    attempt: int,
 ) -> IdentityBundle:
     """Return the full identity bundle of a task (plan section 5.4).
 
     Everything comes from the pinned versions: the agent version, the
     prompt version, and the organization configuration version. A
     later change to the agent or the organization does not change it.
+    ``attempt`` is the chain attempt of the claim; the model pin
+    applies only while it is the current attempt.
     """
     bundle = await _bundle(db, task)
     version: int | None = task.get('platform_config_version')
@@ -790,7 +793,7 @@ async def _identity(
     settings = _settings(bundle.snapshot.get('settings'))
     prompt, prompt_error = await _rendered_prompt(db, task, bundle, org_slug)
     source, model, upstream = await _task_model(db, task, prompt)
-    await store.pin_model(task['id'], model.id, model.provider.id)
+    await store.pin_model(task['id'], attempt, model.id, model.provider.id)
     if prompt is not None:
         prompt = prompt.model_copy(update={'model_id': model.model_id})
     return bundle.model_copy(
@@ -977,7 +980,9 @@ async def _claim(
         attempt=chain['attempt'],
         organization_slug=org_slug,
         task=tasks_api.AgentTaskResponse.model_validate(task),
-        bundle=await _identity(db, store, secrets, task, org_slug),
+        bundle=await _identity(
+            db, store, secrets, task, org_slug, chain['attempt']
+        ),
         agent_token=token,
         agent_token_expires_at=expires,
         api_token=api_token,
