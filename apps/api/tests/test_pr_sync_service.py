@@ -104,6 +104,16 @@ class StatusTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('success', params['status'])
         self.assertEqual(7, params['prs'])
         self.assertEqual('alice', params['by'])
+        self.assertNotIn('WHERE', db.execute.await_args.args[0])
+
+    async def test_set_status_only_if_pending_guards_the_write(self) -> None:
+        db = mock.AsyncMock()
+        await service.set_status(
+            db, 'p1', status='failed', only_if_pending=True
+        )
+        query = db.execute.await_args.args[0]
+        self.assertIn("WHERE p.pr_sync_status IN ['queued', 'running']", query)
+        self.assertLess(query.index('WHERE'), query.index('SET'))
 
     async def test_set_status_retries_on_write_conflict(self) -> None:
         db = mock.AsyncMock()

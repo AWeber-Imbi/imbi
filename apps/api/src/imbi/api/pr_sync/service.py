@@ -155,10 +155,26 @@ async def set_status(
     prs: int = 0,
     error: str = '',
     retry: bool = True,
+    only_if_pending: bool = False,
 ) -> None:
-    """Persist last-sync state on the ``Project`` node (best-effort)."""
-    query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
+    """Persist last-sync state on the ``Project`` node (best-effort).
+
+    *only_if_pending* skips the write unless the stored status is still
+    ``queued`` or ``running``. The dead-letter path uses it: a stale job
+    that reaches its delivery limit after a newer run finished must not
+    replace that run's terminal status.
+    """
+    guard: typing.LiteralString = (
+        """
+    WHERE p.pr_sync_status IN ['queued', 'running']"""
+        if only_if_pending
+        else ''
+    )
+    query: typing.LiteralString = (
+        """
+    MATCH (p:Project {{id: {project_id}}})"""
+        + guard
+        + """
     SET p.pr_sync_status = {status},
         p.pr_sync_at = {at},
         p.pr_sync_by = {by},
@@ -166,6 +182,7 @@ async def set_status(
         p.pr_sync_error = {error}
     RETURN p.id AS id
     """
+    )
     params = {
         'project_id': project_id,
         'status': status,
