@@ -80,7 +80,9 @@ DRIVERS: tuple[DriverInfo, ...] = (
         name='OpenAI-compatible',
         description=(
             'Any endpoint that implements the OpenAI chat-completions '
-            'API, such as vLLM, Ollama, or a gateway.'
+            'API, such as vLLM, Ollama, or a gateway. Agent tasks also '
+            'need the Anthropic Messages API at the root of the URL, '
+            'for example from LiteLLM.'
         ),
         requires_base_url=True,
         supports_discovery=True,

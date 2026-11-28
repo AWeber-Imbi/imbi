@@ -36,7 +36,12 @@ built in. You cannot add one from the UI.
 | TypeSafe | Optional. Defaults to `https://api.typesafe.ai/v1` | API key | No |
 
 Use **OpenAI-compatible** for any endpoint that implements the OpenAI
-chat-completions API, such as vLLM, Ollama, or a gateway.
+chat-completions API, such as vLLM, Ollama, or a gateway. Agent tasks send
+Anthropic Messages requests (`POST /v1/messages`) to the root of the URL (Imbi
+removes a `/v1` suffix). Use a gateway that also serves that API, for example
+LiteLLM. An endpoint that serves only chat completions, such as
+`https://api.openai.com/v1`, works for other features but not for agent
+tasks: their model calls fail.
 
 AWS Bedrock and Google Vertex AI can authenticate from the credentials of the
 process Imbi runs as. A provider on either driver with no stored key reports
